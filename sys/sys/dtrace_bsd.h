@@ -48,7 +48,9 @@ int dtrace_trap(struct trapframe *, u_int);
  * hook for the dtrace module to register its handler with.
  */
 typedef int (*dtrace_trap_func_t)(struct trapframe *, u_int);
+typedef int (*dtrace_vmfault_func_t)(struct trapframe *, u_int);
 extern dtrace_trap_func_t	dtrace_trap_func;
+extern dtrace_vmfault_func_t	dtrace_vmfault_func;
 
 /*
  * A hook which removes active FBT probes before executing the double fault
@@ -171,5 +173,13 @@ size_t	kdtrace_thread_size(void);
  */
 uint64_t	dtrace_gethrtime(void);
 uint64_t	dtrace_gethrestime(void);
+
+#define	DTRACE_PROVNAMELEN	64
+#define	DTRACE_MODNAMELEN	64
+#define	DTRACE_FUNCNAMELEN	192
+#define	DTRACE_NAMELEN		64
+#define	DTRACE_FULLNAMELEN	(DTRACE_PROVNAMELEN + DTRACE_MODNAMELEN + \
+				DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
+#define	DTRACE_ARGTYPELEN	128
 
 #endif /* _SYS_DTRACE_BSD_H */

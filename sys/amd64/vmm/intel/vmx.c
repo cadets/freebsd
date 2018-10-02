@@ -195,7 +195,7 @@ SYSCTL_INT(_hw_vmm_vmx, OID_AUTO, l1d_flush, CTLFLAG_RD,
 uint64_t vmx_msr_flush_cmd;
 
 /*
- * The definitions of SDT probes for VMX.
+ * SDT probe defines.
  */
 
 SDT_PROBE_DEFINE3(vmm, vmx, exit, entry,
@@ -264,12 +264,14 @@ SDT_PROBE_DEFINE3(vmm, vmx, exit, monitor,
 SDT_PROBE_DEFINE3(vmm, vmx, exit, mwait,
     "struct vmx *", "int", "struct vm_exit *");
 
+SDT_PROBE_DEFINE4(vmm, vmx, exit, hypercall,
+    "struct vmx *", "int", "struct vm_exit *", "int");
+
 SDT_PROBE_DEFINE4(vmm, vmx, exit, unknown,
     "struct vmx *", "int", "struct vm_exit *", "uint32_t");
 
 SDT_PROBE_DEFINE4(vmm, vmx, exit, return,
     "struct vmx *", "int", "struct vm_exit *", "int");
-
 /*
  * Use the last page below 4GB as the APIC access address. This address is
  * occupied by the boot firmware so it is guaranteed that it will not conflict
@@ -2441,6 +2443,10 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 		return (1);
 	case EXIT_REASON_INOUT:
 		vmm_stat_incr(vmx->vm, vcpu, VMEXIT_INOUT, 1);
+		/*
+		 * FIXME(dstolfa): This should give more info.
+		 */
+		SDT_PROBE3(vmm, vmx, exit, inout, vmx, vcpu, vmexit);
 		vmexit->exitcode = VM_EXITCODE_INOUT;
 		vmexit->u.inout.bytes = (qual & 0x7) + 1;
 		vmexit->u.inout.in = in = (qual & 0x8) ? 1 : 0;
@@ -2588,8 +2594,7 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 		 */
 		vmexit->inst_length = 0;
 		vlapic = vm_lapic(vmx->vm, vcpu);
-		SDT_PROBE4(vmm, vmx, exit, apicwrite,
-		    vmx, vcpu, vmexit, vlapic);
+		SDT_PROBE4(vmm, vmx, exit, apicwrite, vmx, vcpu, vmexit, vlapic);
 		handled = vmx_handle_apic_write(vmx, vcpu, vlapic, qual);
 		break;
 	case EXIT_REASON_XSETBV:
@@ -2603,6 +2608,17 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 	case EXIT_REASON_MWAIT:
 		SDT_PROBE3(vmm, vmx, exit, mwait, vmx, vcpu, vmexit);
 		vmexit->exitcode = VM_EXITCODE_MWAIT;
+		break;
+	case EXIT_REASON_VMCALL:
+		SDT_PROBE4(vmm, vmx, exit, hypercall,
+		    vmx, vcpu, vmexit, hypercalls_enabled);
+		if (hypercalls_enabled == 0) {
+			vm_inject_ud(vmx->vm, vcpu);
+			handled = HANDLED;
+		} else {
+			vmexit->exitcode = VM_EXITCODE_HYPERCALL;
+			vmx_paging_info(&vmexit->u.hypercall.paging);
+		}
 		break;
 	default:
 		SDT_PROBE4(vmm, vmx, exit, unknown,
@@ -2642,7 +2658,6 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 			 */
 		}
 	}
-
 	SDT_PROBE4(vmm, vmx, exit, return,
 	    vmx, vcpu, vmexit, handled);
 	return (handled);

@@ -83,6 +83,7 @@ __FBSDID("$FreeBSD$");
 #include "xmsr.h"
 #include "spinup_ap.h"
 #include "rtc.h"
+#include "dthyve.h"
 
 #define GUEST_NIO_PORT		0x488	/* guest upcalls via i/o port */
 
@@ -102,6 +103,8 @@ char *guest_uuid_str;
 static int guest_vmexit_on_hlt, guest_vmexit_on_pause;
 static int virtio_msix = 1;
 static int x2apic_mode = 0;	/* default is xAPIC */
+
+static int trace = 0;
 
 static int strictio;
 static int strictmsr = 1;
@@ -159,6 +162,7 @@ usage(int code)
 		"       -P: vmexit from the guest on pause\n"
 		"       -s: <slot,driver,configinfo> PCI slot config\n"
 		"       -S: guest memory cannot be swapped\n"
+		"	-t: trace the guest\n"
 		"       -u: RTC keeps UTC time\n"
 		"       -U: uuid\n"
 		"       -w: ignore unimplemented MSRs\n"
@@ -922,7 +926,7 @@ main(int argc, char *argv[])
 	rtc_localtime = 1;
 	memflags = 0;
 
-	optstr = "abehuwxACHIPSWYp:g:G:c:s:m:l:U:";
+	optstr = "abehtuwxACHIPSWYp:g:c:s:m:l:U:";
 	while ((c = getopt(argc, argv, optstr)) != -1) {
 		switch (c) {
 		case 'a':
@@ -996,6 +1000,9 @@ main(int argc, char *argv[])
 		case 'e':
 			strictio = 1;
 			break;
+		case 't':
+			trace = 1;
+			break;
 		case 'u':
 			rtc_localtime = 0;
 			break;
@@ -1027,6 +1034,12 @@ main(int argc, char *argv[])
 		usage(1);
 
 	vmname = argv[0];
+
+#ifndef VTDTR
+	if (trace)
+		dthyve_init(vmname);
+#endif
+
 	ctx = do_open(vmname);
 
 	max_vcpus = num_vcpus_allowed(ctx);

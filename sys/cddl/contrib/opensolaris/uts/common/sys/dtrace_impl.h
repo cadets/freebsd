@@ -76,6 +76,7 @@ struct dtrace_predicate;
 struct dtrace_action;
 struct dtrace_provider;
 struct dtrace_state;
+struct dtvirt_args;
 
 typedef struct dtrace_probe dtrace_probe_t;
 typedef struct dtrace_ecb dtrace_ecb_t;
@@ -941,6 +942,8 @@ typedef struct dtrace_mstate {
 	uint32_t dtms_access;			/* memory access rights */
 	dtrace_difo_t *dtms_difo;		/* current dif object */
 	file_t *dtms_getf;			/* cached rval of getf() */
+	void *dtms_biscuit;			/* current VM biscuit */
+	struct dtvirt_args *dtms_dtvargs;	/* VM args */
 } dtrace_mstate_t;
 
 #define	DTRACE_COND_OWNER	0x1
@@ -1136,6 +1139,7 @@ struct dtrace_state {
 	int dts_necbs;				/* total number of ECBs */
 	dtrace_ecb_t **dts_ecbs;		/* array of ECBs */
 	dtrace_epid_t dts_epid;			/* next EPID to allocate */
+	dtrace_machine_filter_t dts_filter;		/* probe filter */
 	size_t dts_needed;			/* greatest needed space */
 	struct dtrace_state *dts_anon;		/* anon. state, if grabbed */
 	dtrace_activity_t dts_activity;		/* current activity */

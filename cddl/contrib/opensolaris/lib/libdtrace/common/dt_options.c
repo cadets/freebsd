@@ -43,6 +43,7 @@
 #endif
 #include <errno.h>
 #include <fcntl.h>
+#include <assert.h>
 
 #include <dt_impl.h>
 #include <dt_string.h>
@@ -1109,6 +1110,25 @@ dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 	if (opt == NULL)
 		return (dt_set_errno(dtp, EINVAL));
 
+	if (strcmp(opt, "script_type") == 0) {
+		if (val == NULL) {
+			xyerror(D_PRAGMA_INVAL, "invalid script type");
+		}
+
+		if (strcmp(val, "guest") == 0) {
+			script_type = DT_SCRIPT_TYPE_GUEST;
+		} else if (strcmp(val, "host") == 0) {
+			script_type = DT_SCRIPT_TYPE_HOST;
+		} else {
+			xyerror(D_PRAGMA_INVAL, "invalid script type");
+		}
+
+		assert(script_type == DT_SCRIPT_TYPE_GUEST ||
+		    script_type == DT_SCRIPT_TYPE_HOST);
+
+		return (0);
+	}
+
 	for (op = _dtrace_ctoptions; op->o_name != NULL; op++) {
 		if (strcmp(op->o_name, opt) == 0)
 			return (op->o_func(dtp, val, op->o_option));
@@ -1133,4 +1153,11 @@ dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 	}
 
 	return (dt_set_errno(dtp, EDT_BADOPTNAME));
+}
+
+int
+dt_filter(dtrace_hdl_t *dtp, dtrace_machine_filter_t *out)
+{
+
+	return (dt_ioctl(dtp, DTRACEIOC_FILTER, out));
 }
