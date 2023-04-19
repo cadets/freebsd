@@ -31,6 +31,8 @@
 #ifndef	_VMM_DEV_H_
 #define	_VMM_DEV_H_
 
+#include <sys/types.h>
+
 struct vm_snapshot_meta;
 
 #ifdef _KERNEL
@@ -267,6 +269,7 @@ enum {
 	IOCNUM_GET_CAPABILITY = 3,
 	IOCNUM_SUSPEND = 4,
 	IOCNUM_REINIT = 5,
+	IOCNUM_GET_ID = 6,
 
 	/* memory apis */
 	IOCNUM_MAP_MEMORY = 10,			/* deprecated */
@@ -478,4 +481,6 @@ enum {
 	_IOWR('v', IOCNUM_SNAPSHOT_REQ, struct vm_snapshot_meta)
 #define VM_RESTORE_TIME \
 	_IOWR('v', IOCNUM_RESTORE_TIME, int)
+#define	VM_GET_IDENTIFIER \
+	_IOR('v', IOCNUM_GET_ID, uint16_t)
 #endif

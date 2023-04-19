@@ -407,7 +407,7 @@ udp_multi_input(struct mbuf *m, int proto, struct sockaddr_in *udp_in)
 			if (proto == IPPROTO_UDPLITE)
 				UDPLITE_PROBE(receive, NULL, inp, ip, inp, uh);
 			else
-				UDP_PROBE(receive, NULL, inp, ip, inp, uh);
+				UDP_PROBE(receive, NULL, inp, ip, inp, uh, NULL);
 			if (udp_append(inp, ip, n, sizeof(struct ip), udp_in)) {
 				break;
 			} else
@@ -626,7 +626,7 @@ udp_input(struct mbuf **mp, int *offp, int proto)
 		if (proto == IPPROTO_UDPLITE)
 			UDPLITE_PROBE(receive, NULL, NULL, ip, NULL, uh);
 		else
-			UDP_PROBE(receive, NULL, NULL, ip, NULL, uh);
+			UDP_PROBE(receive, NULL, NULL, ip, NULL, uh, NULL);
 		UDPSTAT_INC(udps_noport);
 		if (m->m_flags & (M_BCAST | M_MCAST)) {
 			UDPSTAT_INC(udps_noportbcast);
@@ -649,7 +649,7 @@ udp_input(struct mbuf **mp, int *offp, int proto)
 		if (proto == IPPROTO_UDPLITE)
 			UDPLITE_PROBE(receive, NULL, inp, ip, inp, uh);
 		else
-			UDP_PROBE(receive, NULL, inp, ip, inp, uh);
+			UDP_PROBE(receive, NULL, inp, ip, inp, uh, NULL);
 		INP_RUNLOCK(inp);
 		m_freem(m);
 		return (IPPROTO_DONE);
@@ -668,7 +668,7 @@ udp_input(struct mbuf **mp, int *offp, int proto)
 	if (proto == IPPROTO_UDPLITE)
 		UDPLITE_PROBE(receive, NULL, inp, ip, inp, uh);
 	else
-		UDP_PROBE(receive, NULL, inp, ip, inp, uh);
+		UDP_PROBE(receive, NULL, inp, ip, inp, uh, NULL);
 	if (udp_append(inp, ip, m, iphlen, udp_in) == 0)
 		INP_RUNLOCK(inp);
 	return (IPPROTO_DONE);
@@ -1428,7 +1428,8 @@ udp_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *addr,
 	if (pr == IPPROTO_UDPLITE)
 		UDPLITE_PROBE(send, NULL, inp, &ui->ui_i, inp, &ui->ui_u);
 	else
-		UDP_PROBE(send, NULL, inp, &ui->ui_i, inp, &ui->ui_u);
+		UDP_PROBE(send, NULL, inp, &ui->ui_i, inp, &ui->ui_u,
+		    &m->m_pkthdr.mbufid);
 	error = ip_output(m, inp->inp_options,
 	    INP_WLOCKED(inp) ? &inp->inp_route : NULL, ipflags,
 	    inp->inp_moptions, inp);

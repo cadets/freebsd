@@ -86,7 +86,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/vmmeter.h>
 #include <sys/vnode.h>
 
+#include <sys/ddtrace.h>
+
 #include <machine/cpu.h>
+#ifdef __amd64__
+#include <machine/cputypes.h>
+#include <machine/bhyve_hypercall.h>
+
+#include <x86/x86_var.h>
+#endif
 
 #include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
@@ -100,6 +108,12 @@ __FBSDID("$FreeBSD$");
 
 #include <ddb/ddb.h>
 #include <ddb/db_sym.h>
+
+SDT_PROVIDER_DEFINE(ddtrace);
+
+SDT_PROBE_DEFINE1(ddtrace, , pkttag, gen, "mbufid_t *");
+SDT_PROBE_DEFINE1(ddtrace, , pkttag, recv, "mbufid_t *");
+SDT_PROBE_DEFINE1(ddtrace, , tap, send, "mbufid_t *");
 
 void mi_startup(void);				/* Should be elsewhere */
 
@@ -162,6 +176,12 @@ SYSINIT(placeholder, SI_SUB_DUMMY, SI_ORDER_ANY, NULL, NULL);
 SET_DECLARE(sysinit_set, struct sysinit);
 struct sysinit **sysinit, **sysinit_end;
 struct sysinit **newsysinit, **newsysinit_end;
+
+/*
+ * This ensure that the hypercall symbol is defined so that it can be
+ * used to patch all the hypercall instructions in the kernel
+ */
+SET_DECLARE(hypercall, uint32_t);
 
 /*
  * Merge a new sysinit set into the current set, reallocating it if
@@ -234,6 +254,7 @@ mi_startup(void)
 	struct sysinit **sipp;	/* system initialization*/
 	struct sysinit **xipp;	/* interior loop of sort*/
 	struct sysinit *save;	/* bubble*/
+	uint32_t **hypercall_instr = NULL;
 
 	int last;
 #if defined(VERBOSE_SYSINIT)
@@ -244,6 +265,18 @@ mi_startup(void)
 
 	if (boothowto & RB_VERBOSE)
 		bootverbose++;
+
+#ifdef __amd64__
+	if (cpu_vendor_id == CPU_VENDOR_AMD && vm_guest == VM_GUEST_BHYVE) {
+		if (hypercall_instr == NULL) {
+			SET_FOREACH(hypercall_instr, hypercall) {
+				if (hypercall_instr == NULL)
+					break;
+				(**hypercall_instr) ^= (0x18 << 16);
+			}
+		}
+	}
+#endif
 
 	if (sysinit == NULL) {
 		sysinit = SET_BEGIN(sysinit_set);

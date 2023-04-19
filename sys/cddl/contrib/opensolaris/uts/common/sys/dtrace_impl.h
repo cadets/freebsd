@@ -27,6 +27,7 @@
  */
 
 /*
+ * Copyright 2021 Domagoj Stolfa. All rights reserved.
  * Copyright 2016 Joyent, Inc.
  * Copyright (c) 2012 by Delphix. All rights reserved.
  */
@@ -64,8 +65,14 @@ typedef	u_long			greg_t;
 /*
  * DTrace Implementation Constants and Typedefs
  */
-#define	DTRACE_MAXPROPLEN		128
-#define	DTRACE_DYNVAR_CHUNKSIZE		256
+#define	DTRACE_MAXPROPLEN			128
+#define	DTRACE_DYNVAR_CHUNKSIZE			256
+#define	DTRACE_IMMSTACKHASH_DEFAULT_SIZE	(1 << 20)
+
+/*
+ * We only allow a million vprobes per guest.
+ */
+#define	DTRACE_SENSIBLE_PROBELIMIT	(1 << 20)
 
 #ifdef __FreeBSD__
 #define	NCPU		MAXCPU
@@ -76,7 +83,9 @@ struct dtrace_ecb;
 struct dtrace_predicate;
 struct dtrace_action;
 struct dtrace_provider;
+struct dtrace_dist;
 struct dtrace_state;
+struct hypertrace_args;
 
 typedef struct dtrace_probe dtrace_probe_t;
 typedef struct dtrace_ecb dtrace_ecb_t;
@@ -85,6 +94,7 @@ typedef struct dtrace_action dtrace_action_t;
 typedef struct dtrace_provider dtrace_provider_t;
 typedef struct dtrace_meta dtrace_meta_t;
 typedef struct dtrace_state dtrace_state_t;
+typedef struct dtrace_dist dtrace_dist_t;
 typedef uint32_t dtrace_optid_t;
 typedef uint32_t dtrace_specid_t;
 typedef uint64_t dtrace_genid_t;
@@ -112,12 +122,22 @@ typedef uint64_t dtrace_genid_t;
  */
 struct dtrace_probe {
 	dtrace_id_t dtpr_id;			/* probe identifier */
+	dtrace_vmid_t dtpr_vmid;		/* VM identifier */
 	dtrace_ecb_t *dtpr_ecb;			/* ECB list; see below */
 	dtrace_ecb_t *dtpr_ecb_last;		/* last ECB in list */
 	void *dtpr_arg;				/* provider argument */
 	dtrace_cacheid_t dtpr_predcache;	/* predicate cache ID */
 	int dtpr_aframes;			/* artificial frames */
-	dtrace_provider_t *dtpr_provider;	/* pointer to provider */
+	dtrace_provider_id_t dtpr_provid;	/* provider ID */
+
+	/*
+	 * Defines to access different kinds of providers. Since virtual
+	 * providers don't actually exist on the host, we identify them by
+	 * their name.
+	 */
+#define	dtpr_provider	dtpr_provid
+#define	dtpr_vprovider	dtpr_provid
+
 	char *dtpr_mod;				/* probe's module name */
 	char *dtpr_func;			/* probe's function name */
 	char *dtpr_name;			/* probe's name */
@@ -142,6 +162,7 @@ typedef struct dtrace_probekey {
 	char *dtpk_name;			/* name to match */
 	dtrace_probekey_f *dtpk_nmatch;		/* name matching function */
 	dtrace_id_t dtpk_id;			/* identifier to match */
+	uint16_t dtpk_vmid;			/* VM identifier to match */
 } dtrace_probekey_t;
 
 typedef struct dtrace_hashbucket {
@@ -787,7 +808,13 @@ typedef struct dtrace_speculation {
 typedef struct dtrace_key {
 	uint64_t dttk_value;			/* data value or data pointer */
 	uint64_t dttk_size;			/* 0 if by-val, >0 if by-ref */
+	const void *dttk_vmhdl;			/* VM handle for the data */
 } dtrace_key_t;
+
+typedef struct dtrace_reg {
+	uint64_t dttr_value;			/* data value/pointer */
+	const void *dttr_vmhdl;			/* VM handle */
+} dtrace_reg_t;
 
 typedef struct dtrace_tuple {
 	uint32_t dtt_nkeys;			/* number of keys in tuple */
@@ -799,6 +826,7 @@ typedef struct dtrace_dynvar {
 	uint64_t dtdv_hashval;			/* hash value -- 0 if free */
 	struct dtrace_dynvar *dtdv_next;	/* next on list or hash chain */
 	void *dtdv_data;			/* pointer to data */
+	const void *dtdv_vmhdl;			/* VM handle */
 	dtrace_tuple_t dtdv_tuple;		/* tuple key */
 } dtrace_dynvar_t;
 
@@ -886,6 +914,7 @@ typedef struct dtrace_statvar {
 	uint64_t dtsv_data;			/* data or pointer to it */
 	size_t dtsv_size;			/* size of pointed-to data */
 	int dtsv_refcnt;			/* reference count */
+	const void *dtsv_vmhdl;			/* VM handle */
 	dtrace_difv_t dtsv_var;			/* variable metadata */
 } dtrace_statvar_t;
 
@@ -927,6 +956,7 @@ typedef struct dtrace_mstate {
 	size_t dtms_scratch_size;		/* scratch size */
 	uint32_t dtms_present;			/* variables that are present */
 	uint64_t dtms_arg[5];			/* cached arguments */
+	uint64_t dtms_stackarg[5];		/* cached stack arguments */
 	dtrace_epid_t dtms_epid;		/* current EPID */
 	uint64_t dtms_timestamp;		/* cached timestamp */
 	hrtime_t dtms_walltimestamp;		/* cached wall timestamp */
@@ -942,6 +972,8 @@ typedef struct dtrace_mstate {
 	uint32_t dtms_access;			/* memory access rights */
 	dtrace_difo_t *dtms_difo;		/* current dif object */
 	file_t *dtms_getf;			/* cached rval of getf() */
+	const void *dtms_vmhdl;			/* current VM handle */
+	struct hypertrace_args *dtms_htrargs;	/* HyperTrace arguments */
 } dtrace_mstate_t;
 
 #define	DTRACE_COND_OWNER	0x1
@@ -1137,6 +1169,7 @@ struct dtrace_state {
 	int dts_necbs;				/* total number of ECBs */
 	dtrace_ecb_t **dts_ecbs;		/* array of ECBs */
 	dtrace_epid_t dts_epid;			/* next EPID to allocate */
+	dtrace_machine_filter_t dts_filter;		/* probe filter */
 	size_t dts_needed;			/* greatest needed space */
 	struct dtrace_state *dts_anon;		/* anon. state, if grabbed */
 	dtrace_activity_t dts_activity;		/* current activity */
@@ -1147,10 +1180,17 @@ struct dtrace_state {
 	int dts_nspeculations;			/* number of speculations */
 	int dts_naggregations;			/* number of aggregations */
 	dtrace_aggregation_t **dts_aggregations; /* aggregation array */
+	int dts_immstacksize;			/* immediate stack size */
+	int dts_realimmstacksize;		/* immediate stack size (with metadata) */
+	int dts_immstackstrsize;		/* string size of an immstack */
+	int dts_immstackframes;			/* number of immstack frames */
+	char **dts_immstack;			/* immediate stack buffer */
+	char **dts_realimmstack;		/* immediate stack buffer (with metadata) */
 #ifdef illumos
 	vmem_t *dts_aggid_arena;		/* arena for aggregation IDs */
 #else
 	struct unrhdr *dts_aggid_arena;		/* arena for aggregation IDs */
+	struct mtx dts_aggid_arenamtx;		/* mutex for aggid arena */
 #endif
 	uint64_t dts_errors;			/* total number of errors */
 	uint32_t dts_speculations_busy;		/* number of spec. busy */
@@ -1176,6 +1216,15 @@ struct dtrace_state {
 	size_t dts_nretained;			/* number of retained enabs */
 	int dts_getf;				/* number of getf() calls */
 	uint64_t dts_rstate[NCPU][2];		/* per-CPU random state */
+	dof_hdr_t *dts_dof;			/* DOF used by distributed dtrace */
+	int dts_minion;				/* running in minion mode? */
+};
+
+struct dtrace_dist {
+	dtrace_dops_t dtd_ops;			/* konsumer operations */
+	char *dtd_name;				/* konsumer name */
+	void *dtd_arg;				/* konsumer argument */
+	struct dtrace_dist *dtd_next;		/* next konsumer */
 };
 
 struct dtrace_provider {
@@ -1218,6 +1267,9 @@ typedef struct dtrace_enabling {
 	dtrace_ecbdesc_t *dten_current;		/* current ECB description */
 	int dten_error;				/* current error value */
 	int dten_primed;			/* boolean: set if primed */
+	dtrace_probe_t **dten_probelist;	/* all enabled probes */
+	int dten_probelistsize;			/* size of above array */
+	dtrace_vmid_t dten_vmid;		/* assumed VMID */
 	struct dtrace_enabling *dten_prev;	/* previous enabling */
 	struct dtrace_enabling *dten_next;	/* next enabling */
 } dtrace_enabling_t;
@@ -1294,6 +1346,8 @@ extern void dtrace_copyout(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
 extern void dtrace_copyoutstr(uintptr_t, uintptr_t, size_t,
     volatile uint16_t *);
 extern void dtrace_getpcstack(pc_t *, int, int, uint32_t *);
+extern void dtrace_getpcimmstack(char *, int, int, int, uint32_t *);
+
 extern ulong_t dtrace_getreg(struct trapframe *, uint_t);
 extern int dtrace_getstackdepth(int);
 extern void dtrace_getupcstack(uint64_t *, int);
@@ -1321,6 +1375,11 @@ extern uint_t dtrace_getfprs(void);
 extern void dtrace_copy(uintptr_t, uintptr_t, size_t);
 extern void dtrace_copystr(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
 #endif
+
+void dtrace_buffer_switch(dtrace_buffer_t *);
+size_t dtrace_epid2size(dtrace_state_t *, dtrace_epid_t);
+dof_hdr_t * dtrace_dof_create(dtrace_state_t *);
+void dtrace_dof_destroy(dof_hdr_t *);
 
 /*
  * DTrace Assertions

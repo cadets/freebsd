@@ -85,6 +85,7 @@ struct vmctx {
 	size_t	highmem;
 	char	*baseaddr;
 	char	*name;
+	uint16_t id;
 };
 
 #define	CREATE(x)  sysctlbyname("hw.vmm.create", NULL, NULL, (x), strlen((x)))
@@ -133,6 +134,9 @@ vm_open(const char *name)
 	strcpy(vm->name, name);
 
 	if ((vm->fd = vm_device_open(vm->name)) < 0)
+		goto err;
+
+	if (ioctl(vm->fd, VM_GET_IDENTIFIER, &vm->id) < 0)
 		goto err;
 
 	return (vm);
@@ -1826,4 +1830,11 @@ vm_get_ioctls(size_t *len)
 
 	*len = nitems(vm_ioctl_cmds);
 	return (NULL);
+}
+
+uint16_t
+vm_get_vmid(struct vmctx *ctx)
+{
+
+	return (ctx->id);
 }

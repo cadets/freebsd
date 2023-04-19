@@ -1,28 +1,39 @@
 # $FreeBSD$
 
+.include <src.opts.mk>
+
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/lib/libgen/common
 
 PACKAGE=	dtrace
 LIB=		dtrace
 SRCS=		dt_aggregate.c \
+		dt_analysis.c \
 		dt_as.c \
+		dt_basic_block.c \
+		dt_benchmark.c \
 		dt_buf.c \
 		dt_cc.c \
+		dt_cfg.c \
 		dt_cg.c \
 		dt_consume.c \
 		dt_decl.c \
 		dt_dis.c \
 		dt_dof.c \
+		dt_elf.c \
 		dt_error.c \
 		dt_errtags.c \
 		dt_grammar.y \
 		dt_handle.c \
+		dt_hashmap.c \
 		dt_ident.c \
+		dt_ifg.c \
+		dt_ifgnode.c \
 		dt_isadep.c \
 		dt_inttab.c \
 		dt_lex.l \
 		dt_link.c \
+		dt_linker_subr.c \
 		dt_list.c \
 		dt_map.c \
 		dt_module.c \
@@ -38,12 +49,21 @@ SRCS=		dt_aggregate.c \
 		dt_printf.c \
 		dt_proc.c \
 		dt_program.c \
+		dt_prog_link.c \
 		dt_provider.c \
 		dt_regset.c \
+		dt_resolver.c \
 		dt_string.c \
 		dt_strtab.c \
 		dt_subr.c \
 		dt_sugar.c \
+		dt_typefile.c \
+		dt_typing.c \
+		dt_typing_helpers.c \
+		dt_typing_reg.c \
+		dt_typing_stack.c \
+		dt_typing_subr.c \
+		dt_typing_var.c \
 		dt_work.c \
 		dt_xlator.c \
 		gmatch.c
@@ -81,7 +101,6 @@ CFLAGS+= -I${SRCTOP}/sys
 CFLAGS+= -include ${SRCTOP}/sys/contrib/openzfs/include/os/freebsd/spl/sys/ccompile.h
 CFLAGS+= -DHAVE_ISSETUGID
 
-
 CFLAGS+=	-I${.OBJDIR} -I${.CURDIR} \
 		-I${SRCTOP}/sys/cddl/dev/dtrace/${MACHINE_ARCH} \
 		-I${SRCTOP}/sys/cddl/dev/kinst \
@@ -90,9 +109,11 @@ CFLAGS+=	-I${.OBJDIR} -I${.CURDIR} \
 		-I${OPENSOLARIS_USR_DISTDIR}/head \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libctf/common \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libdtrace/common \
-		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common
+		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
+		-I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
 
 #CFLAGS+=	-DYYDEBUG
+
 
 .if ${MACHINE_CPUARCH} == "aarch64"
 CFLAGS+=	-I${OPENSOLARIS_SYS_DISTDIR}/uts/aarch64
@@ -135,10 +156,25 @@ DSRCS+=		regs_riscv.d
 SRCS+=		instr_size.c
 DSRCS+=		regs_aarch64.d
 .endif
+.if ${MK_DTRACE_BENCHMARKS} != "no"
+CFLAGS+=	-D__DTRACE_RUN_BENCHMARKS__
+.endif
+
+.if ${MK_DTRACE_DEBUG_ASAN} != "no"
+CFLAGS+=	-fsanitize=address -fsanitize=undefined
+LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+.endif
+
+.if ${MK_DTRACE_OPTIMIZED} != "no" && ${MACHINE_ARCH} != "mips" && \
+    ${MACHINE_ARCH} != "mips64" && ${MACHINE_ARCH} != "powerpc64" && \
+    ${MACHINE_ARCH} != "riscv64"
+CFLAGS+=	-flto
+LDFLAGS+=	-flto
+.endif
 
 YFLAGS+=-d
 
-LIBADD=	ctf elf proc pthread rtld_db
+LIBADD=	ctf elf proc pthread rtld_db crypto
 
 CLEANFILES=	dt_errtags.c dt_names.c
 

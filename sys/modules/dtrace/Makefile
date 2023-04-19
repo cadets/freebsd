@@ -1,6 +1,7 @@
 # $FreeBSD$
 
 .include "Makefile.inc"
+.include <src.opts.mk>
 
 SUBDIR=		dtaudit		\
 		dtmalloc	\
@@ -8,6 +9,7 @@ SUBDIR=		dtaudit		\
 		dtrace		\
 		dtraceall	\
 		dtrace_test	\
+		hypertrace	\
 		fbt		\
 		profile		\
 		prototype	\
@@ -23,6 +25,9 @@ SUBDIR+=	kinst
 .endif
 .if ${MACHINE_CPUARCH} == "powerpc"
 SUBDIR+=	fasttrap
+.endif
+.if ${MACHINE_CPUARCH} == "powerpc"
+SUBDIR+=	fbt fasttrap
 .endif
 .if ${MACHINE_CPUARCH} == "amd64" || \
     ${MACHINE_CPUARCH} == "aarch64" || \

@@ -198,6 +198,7 @@ dt_epid_add(dtrace_hdl_t *dtp, dtrace_epid_t id)
 		return (dt_set_errno(dtp, EDT_NOMEM));
 	}
 
+	probe->dtpd_vmid = enabled->dtepd_vmid;
 	probe->dtpd_id = enabled->dtepd_probeid;
 
 	if (dt_ioctl(dtp, DTRACEIOC_PROBES, probe) == -1) {
@@ -415,7 +416,7 @@ dt_aggid_add(dtrace_hdl_t *dtp, dtrace_aggid_t id)
 		}
 
 		if ((epid = agg->dtagd_epid) >= dtp->dt_maxprobe ||
-		    dtp->dt_pdesc[epid] == NULL) {
+		    dtp->dt_pdesc[epid] == NULL || dtp->dt_pdesc == NULL) {
 			if ((rval = dt_epid_add(dtp, epid)) != 0) {
 				free(agg);
 				return (rval);
@@ -434,7 +435,9 @@ dt_aggid_lookup(dtrace_hdl_t *dtp, dtrace_aggid_t aggid,
 {
 	int rval;
 
-	if (aggid >= dtp->dt_maxagg || dtp->dt_aggdesc[aggid] == NULL) {
+	if (dtp->dt_aggdesc == NULL ||
+	    aggid >= dtp->dt_maxagg ||
+	    dtp->dt_aggdesc[aggid] == NULL) {
 		if ((rval = dt_aggid_add(dtp, aggid)) != 0)
 			return (rval);
 	}

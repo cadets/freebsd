@@ -134,6 +134,7 @@
 #define	NOFILE		OPEN_MAX	/* max open files per process */
 #define	NOGROUP		65535		/* marker for empty group set member */
 #define MAXHOSTNAMELEN	256		/* max hostname size */
+#define	OSRELEASELEN	32		/* max OS release name */
 #define SPECNAMELEN	255		/* max length of devicename */
 
 /* More types and definitions used throughout the kernel. */
@@ -193,7 +194,7 @@
  * MCLBYTES must be no larger than PAGE_SIZE.
  */
 #ifndef	MSIZE
-#define	MSIZE		256		/* size of an mbuf */
+#define	MSIZE		512		/* size of an mbuf */
 #endif
 
 #ifndef	MCLSHIFT

@@ -76,6 +76,7 @@
 #include <sys/malloc.h>
 #include <sys/random.h>
 #include <sys/ctype.h>
+#include <sys/ddtrace.h>
 
 #include <net/ethernet.h>
 #include <net/if.h>
@@ -121,17 +122,18 @@ struct tuntap_softc {
 	struct cdev			*tun_alias;
 	struct cdev			*tun_dev;
 	u_short				 tun_flags;	/* misc flags */
-#define	TUN_OPEN	0x0001
-#define	TUN_INITED	0x0002
-#define	TUN_UNUSED1	0x0008
-#define	TUN_UNUSED2	0x0010
-#define	TUN_LMODE	0x0020
-#define	TUN_RWAIT	0x0040
-#define	TUN_ASYNC	0x0080
-#define	TUN_IFHEAD	0x0100
-#define	TUN_DYING	0x0200
-#define	TUN_L2		0x0400
-#define	TUN_VMNET	0x0800
+#define	TUN_OPEN		0x0001
+#define	TUN_INITED		0x0002
+#define	TUN_UNUSED1		0x0008
+#define	TUN_DSTADDR		0x0010
+#define	TUN_LMODE		0x0020
+#define	TUN_RWAIT		0x0040
+#define	TUN_ASYNC		0x0080
+#define	TUN_IFHEAD		0x0100
+#define	TUN_DYING		0x0200
+#define	TUN_L2			0x0400
+#define	TUN_VMNET		0x0800
+#define	TUN_PROPAGATE_TAG	0x1000
 
 #define	TUN_DRIVER_IDENT_MASK	(TUN_L2 | TUN_VMNET)
 #define	TUN_READY		(TUN_OPEN | TUN_INITED)
@@ -1623,6 +1625,14 @@ tunioctl(struct cdev *dev, u_long cmd, caddr_t data, int flag,
 		tunp->baudrate = TUN2IFP(tp)->if_baudrate;
 		TUN_UNLOCK(tp);
 		break;
+	case TAPSTAGGING:
+		TUN_LOCK(tp);
+		if (*(int *)data)
+			tp->tun_flags |= TUN_PROPAGATE_TAG;
+		else
+			tp->tun_flags &= ~TUN_PROPAGATE_TAG;
+		TUN_UNLOCK(tp);
+		break;
 	case TUNSDEBUG:
 		tundebug = *(int *)data;
 		break;
@@ -1734,9 +1744,39 @@ tunread(struct cdev *dev, struct uio *uio, int flag)
 	}
 
 	while (m && uio->uio_resid > 0 && error == 0) {
+		if (tp->tun_flags & TUN_PROPAGATE_TAG) {
+			mbufid_t mid;
+			memset(&mid, 0, sizeof(mid));
+			len = min(uio->uio_resid,
+			    m->m_len + sizeof(mbufid_t));
+			if (len <= sizeof(mbufid_t))
+				break;
+
+			if (m->m_flags & M_PKTHDR) {
+				/* If it's a packet header, we know that a number
+				   of mbuf chains might follow. We are
+				   essentially just going to propagate the
+				   information that there is a msgid is present
+				   and the msgid itself. Should this not be true,
+				   we just say that it is not present and have
+				   some zeroes at the start. */
+				memcpy(&mid, &m->m_pkthdr.mbufid,
+				    sizeof(mbufid_t));
+			}
+			error = uiomove((void *)&mid, sizeof(mbufid_t), uio);
+		}
+
+		/* In case of mbufid propagation, this should just
+		   shrink by sizeof(mbufid_t) */
 		len = min(uio->uio_resid, m->m_len);
-		if (len != 0)
-			error = uiomove(mtod(m, void *), len, uio);
+		/* Need this check because we don't always
+		   propagate msgids, it depends on the config */
+		if (len == 0)
+			break;
+
+		/* uiomove adjusts the offset with the first call,
+		   so this will always be correct under those assms */
+		error = uiomove(mtod(m, void *), len, uio);
 		m = m_free(m);
 	}
 
@@ -1855,6 +1895,7 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 	uint32_t	mru;
 	int		align, vhdrlen, error;
 	bool		l2tun;
+	mbufid_t	mid;
 
 	tp = dev->si_drv1;
 	ifp = TUN2IFP(tp);
@@ -1865,6 +1906,9 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 
 	if (uio->uio_resid == 0)
 		return (0);
+
+	if ((tp->tun_flags & TUN_PROPAGATE_TAG) == TUN_PROPAGATE_TAG)
+		uiomove(&mid, sizeof(mid), uio);
 
 	l2tun = (tp->tun_flags & TUN_L2) != 0;
 	mru = l2tun ? TAPMRU : TUNMRU;
@@ -1896,7 +1940,15 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 		return (ENOBUFS);
 	}
 
+	KASSERT(m->m_flags & M_PKTHDR,
+	    ("%s: mbuf is not a packet header", __func__));
 	m->m_pkthdr.rcvif = ifp;
+
+	if ((tp->tun_flags & TUN_PROPAGATE_TAG) == TUN_PROPAGATE_TAG) {
+		memcpy(&m->m_pkthdr.mbufid, &mid, sizeof(mbufid_t));
+		SDT_PROBE1(ddtrace, , tap, send, &mid);
+	}
+
 #ifdef MAC
 	mac_ifnet_create_mbuf(ifp, m);
 #endif

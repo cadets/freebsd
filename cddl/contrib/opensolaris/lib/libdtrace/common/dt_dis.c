@@ -28,6 +28,20 @@
 /*
  * Copyright (c) 2013 by Delphix. All rights reserved.
  * Copyright (c) 2013 Joyent, Inc. All rights reserved.
+ * Copyright (c) 2020 Domagoj Stolfa. All rights reserved.
+ *
+ * This software was developed by SRI International and the University of
+ * Cambridge Computer Laboratory (Department of Computer Science and
+ * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+ * DARPA SSITH research programme.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from Arm Limited.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from the Kenneth Hayter Scholarship Fund.
  */
 
 #include <strings.h>
@@ -38,55 +52,77 @@
 
 /*ARGSUSED*/
 static void
-dt_dis_log(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_log(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
-	(void) fprintf(fp, "%-4s %%r%u, %%r%u, %%r%u", name,
-	    DIF_INSTR_R1(in), DIF_INSTR_R2(in), DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s %%r%u, %%r%u, %%r%u => %%r%u : %s", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_R2(in), DIF_INSTR_RD(in),
+		    DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s %%r%u, %%r%u, %%r%u", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_R2(in), DIF_INSTR_RD(in));
 }
 
 /*ARGSUSED*/
 static void
 dt_dis_branch(const dtrace_difo_t *dp, const char *name,
-	dif_instr_t in, FILE *fp)
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	(void) fprintf(fp, "%-4s %u", name, DIF_INSTR_LABEL(in));
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_load(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_load(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
-	(void) fprintf(fp, "%-4s [%%r%u], %%r%u", name,
-	    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s [%%r%u], %%r%u => %%r%u : %s", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s [%%r%u], %%r%u", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
 }
 
 /*ARGSUSED*/
 static void
 dt_dis_store(const dtrace_difo_t *dp, const char *name,
-	dif_instr_t in, FILE *fp)
+    dif_instr_t in, const char *type, FILE *fp)
 {
-	(void) fprintf(fp, "%-4s %%r%u, [%%r%u]", name,
-	    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s %%r%u, [%%r%u] => %%r%u : %s", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s %%r%u, [%%r%u]", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_str(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_str(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	(void) fprintf(fp, "%s", name);
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_r1rd(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_r1rd(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
-	(void) fprintf(fp, "%-4s %%r%u, %%r%u", name,
-	    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s %%r%u, %%r%u => %%r%u : %s", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s %%r%u, %%r%u", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_cmp(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_cmp(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	(void) fprintf(fp, "%-4s %%r%u, %%r%u", name,
 	    DIF_INSTR_R1(in), DIF_INSTR_R2(in));
@@ -94,7 +130,8 @@ dt_dis_cmp(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
 
 /*ARGSUSED*/
 static void
-dt_dis_tst(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_tst(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	(void) fprintf(fp, "%-4s %%r%u", name, DIF_INSTR_R1(in));
 }
@@ -128,91 +165,144 @@ dt_dis_scope(const char *name)
 }
 
 static void
-dt_dis_lda(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_lda(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t var = DIF_INSTR_R1(in);
 	const char *vname;
 
-	(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u, %%r%u", name,
-	    var, DIF_INSTR_R2(in), DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u, %%r%u => %%r%u : %s",
+		    name, var, DIF_INSTR_R2(in), DIF_INSTR_RD(in),
+		    DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u, %%r%u",
+		    name, var, DIF_INSTR_R2(in), DIF_INSTR_RD(in));
 
 	if ((vname = dt_dis_varname(dp, var, dt_dis_scope(name))) != NULL)
-		(void) fprintf(fp, "\t\t! DT_VAR(%u) = \"%s\"", var, vname);
+		(void) fprintf(fp, "\t\t\t! DT_VAR(%u) = \"%s\"", var, vname);
 }
 
 static void
-dt_dis_ldv(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_ldv(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t var = DIF_INSTR_VAR(in);
 	const char *vname;
 
-	(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u",
-	    name, var, DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u => %%r%u : %s",
+		    name, var, DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u",
+		    name, var, DIF_INSTR_RD(in));
 
 	if ((vname = dt_dis_varname(dp, var, dt_dis_scope(name))) != NULL)
-		(void) fprintf(fp, "\t\t! DT_VAR(%u) = \"%s\"", var, vname);
+		(void) fprintf(fp, "\t\t\t! DT_VAR(%u) = \"%s\"", var, vname);
 }
 
 static void
-dt_dis_stv(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_stv(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t var = DIF_INSTR_VAR(in);
 	const char *vname;
 
-	(void) fprintf(fp, "%-4s %%r%u, DT_VAR(%u)",
-	    name, DIF_INSTR_RS(in), var);
+	if (type)
+		(void) fprintf(fp, "%-4s %%r%u, DT_VAR(%u) => %u : %s",
+		    name, DIF_INSTR_RS(in), var, var, type);
+	else
+		(void) fprintf(fp, "%-4s %%r%u, DT_VAR(%u)",
+		    name, DIF_INSTR_RS(in), var);
 
 	if ((vname = dt_dis_varname(dp, var, dt_dis_scope(name))) != NULL)
-		(void) fprintf(fp, "\t\t! DT_VAR(%u) = \"%s\"", var, vname);
+		(void) fprintf(fp, "\t\t\t! DT_VAR(%u) = \"%s\"", var, vname);
 }
 
 static void
-dt_dis_setx(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_setx(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t intptr = DIF_INSTR_INTEGER(in);
 
-	(void) fprintf(fp, "%-4s DT_INTEGER[%u], %%r%u", name,
-	    intptr, DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s DT_INTEGER[%u], %%r%u => %%r%u : %s", name,
+		    intptr, DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s DT_INTEGER[%u], %%r%u", name,
+		    intptr, DIF_INSTR_RD(in));
 
 	if (intptr < dp->dtdo_intlen) {
-		(void) fprintf(fp, "\t\t! 0x%llx",
+		(void) fprintf(fp, "\t\t\t! 0x%llx",
 		    (u_longlong_t)dp->dtdo_inttab[intptr]);
 	}
 }
 
 static void
-dt_dis_sets(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_sym(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
+{
+	uint_t symptr = DIF_INSTR_SYMBOL(in);
+
+	if (type)
+		(void) fprintf(fp, "%-4s DT_SYMBOL[%u], %%r%u => %%r%u : %s", name,
+		    symptr, DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s DT_SYMBOL[%u], %%r%u", name,
+		    symptr, DIF_INSTR_RD(in));
+
+	if (symptr < dp->dtdo_symlen) {
+		(void) fprintf(fp, "\t\t! \"%s\"",
+		    dp->dtdo_symtab + symptr);
+	}
+}
+
+static void
+dt_dis_sets(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t strptr = DIF_INSTR_STRING(in);
 
-	(void) fprintf(fp, "%-4s DT_STRING[%u], %%r%u", name,
-	    strptr, DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s DT_STRING[%u], %%r%u => %%r%u : %s", name,
+		    strptr, DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s DT_STRING[%u], %%r%u", name,
+		    strptr, DIF_INSTR_RD(in));
 
 	if (strptr < dp->dtdo_strlen)
-		(void) fprintf(fp, "\t\t! \"%s\"", dp->dtdo_strtab + strptr);
+		(void) fprintf(fp, "\t\t\t! \"%s\"", dp->dtdo_strtab + strptr);
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_ret(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_ret(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	(void) fprintf(fp, "%-4s %%r%u", name, DIF_INSTR_RD(in));
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_call(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_call(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t subr = DIF_INSTR_SUBR(in);
 
-	(void) fprintf(fp, "%-4s DIF_SUBR(%u), %%r%u\t\t! %s",
-	    name, subr, DIF_INSTR_RD(in), dtrace_subrstr(NULL, subr));
+	if (type)
+		(void) fprintf(fp,
+		    "%-4s DIF_SUBR(%u), %%r%u\t\t! %s => %%r%u : %s",
+		    name, subr, DIF_INSTR_RD(in), dtrace_subrstr(NULL, subr),
+		    DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s DIF_SUBR(%u), %%r%u\t\t! %s",
+		    name, subr, DIF_INSTR_RD(in), dtrace_subrstr(NULL, subr));
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_pushts(const dtrace_difo_t *dp,
-    const char *name, dif_instr_t in, FILE *fp)
+dt_dis_pushts(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *_type, FILE *fp)
 {
 	static const char *const tnames[] = { "D type", "string" };
 	uint_t type = DIF_INSTR_TYPE(in);
@@ -221,11 +311,11 @@ dt_dis_pushts(const dtrace_difo_t *dp,
 	if (DIF_INSTR_OP(in) == DIF_OP_PUSHTV) {
 		(void) fprintf(fp, "%-4s DT_TYPE(%u), %%r%u",
 		    name, type, DIF_INSTR_RS(in));
-		pad = "\t\t";
+		pad = "\t\t\t";
 	} else {
 		(void) fprintf(fp, "%-4s DT_TYPE(%u), %%r%u, %%r%u",
 		    name, type, DIF_INSTR_R2(in), DIF_INSTR_RS(in));
-		pad = "\t";
+		pad = "\t\t";
 	}
 
 	if (type < sizeof (tnames) / sizeof (tnames[0])) {
@@ -235,8 +325,8 @@ dt_dis_pushts(const dtrace_difo_t *dp,
 }
 
 static void
-dt_dis_xlate(const dtrace_difo_t *dp,
-    const char *name, dif_instr_t in, FILE *fp)
+dt_dis_xlate(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t xlr = DIF_INSTR_XLREF(in);
 
@@ -244,7 +334,7 @@ dt_dis_xlate(const dtrace_difo_t *dp,
 	    name, xlr, DIF_INSTR_RD(in));
 
 	if (xlr < dp->dtdo_xlmlen) {
-		(void) fprintf(fp, "\t\t! DT_XLREF[%u] = %u.%s", xlr,
+		(void) fprintf(fp, "\t\t\t! DT_XLREF[%u] = %u.%s", xlr,
 		    (uint_t)dp->dtdo_xlmtab[xlr]->dn_membexpr->dn_xlator->dx_id,
 		    dp->dtdo_xlmtab[xlr]->dn_membname);
 	}
@@ -261,6 +351,12 @@ dt_dis_typestr(const dtrace_diftype_t *t, char *buf, size_t len)
 		break;
 	case DIF_TYPE_STRING:
 		(void) strcpy(kind, "string");
+		break;
+	case DIF_TYPE_NONE:
+		(void) strcpy(kind, "none");
+		break;
+	case DIF_TYPE_BOTTOM:
+		(void) strcpy(kind, "bottom");
 		break;
 	default:
 		(void) snprintf(kind, sizeof (kind), "0x%x", t->dtdt_kind);
@@ -346,88 +442,93 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 	static const struct opent {
 		const char *op_name;
 		void (*op_func)(const dtrace_difo_t *, const char *,
-		    dif_instr_t, FILE *);
+		    dif_instr_t, const char *, FILE *);
 	} optab[] = {
 		{ "(illegal opcode)", dt_dis_str },
-		{ "or", dt_dis_log },		/* DIF_OP_OR */
-		{ "xor", dt_dis_log },		/* DIF_OP_XOR */
-		{ "and", dt_dis_log },		/* DIF_OP_AND */
-		{ "sll", dt_dis_log },		/* DIF_OP_SLL */
-		{ "srl", dt_dis_log },		/* DIF_OP_SRL */
-		{ "sub", dt_dis_log },		/* DIF_OP_SUB */
-		{ "add", dt_dis_log },		/* DIF_OP_ADD */
-		{ "mul", dt_dis_log },		/* DIF_OP_MUL */
-		{ "sdiv", dt_dis_log },		/* DIF_OP_SDIV */
-		{ "udiv", dt_dis_log },		/* DIF_OP_UDIV */
-		{ "srem", dt_dis_log },		/* DIF_OP_SREM */
-		{ "urem", dt_dis_log },		/* DIF_OP_UREM */
-		{ "not", dt_dis_r1rd },		/* DIF_OP_NOT */
-		{ "mov", dt_dis_r1rd },		/* DIF_OP_MOV */
-		{ "cmp", dt_dis_cmp },		/* DIF_OP_CMP */
-		{ "tst", dt_dis_tst },		/* DIF_OP_TST */
-		{ "ba", dt_dis_branch },	/* DIF_OP_BA */
-		{ "be", dt_dis_branch },	/* DIF_OP_BE */
-		{ "bne", dt_dis_branch },	/* DIF_OP_BNE */
-		{ "bg", dt_dis_branch },	/* DIF_OP_BG */
-		{ "bgu", dt_dis_branch },	/* DIF_OP_BGU */
-		{ "bge", dt_dis_branch },	/* DIF_OP_BGE */
-		{ "bgeu", dt_dis_branch },	/* DIF_OP_BGEU */
-		{ "bl", dt_dis_branch },	/* DIF_OP_BL */
-		{ "blu", dt_dis_branch },	/* DIF_OP_BLU */
-		{ "ble", dt_dis_branch },	/* DIF_OP_BLE */
-		{ "bleu", dt_dis_branch },	/* DIF_OP_BLEU */
-		{ "ldsb", dt_dis_load },	/* DIF_OP_LDSB */
-		{ "ldsh", dt_dis_load },	/* DIF_OP_LDSH */
-		{ "ldsw", dt_dis_load },	/* DIF_OP_LDSW */
-		{ "ldub", dt_dis_load },	/* DIF_OP_LDUB */
-		{ "lduh", dt_dis_load },	/* DIF_OP_LDUH */
-		{ "lduw", dt_dis_load },	/* DIF_OP_LDUW */
-		{ "ldx", dt_dis_load },		/* DIF_OP_LDX */
-		{ "ret", dt_dis_ret },		/* DIF_OP_RET */
-		{ "nop", dt_dis_str },		/* DIF_OP_NOP */
-		{ "setx", dt_dis_setx },	/* DIF_OP_SETX */
-		{ "sets", dt_dis_sets },	/* DIF_OP_SETS */
-		{ "scmp", dt_dis_cmp },		/* DIF_OP_SCMP */
-		{ "ldga", dt_dis_lda },		/* DIF_OP_LDGA */
-		{ "ldgs", dt_dis_ldv },		/* DIF_OP_LDGS */
-		{ "stgs", dt_dis_stv },		/* DIF_OP_STGS */
-		{ "ldta", dt_dis_lda },		/* DIF_OP_LDTA */
-		{ "ldts", dt_dis_ldv },		/* DIF_OP_LDTS */
-		{ "stts", dt_dis_stv },		/* DIF_OP_STTS */
-		{ "sra", dt_dis_log },		/* DIF_OP_SRA */
-		{ "call", dt_dis_call },	/* DIF_OP_CALL */
-		{ "pushtr", dt_dis_pushts },	/* DIF_OP_PUSHTR */
-		{ "pushtv", dt_dis_pushts },	/* DIF_OP_PUSHTV */
-		{ "popts", dt_dis_str },	/* DIF_OP_POPTS */
-		{ "flushts", dt_dis_str },	/* DIF_OP_FLUSHTS */
-		{ "ldgaa", dt_dis_ldv },	/* DIF_OP_LDGAA */
-		{ "ldtaa", dt_dis_ldv },	/* DIF_OP_LDTAA */
-		{ "stgaa", dt_dis_stv },	/* DIF_OP_STGAA */
-		{ "sttaa", dt_dis_stv },	/* DIF_OP_STTAA */
-		{ "ldls", dt_dis_ldv },		/* DIF_OP_LDLS */
-		{ "stls", dt_dis_stv },		/* DIF_OP_STLS */
-		{ "allocs", dt_dis_r1rd },	/* DIF_OP_ALLOCS */
-		{ "copys", dt_dis_log },	/* DIF_OP_COPYS */
-		{ "stb", dt_dis_store },	/* DIF_OP_STB */
-		{ "sth", dt_dis_store },	/* DIF_OP_STH */
-		{ "stw", dt_dis_store },	/* DIF_OP_STW */
-		{ "stx", dt_dis_store },	/* DIF_OP_STX */
-		{ "uldsb", dt_dis_load },	/* DIF_OP_ULDSB */
-		{ "uldsh", dt_dis_load },	/* DIF_OP_ULDSH */
-		{ "uldsw", dt_dis_load },	/* DIF_OP_ULDSW */
-		{ "uldub", dt_dis_load },	/* DIF_OP_ULDUB */
-		{ "ulduh", dt_dis_load },	/* DIF_OP_ULDUH */
-		{ "ulduw", dt_dis_load },	/* DIF_OP_ULDUW */
-		{ "uldx", dt_dis_load },	/* DIF_OP_ULDX */
-		{ "rldsb", dt_dis_load },	/* DIF_OP_RLDSB */
-		{ "rldsh", dt_dis_load },	/* DIF_OP_RLDSH */
-		{ "rldsw", dt_dis_load },	/* DIF_OP_RLDSW */
-		{ "rldub", dt_dis_load },	/* DIF_OP_RLDUB */
-		{ "rlduh", dt_dis_load },	/* DIF_OP_RLDUH */
-		{ "rlduw", dt_dis_load },	/* DIF_OP_RLDUW */
-		{ "rldx", dt_dis_load },	/* DIF_OP_RLDX */
-		{ "xlate", dt_dis_xlate },	/* DIF_OP_XLATE */
-		{ "xlarg", dt_dis_xlate },	/* DIF_OP_XLARG */
+		{ "or", dt_dis_log },			/* DIF_OP_OR */
+		{ "xor", dt_dis_log },			/* DIF_OP_XOR */
+		{ "and", dt_dis_log },			/* DIF_OP_AND */
+		{ "sll", dt_dis_log },			/* DIF_OP_SLL */
+		{ "srl", dt_dis_log },			/* DIF_OP_SRL */
+		{ "sub", dt_dis_log },			/* DIF_OP_SUB */
+		{ "add", dt_dis_log },			/* DIF_OP_ADD */
+		{ "mul", dt_dis_log },			/* DIF_OP_MUL */
+		{ "sdiv", dt_dis_log },			/* DIF_OP_SDIV */
+		{ "udiv", dt_dis_log },			/* DIF_OP_UDIV */
+		{ "srem", dt_dis_log },			/* DIF_OP_SREM */
+		{ "urem", dt_dis_log },			/* DIF_OP_UREM */
+		{ "not", dt_dis_r1rd },			/* DIF_OP_NOT */
+		{ "mov", dt_dis_r1rd },			/* DIF_OP_MOV */
+		{ "cmp", dt_dis_cmp },			/* DIF_OP_CMP */
+		{ "tst", dt_dis_tst },			/* DIF_OP_TST */
+		{ "ba", dt_dis_branch },		/* DIF_OP_BA */
+		{ "be", dt_dis_branch },		/* DIF_OP_BE */
+		{ "bne", dt_dis_branch },		/* DIF_OP_BNE */
+		{ "bg", dt_dis_branch },		/* DIF_OP_BG */
+		{ "bgu", dt_dis_branch },		/* DIF_OP_BGU */
+		{ "bge", dt_dis_branch },		/* DIF_OP_BGE */
+		{ "bgeu", dt_dis_branch },		/* DIF_OP_BGEU */
+		{ "bl", dt_dis_branch },		/* DIF_OP_BL */
+		{ "blu", dt_dis_branch },		/* DIF_OP_BLU */
+		{ "ble", dt_dis_branch },		/* DIF_OP_BLE */
+		{ "bleu", dt_dis_branch },		/* DIF_OP_BLEU */
+		{ "ldsb", dt_dis_load },		/* DIF_OP_LDSB */
+		{ "ldsh", dt_dis_load },		/* DIF_OP_LDSH */
+		{ "ldsw", dt_dis_load },		/* DIF_OP_LDSW */
+		{ "ldub", dt_dis_load },		/* DIF_OP_LDUB */
+		{ "lduh", dt_dis_load },		/* DIF_OP_LDUH */
+		{ "lduw", dt_dis_load },		/* DIF_OP_LDUW */
+		{ "ldx", dt_dis_load },			/* DIF_OP_LDX */
+		{ "ret", dt_dis_ret },			/* DIF_OP_RET */
+		{ "nop", dt_dis_str },			/* DIF_OP_NOP */
+		{ "setx", dt_dis_setx },		/* DIF_OP_SETX */
+		{ "sets", dt_dis_sets },		/* DIF_OP_SETS */
+		{ "scmp", dt_dis_cmp },			/* DIF_OP_SCMP */
+		{ "ldga", dt_dis_lda },			/* DIF_OP_LDGA */
+		{ "ldgs", dt_dis_ldv },			/* DIF_OP_LDGS */
+		{ "stgs", dt_dis_stv },			/* DIF_OP_STGS */
+		{ "ldta", dt_dis_lda },			/* DIF_OP_LDTA */
+		{ "ldts", dt_dis_ldv },			/* DIF_OP_LDTS */
+		{ "stts", dt_dis_stv },			/* DIF_OP_STTS */
+		{ "sra", dt_dis_log },			/* DIF_OP_SRA */
+		{ "call", dt_dis_call },		/* DIF_OP_CALL */
+		{ "pushtr", dt_dis_pushts },		/* DIF_OP_PUSHTR */
+		{ "pushtv", dt_dis_pushts },		/* DIF_OP_PUSHTV */
+		{ "popts", dt_dis_str },		/* DIF_OP_POPTS */
+		{ "flushts", dt_dis_str },		/* DIF_OP_FLUSHTS */
+		{ "ldgaa", dt_dis_ldv },		/* DIF_OP_LDGAA */
+		{ "ldtaa", dt_dis_ldv },		/* DIF_OP_LDTAA */
+		{ "stgaa", dt_dis_stv },		/* DIF_OP_STGAA */
+		{ "sttaa", dt_dis_stv },		/* DIF_OP_STTAA */
+		{ "ldls", dt_dis_ldv },			/* DIF_OP_LDLS */
+		{ "stls", dt_dis_stv },			/* DIF_OP_STLS */
+		{ "allocs", dt_dis_r1rd },		/* DIF_OP_ALLOCS */
+		{ "copys", dt_dis_log },		/* DIF_OP_COPYS */
+		{ "stb", dt_dis_store },		/* DIF_OP_STB */
+		{ "sth", dt_dis_store },		/* DIF_OP_STH */
+		{ "stw", dt_dis_store },		/* DIF_OP_STW */
+		{ "stx", dt_dis_store },		/* DIF_OP_STX */
+		{ "uldsb", dt_dis_load },		/* DIF_OP_ULDSB */
+		{ "uldsh", dt_dis_load },		/* DIF_OP_ULDSH */
+		{ "uldsw", dt_dis_load },		/* DIF_OP_ULDSW */
+		{ "uldub", dt_dis_load },		/* DIF_OP_ULDUB */
+		{ "ulduh", dt_dis_load },		/* DIF_OP_ULDUH */
+		{ "ulduw", dt_dis_load },		/* DIF_OP_ULDUW */
+		{ "uldx", dt_dis_load },		/* DIF_OP_ULDX */
+		{ "rldsb", dt_dis_load },		/* DIF_OP_RLDSB */
+		{ "rldsh", dt_dis_load },		/* DIF_OP_RLDSH */
+		{ "rldsw", dt_dis_load },		/* DIF_OP_RLDSW */
+		{ "rldub", dt_dis_load },		/* DIF_OP_RLDUB */
+		{ "rlduh", dt_dis_load },		/* DIF_OP_RLDUH */
+		{ "rlduw", dt_dis_load },		/* DIF_OP_RLDUW */
+		{ "rldx", dt_dis_load },		/* DIF_OP_RLDX */
+		{ "xlate", dt_dis_xlate },		/* DIF_OP_XLATE */
+		{ "xlarg", dt_dis_xlate },		/* DIF_OP_XLARG */
+		{ "hypercall", dt_dis_str },		/* DIF_OP_HYPERRCALL */
+		{ "usetx", dt_dis_sym },		/* DIF_OP_USETX */
+		{ "uload", dt_dis_load },		/* DIF_OP_ULOAD */
+		{ "uuload", dt_dis_load },		/* DIF_OP_UULOAD */
+		{ "typecast", dt_dis_sym },		/* DIF_OP_TYPECAST */
 	};
 
 	const struct opent *op;
@@ -443,13 +544,17 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 	for (i = 0; i < dp->dtdo_len; i++) {
 		dif_instr_t instr = dp->dtdo_buf[i];
 		dif_instr_t opcode = DIF_INSTR_OP(instr);
+		const char *type = dp->dtdo_types == NULL ?
+		    NULL : dp->dtdo_types[i];
 
-		if (opcode >= sizeof (optab) / sizeof (optab[0]))
+		if (opcode >= sizeof (optab) / sizeof (optab[0])) {
+			printf("opcode %d > size %zu\n", opcode, sizeof(optab)/sizeof(optab[0]));
 			opcode = 0; /* force invalid opcode message */
+		}
 
 		op = &optab[opcode];
 		(void) fprintf(fp, "%02lu: %08x    ", i, instr);
-		op->op_func(dp, op->op_name, instr, fp);
+		op->op_func(dp, op->op_name, instr, type, fp);
 		(void) fprintf(fp, "\n");
 	}
 

@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2011 NetApp, Inc.
+ * Copyright (c) 2022 Domagoj Stolfa <ds815@cam.ac.uk>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -86,6 +87,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bhyverun.h"
 #include "acpi.h"
+#include "dthyve.h"
 #include "atkbdc.h"
 #include "bootrom.h"
 #include "config.h"
@@ -94,6 +96,7 @@ __FBSDID("$FreeBSD$");
 #include "e820.h"
 #include "fwctl.h"
 #include "gdb.h"
+#include "globals.h"
 #include "ioapic.h"
 #include "kernemu_dev.h"
 #include "mem.h"
@@ -116,6 +119,8 @@ __FBSDID("$FreeBSD$");
 
 #define MB		(1024UL * 1024)
 #define GB		(1024UL * MB)
+
+char *g_vmname = NULL;
 
 static const char * const vmx_exit_reason_desc[] = {
 	[EXIT_REASON_EXCEPTION] = "Exception or non-maskable interrupt (NMI)",
@@ -1091,6 +1096,11 @@ do_open(const char *vmname)
 	if (lpc_bootrom())
 		romboot = true;
 
+	/*
+	 * Populate our vmname for use in DTrace probes.
+	 */
+	g_vmname = (char *)(uintptr_t)vmname;
+
 	error = vm_create(vmname);
 	if (error) {
 		if (errno == EEXIST) {
@@ -1251,6 +1261,7 @@ main(int argc, char *argv[])
 	uint64_t rip;
 	size_t memsize;
 	const char *optstr, *value, *vmname;
+	int enable_dthyve = 0;
 #ifdef BHYVE_SNAPSHOT
 	char *restore_file;
 	struct restore_state rstate;
@@ -1263,9 +1274,8 @@ main(int argc, char *argv[])
 	progname = basename(argv[0]);
 
 #ifdef BHYVE_SNAPSHOT
-	optstr = "aehuwxACDHIPSWYk:f:o:p:G:c:s:m:l:K:U:r:";
-#else
-	optstr = "aehuwxACDHIPSWYk:f:o:p:G:c:s:m:l:K:U:";
+	optstr = "aedhuwxACDHIPSWYk:f:o:p:G:c:s:m:l:K:U:r:";
+	optstr = "aedhuwxACDHIPSWYk:f:o:p:G:c:s:m:l:K:U:";
 #endif
 	while ((c = getopt(argc, argv, optstr)) != -1) {
 		switch (c) {
@@ -1289,6 +1299,9 @@ main(int argc, char *argv[])
 			    errx(EX_USAGE, "invalid cpu topology "
 				"'%s'", optarg);
 			}
+			break;
+		case 'd':
+			enable_dthyve = 1;
 			break;
 		case 'C':
 			set_config_bool("memory.guest_in_core", true);
@@ -1422,6 +1435,17 @@ main(int argc, char *argv[])
 		errx(EX_USAGE, "invalid memsize '%s'", value);
 
 	ctx = do_open(vmname);
+	/*
+	 * XXX(dstolfa): We only really want to open dthyve when we are running
+	 * virtio-dtrace, however we can't really open dthyve when initializing
+	 * virtio-dtrace backend because of capsicum. As a result, we need to
+	 * open it ahead of time, but because we can't really see that
+	 * virtio-dtrace is passed in as a PCI device, we need to deal with this
+	 * extra flag for now. We can either hack it up in the '-s' flag or we
+	 * can let the PCI parsing code specify a flag somewhere, somehow.
+	 */
+	if (enable_dthyve != 0 && dthyve_init(ctx))
+		fprintf(stderr, "Failed to init dthyve: %s\n", strerror(errno));
 
 #ifdef BHYVE_SNAPSHOT
 	if (restore_file != NULL) {

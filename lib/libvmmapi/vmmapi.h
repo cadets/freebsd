@@ -276,4 +276,5 @@ const cap_ioctl_t *vm_get_ioctls(size_t *len);
 
 __END_DECLS
 
+uint16_t	vm_get_vmid(struct vmctx *ctx);
 #endif	/* _VMMAPI_H_ */

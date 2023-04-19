@@ -23,6 +23,7 @@
 /*
  * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ * Copyright (c) 2021, Domagoj Stolfa. All rights reserved.
  */
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
@@ -135,7 +136,7 @@ dtrace_status(dtrace_hdl_t *dtp)
 	hrtime_t now = gethrtime();
 
 	if (!dtp->dt_active)
-		return (DTRACE_STATUS_NONE);
+		return (DTRACE_STATUS_INACTIVE);
 
 	if (dtp->dt_stopped)
 		return (DTRACE_STATUS_STOPPED);
@@ -182,9 +183,10 @@ dtrace_status(dtrace_hdl_t *dtp)
 int
 dtrace_go(dtrace_hdl_t *dtp)
 {
-	dtrace_enable_io_t args;
+	dtrace_enable_io_t args = { 0 };
 	void *dof;
 	int error, r;
+	int expected_nprobes = 0;
 
 	if (dtp->dt_active)
 		return (dt_set_errno(dtp, EINVAL));
@@ -204,11 +206,23 @@ dtrace_go(dtrace_hdl_t *dtp)
 	if ((dof = dtrace_getopt_dof(dtp)) == NULL)
 		return (-1); /* dt_errno has been set for us */
 
+	expected_nprobes = DTRACE_MIN_NPROBES;
+
 	args.dof = dof;
 	args.n_matched = 0;
+	args.vmid = 0;
+	args.ps = malloc(sizeof(dtrace_probedesc_t) * expected_nprobes);
+	if (args.ps == NULL) {
+		fprintf(stderr, "could not allocate args.ps\n");
+		return (-1);
+	}
+
+	memset(args.ps, 0, sizeof(dtrace_probedesc_t) * expected_nprobes);
+	args.ps_bufsize = expected_nprobes * sizeof(dtrace_probedesc_t);
 	r = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
 	error = errno;
 	dtrace_dof_destroy(dtp, dof);
+	free(args.ps);
 
 	if (r == -1 && (error != ENOTTY || dtp->dt_vector == NULL))
 		return (dt_set_errno(dtp, error));
@@ -268,8 +282,7 @@ dtrace_stop(dtrace_hdl_t *dtp)
 
 
 dtrace_workstatus_t
-dtrace_work(dtrace_hdl_t *dtp, FILE *fp,
-    dtrace_consume_probe_f *pfunc, dtrace_consume_rec_f *rfunc, void *arg)
+dtrace_work(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *con, void *arg)
 {
 	int status = dtrace_status(dtp);
 	dtrace_optval_t policy = dtp->dt_options[DTRACEOPT_BUFPOLICY];
@@ -294,7 +307,9 @@ dtrace_work(dtrace_hdl_t *dtp, FILE *fp,
 		rval = DTRACE_WORKSTATUS_OKAY;
 		break;
 
-	case -1:
+	case DTRACE_STATUS_INACTIVE:
+		return (dt_set_errno(dtp, EINVAL));
+	default:
 		return (DTRACE_WORKSTATUS_ERROR);
 	}
 
@@ -313,7 +328,32 @@ dtrace_work(dtrace_hdl_t *dtp, FILE *fp,
 	if (dtrace_aggregate_snap(dtp) == -1)
 		return (DTRACE_WORKSTATUS_ERROR);
 
-	if (dtrace_consume(dtp, fp, pfunc, rfunc, arg) == -1)
+	if (dtrace_consume(dtp, fp, con, arg) == -1)
+		return (DTRACE_WORKSTATUS_ERROR);
+
+	return (rval);
+}
+
+dtrace_workstatus_t
+dtrace_work_detached(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *con,
+    void *arg)
+{
+	int status = dtrace_status(dtp);
+	dtrace_optval_t policy = dtp->dt_options[DTRACEOPT_BUFPOLICY];
+	dtrace_workstatus_t rval;
+
+	switch (status) {
+	case DTRACE_STATUS_INACTIVE:
+		rval = DTRACE_WORKSTATUS_OKAY;
+		break;
+	default:
+		return (DTRACE_WORKSTATUS_ERROR);
+	}
+
+	if (dtrace_aggregate_snap(dtp) == -1)
+		return (DTRACE_WORKSTATUS_ERROR);
+
+	if (dtrace_consume(dtp, fp, con, arg) == -1)
 		return (DTRACE_WORKSTATUS_ERROR);
 
 	return (rval);

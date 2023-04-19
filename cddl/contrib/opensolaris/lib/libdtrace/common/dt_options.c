@@ -27,6 +27,7 @@
 /*
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
  * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2020 Domagoj Stolfa. All rights reserved.
  */
 
 #include <sys/resource.h>
@@ -38,11 +39,20 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <limits.h>
+#ifdef illumos
+#include <alloca.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
+#include <assert.h>
 
 #include <dt_impl.h>
 #include <dt_string.h>
+#include <dt_elf.h>
+
+extern dt_elf_opt_t dtelf_ctopts[];
+extern dt_elf_opt_t dtelf_rtopts[];
+extern dt_elf_opt_t dtelf_drtopts[];
 
 static int
 dt_opt_agg(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
@@ -1044,6 +1054,7 @@ static const dt_option_t _dtrace_rtoptions[] = {
 	{ "dynvarsize", dt_opt_size, DTRACEOPT_DYNVARSIZE },
 	{ "grabanon", dt_opt_runtime, DTRACEOPT_GRABANON },
 	{ "jstackframes", dt_opt_runtime, DTRACEOPT_JSTACKFRAMES },
+	{ "ddtracearg", dt_opt_runtime, DTRACEOPT_DDTRACEARG},
 	{ "jstackstrsize", dt_opt_size, DTRACEOPT_JSTACKSTRSIZE },
 	{ "nspec", dt_opt_runtime, DTRACEOPT_NSPEC },
 	{ "specsize", dt_opt_size, DTRACEOPT_SPECSIZE },
@@ -1052,6 +1063,10 @@ static const dt_option_t _dtrace_rtoptions[] = {
 	{ "strsize", dt_opt_strsize, DTRACEOPT_STRSIZE },
 	{ "ustackframes", dt_opt_runtime, DTRACEOPT_USTACKFRAMES },
 	{ "temporal", dt_opt_runtime, DTRACEOPT_TEMPORAL },
+	{ "hypertrace", dt_opt_runtime, DTRACEOPT_HYPERTRACE },
+	{ "immstackframes", dt_opt_runtime, DTRACEOPT_IMMSTACKFRAMES },
+	{ "immstackstrsize", dt_opt_runtime, DTRACEOPT_IMMSTACKSTRSIZE },
+	{ "minion", dt_opt_runtime, DTRACEOPT_MINION },
 	{ NULL, NULL, 0 }
 };
 
@@ -1108,9 +1123,48 @@ int
 dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 {
 	const dt_option_t *op;
+	dt_elf_opt_t *eop = NULL;
 
 	if (opt == NULL)
 		return (dt_set_errno(dtp, EINVAL));
+
+	if (dt_hypertrace_enabled(dtp)) {
+		if (dtp->dt_active)
+			return (dt_set_errno(dtp, EDT_ACTIVE));
+
+		for (eop = dtelf_ctopts; eop->dteo_name != NULL; eop++) {
+			if (strcmp(eop->dteo_name, opt) == 0) {
+				if (eop->dteo_arg)
+					free(eop->dteo_arg);
+
+				eop->dteo_arg = __DECONST(char *,
+				    val ? strdup(val) : val);
+				eop->dteo_set = 1;
+			}
+		}
+
+		for (eop = dtelf_drtopts; eop->dteo_name != NULL; eop++) {
+			if (strcmp(eop->dteo_name, opt) == 0) {
+				if (eop->dteo_arg)
+					free(eop->dteo_arg);
+
+				eop->dteo_arg = __DECONST(char *,
+				    val ? strdup(val) : val);
+				eop->dteo_set = 1;
+			}
+		}
+
+		for (eop = dtelf_rtopts; eop->dteo_name != NULL; eop++) {
+			if (strcmp(eop->dteo_name, opt) == 0) {
+				if (eop->dteo_arg)
+					free(eop->dteo_arg);
+
+				eop->dteo_arg = __DECONST(char *,
+				    val ? strdup(val) : val);
+				eop->dteo_set = 1;
+			}
+		}
+	}
 
 	for (op = _dtrace_ctoptions; op->o_name != NULL; op++) {
 		if (strcmp(op->o_name, opt) == 0)
@@ -1137,3 +1191,4 @@ dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 
 	return (dt_set_errno(dtp, EDT_BADOPTNAME));
 }
+

@@ -70,6 +70,7 @@ struct ctf_stype_v2 {
 struct ctf_stype_v3 {
 	__uint32_t		ctt_name;
 	__uint32_t		ctt_info;
+	__uint32_t		ctt_copied;
 	union {
 		__uint32_t _size;
 		__uint32_t _type;
@@ -90,6 +91,7 @@ struct ctf_type_v2 {
 struct ctf_type_v3 {
 	__uint32_t		ctt_name;
 	__uint32_t		ctt_info;
+	__uint32_t		ctt_copied;
 	union {
 		__uint32_t _size;
 		__uint32_t _type;

@@ -298,6 +298,8 @@ write_type(void *arg1, void *arg2)
 	struct ctf_enum cte;
 	uint_t id;
 
+	ctt.ctt_copied = 0;
+
 	/*
 	 * There shouldn't be any holes in the type list (where a hole is
 	 * defined as two consecutive tdescs without consecutive ids), but

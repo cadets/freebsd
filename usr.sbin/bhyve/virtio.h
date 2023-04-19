@@ -172,6 +172,7 @@
 #define	VIRTIO_DEV_RANDOM	0x1005
 #define	VIRTIO_DEV_9P		0x1009
 #define VIRTIO_DEV_INPUT	0x1052
+#define	VIRTIO_DEV_DTRACE	0x1020
 
 /*
  * PCI revision IDs

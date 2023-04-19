@@ -1056,6 +1056,9 @@ vmmdev_ioctl(struct cdev *cdev, u_long cmd, caddr_t data, int fflag,
 		    &topology->threads, &topology->maxcpus);
 		error = 0;
 		break;
+	case VM_GET_IDENTIFIER:
+		*(uint16_t *)data = vm_get_id(sc->vm);
+		break;
 #ifdef BHYVE_SNAPSHOT
 	case VM_SNAPSHOT_REQ:
 		snapshot_meta = (struct vm_snapshot_meta *)data;

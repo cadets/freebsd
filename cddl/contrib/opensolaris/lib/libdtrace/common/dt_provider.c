@@ -356,8 +356,8 @@ dt_probe_discover(dt_provider_t *pvp, const dtrace_probedesc_t *pdp)
 			dtt.dtt_ctfp = NULL;
 			dtt.dtt_type = CTF_ERR;
 		} else {
-			dt_node_type_assign(prp->pr_xargv[i],
-			    dtt.dtt_ctfp, dtt.dtt_type, B_FALSE);
+			dt_node_type_assign(prp->pr_xargv[i], dtt.dtt_ctfp,
+			    dtt.dtt_type, B_FALSE);
 		}
 
 		prp->pr_mapping[i] = adp->dtargd_mapping;
@@ -906,6 +906,7 @@ dtrace_probe_iter(dtrace_hdl_t *dtp,
 		if (pdp != NULL)
 			bcopy(pdp, &pd, sizeof (pd));
 
+		pd.dtpd_vmid = 0;
 		pd.dtpd_id = id;
 
 		if (dt_ioctl(dtp, cmd, &pd) != 0)

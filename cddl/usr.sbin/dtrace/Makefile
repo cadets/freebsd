@@ -23,14 +23,28 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libdtrace/common \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libproc/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
-		-I${OPENSOLARIS_SYS_DISTDIR}/compat
+		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
+		-I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
+
 CFLAGS+= -DHAVE_ISSETUGID
+
+.if ${MK_DTRACE_BENCHMARKS} != "no"
+CFLAGS+=	-D__DTRACE_RUN_BENCHMARKS__
+.endif
+
+.if ${MK_DTRACE_DEBUG_ASAN} != "no"
+CFLAGS+=	-fsanitize=address -fsanitize=undefined
+LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+.elif ${MK_DTRACE_DEBUG_TSAN} != "no"
+CFLAGS+=	-fsanitize=thread
+LDFLAGS+=	-fsanitize=thread
+.endif
 
 # Optional debugging stuff...
 #CFLAGS+=	-DNEED_ERRLOC
 #YFLAGS+=	-d
 
-LIBADD=	dtrace ctf elf proc spl
+LIBADD=	dtrace ctf elf proc pthread spl xo
 
 .if ${MK_DTRACE_TESTS} != "no"
 SUBDIR+=	tests

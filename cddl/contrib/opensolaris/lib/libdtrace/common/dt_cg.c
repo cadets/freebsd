@@ -27,6 +27,20 @@
 
 /*
  * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2021, Domagoj Stolfa. All rights reserved.
+ *
+ * This software was developed by SRI International and the University of
+ * Cambridge Computer Laboratory (Department of Computer Science and
+ * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+ * DARPA SSITH research programme.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from Arm Limited.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from the Kenneth Hayter Scholarship Fund.
  */
 
 #include <sys/types.h>
@@ -43,6 +57,8 @@
 #include <dt_grammar.h>
 #include <dt_parser.h>
 #include <dt_provider.h>
+#include <dt_module.h>
+#include <dt_resolver.h>
 
 static void dt_cg_node(dt_node_t *, dt_irlist_t *, dt_regset_t *);
 
@@ -67,8 +83,8 @@ dt_cg_node_alloc(uint_t label, dif_instr_t instr)
  * reference to a forward declaration tag, search the entire type space for
  * the actual definition and then call ctf_member_info on the result.
  */
-static ctf_file_t *
-dt_cg_membinfo(ctf_file_t *fp, ctf_id_t type, const char *s, ctf_membinfo_t *mp)
+ctf_file_t *
+dt_lib_membinfo(ctf_file_t *fp, ctf_id_t type, const char *s, ctf_membinfo_t *mp)
 {
 	while (ctf_type_kind(fp, type) == CTF_K_FORWARD) {
 		char n[DT_TYPE_NAMELEN];
@@ -112,6 +128,21 @@ static void
 dt_cg_setx(dt_irlist_t *dlp, int reg, uint64_t x)
 {
 	dt_cg_xsetx(dlp, NULL, DT_LBL_NONE, reg, x);
+}
+
+static void
+dt_cg_usetx(dt_irlist_t *dlp, int reg, char *sym)
+{
+	ssize_t symoff = dt_strtab_insert(yypcb->pcb_symtab, sym);
+	dif_instr_t instr = DIF_INSTR_USETX((uint_t)symoff, reg);
+
+	if (symoff == -1L)
+		longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
+
+	if (symoff > DIF_STROFF_MAX)
+		longjmp(yypcb->pcb_jmpbuf, EDT_STR2BIG);
+
+	dt_irlist_append(dlp, dt_cg_node_alloc(DT_LBL_NONE, instr));
 }
 
 /*
@@ -182,6 +213,13 @@ dt_cg_load(dt_node_t *dnp, ctf_file_t *ctfp, ctf_id_t type)
 		size |= 0x10;
 
 	return (ops[size]);
+}
+
+static uint_t
+dt_cg_uload(dt_node_t *dnp, uint_t ubit)
+{
+
+	return (ubit ? DIF_OP_UULOAD : DIF_OP_ULOAD);
 }
 
 static void
@@ -344,7 +382,7 @@ dt_cg_field_set(dt_node_t *src, dt_irlist_t *dlp,
 		type = ctf_type_resolve(fp, type);
 	}
 
-	if ((fp = dt_cg_membinfo(ofp = fp, type,
+	if ((fp = dt_lib_membinfo(ofp = fp, type,
 	    dst->dn_right->dn_string, &m)) == NULL) {
 		yypcb->pcb_hdl->dt_ctferr = ctf_errno(ofp);
 		longjmp(yypcb->pcb_jmpbuf, EDT_CTF);
@@ -465,23 +503,36 @@ dt_cg_store(dt_node_t *src, dt_irlist_t *dlp, dt_regset_t *drp, dt_node_t *dst)
  */
 static void
 dt_cg_typecast(const dt_node_t *src, const dt_node_t *dst,
-    dt_irlist_t *dlp, dt_regset_t *drp)
+    dt_irlist_t *dlp, dt_regset_t *drp, int want_typecast)
 {
 	size_t srcsize = dt_node_type_size(src);
 	size_t dstsize = dt_node_type_size(dst);
+	char typename[DT_TYPE_NAMELEN] = {0};
+	ssize_t typeref = 0;
 
 	dif_instr_t instr;
 	int rg;
 
+	dt_node_type_name(dst, typename, sizeof(typename));
+	rg = dt_regset_alloc(drp);
+
 	if (!dt_node_is_scalar(dst))
-		return; /* not a scalar */
+		if (want_typecast)
+			goto cg_typecast; /* not a scalar */
+		else
+			return;
 	if (dstsize == srcsize &&
 	    ((src->dn_flags ^ dst->dn_flags) & DT_NF_SIGNED) != 0)
-		return; /* not narrowing or changing signed-ness */
+		if (want_typecast)
+			goto cg_typecast; /* not narrowing or changing
+					     signed-ness */
+		else
+			return;
 	if (dstsize > srcsize && (src->dn_flags & DT_NF_SIGNED) == 0)
-		return; /* nothing to do in this case */
-
-	rg = dt_regset_alloc(drp);
+		if (want_typecast)
+			goto cg_typecast; /* nothing to do in this case */
+		else
+			return;
 
 	if (dstsize > srcsize) {
 		int n = sizeof (uint64_t) * NBBY - srcsize * NBBY;
@@ -522,6 +573,27 @@ dt_cg_typecast(const dt_node_t *src, const dt_node_t *dst,
 		dt_irlist_append(dlp, dt_cg_node_alloc(DT_LBL_NONE, instr));
 	}
 
+cg_typecast:
+	/*
+	 * Insert the type name into the symbol table and get the reference
+	 * to it.
+	 */
+	typeref = dt_strtab_insert(yypcb->pcb_symtab, typename);
+
+	if (typeref == -1L)
+		longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
+
+	if (typeref > DIF_STROFF_MAX)
+		longjmp(yypcb->pcb_jmpbuf, EDT_STR2BIG);
+
+	/*
+	 * Create a relocation here that tells us the register we just
+	 * saved the value into has been cast into a new type, and
+	 * reference the type it is.
+	 */
+	instr = DIF_INSTR_TYPECAST(typeref, dst->dn_reg);
+	dt_irlist_append(dlp, dt_cg_node_alloc(DT_LBL_NONE, instr));
+
 	dt_regset_free(drp, rg);
 }
 
@@ -559,7 +631,7 @@ dt_cg_arglist(dt_ident_t *idp, dt_node_t *args,
 		dt_node_diftype(yypcb->pcb_hdl, dnp, &t);
 
 		isp->dis_args[i].dn_reg = dnp->dn_reg; /* re-use register */
-		dt_cg_typecast(dnp, &isp->dis_args[i], dlp, drp);
+		dt_cg_typecast(dnp, &isp->dis_args[i], dlp, drp, 1);
 		isp->dis_args[i].dn_reg = -1;
 
 		if (t.dtdt_flags & DIF_TF_BYREF) {
@@ -1052,7 +1124,7 @@ dt_cg_asgn_op(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			 */
 			dt_cg_node(mnp->dn_membexpr, dlp, drp);
 			mnp->dn_reg = mnp->dn_membexpr->dn_reg;
-			dt_cg_typecast(mnp->dn_membexpr, mnp, dlp, drp);
+			dt_cg_typecast(mnp->dn_membexpr, mnp, dlp, drp, 1);
 
 			/*
 			 * Ask CTF for the offset of the member so we can store
@@ -1253,7 +1325,9 @@ dt_cg_array_op(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			dnp->dn_reg = -1;
 			return;
 		}
-		dnp->dn_args->dn_value = prp->pr_mapping[saved];
+		if (dt_resolve(dnp->dn_target, 0) == 0 ||
+		    dnp->dn_target[0] == '\0')
+			dnp->dn_args->dn_value = prp->pr_mapping[saved];
 	}
 
 	dt_cg_node(dnp->dn_args, dlp, drp);
@@ -1343,7 +1417,7 @@ dt_cg_inline(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 
 	dt_cg_node(inp->din_root, dlp, drp);
 	dnp->dn_reg = inp->din_root->dn_reg;
-	dt_cg_typecast(inp->din_root, dnp, dlp, drp);
+	dt_cg_typecast(inp->din_root, dnp, dlp, drp, 0);
 
 	if (idp->di_kind == DT_IDENT_ARRAY) {
 		for (i = 0; i < inp->din_argc; i++) {
@@ -1519,7 +1593,8 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 
 	dif_instr_t instr;
 	dt_ident_t *idp;
-	ssize_t stroff;
+	dt_module_t *mod;
+	ssize_t stroff, symoff;
 	uint_t op;
 
 	switch (dnp->dn_op) {
@@ -1726,6 +1801,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			int reg;
 			idp = dt_node_resolve(dnp->dn_child, DT_IDENT_XLPTR);
 			assert(idp != NULL);
+
 			reg = dt_cg_xlate_expand(dnp, idp, dlp, drp);
 
 			dt_regset_free(drp, dnp->dn_child->dn_reg);
@@ -1773,10 +1849,24 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		break;
 	}
 
-	case DT_TOK_STRINGOF:
+	case DT_TOK_STRINGOF: {
+		ssize_t typeref = 0;
+
 		dt_cg_node(dnp->dn_child, dlp, drp);
 		dnp->dn_reg = dnp->dn_child->dn_reg;
+
+		typeref = dt_strtab_insert(yypcb->pcb_symtab, "D string");
+
+		if (typeref == -1L)
+			longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
+
+		if (typeref > DIF_STROFF_MAX)
+			longjmp(yypcb->pcb_jmpbuf, EDT_STR2BIG);
+
+		instr = DIF_INSTR_TYPECAST(typeref, dnp->dn_reg);
+		dt_irlist_append(dlp, dt_cg_node_alloc(DT_LBL_NONE, instr));
 		break;
+	}
 
 	case DT_TOK_XLATE:
 		/*
@@ -1816,14 +1906,23 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		dnp->dn_reg = dnp->dn_right->dn_reg;
 		break;
 
-	case DT_TOK_LPAR:
+	case DT_TOK_LPAR: {
+		char buf[DT_TYPE_NAMELEN] = {0};
 		dt_cg_node(dnp->dn_right, dlp, drp);
 		dnp->dn_reg = dnp->dn_right->dn_reg;
-		dt_cg_typecast(dnp->dn_right, dnp, dlp, drp);
-		break;
 
+		/*
+		 * Get the type name of what we're casting it to.
+		 * In this case, this must be a pointer type.
+		 */
+		dt_node_type_name(dnp->dn_right, buf, sizeof(buf));
+		dt_cg_typecast(dnp->dn_right, dnp, dlp, drp, 1);
+		break;
+	}
 	case DT_TOK_PTR:
-	case DT_TOK_DOT:
+	case DT_TOK_DOT: {
+		int reg;
+		int copied;
 		assert(dnp->dn_right->dn_kind == DT_NODE_IDENT);
 		dt_cg_node(dnp->dn_left, dlp, drp);
 
@@ -1838,7 +1937,6 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		    dnp->dn_left, DT_IDENT_XLSOU)) != NULL ||
 		    (idp = dt_node_resolve(
 		    dnp->dn_left, DT_IDENT_XLPTR)) != NULL) {
-
 			dt_xlator_t *dxp;
 			dt_node_t *mnp;
 
@@ -1851,7 +1949,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 
 			dt_cg_node(mnp->dn_membexpr, dlp, drp);
 			dnp->dn_reg = mnp->dn_membexpr->dn_reg;
-			dt_cg_typecast(mnp->dn_membexpr, dnp, dlp, drp);
+			dt_cg_typecast(mnp->dn_membexpr, dnp, dlp, drp, 1);
 
 			dxp->dx_ident->di_flags &= ~DT_IDFLG_CGREG;
 			dxp->dx_ident->di_id = 0;
@@ -1861,68 +1959,132 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			break;
 		}
 
-		ctfp = dnp->dn_left->dn_ctfp;
-		type = ctf_type_resolve(ctfp, dnp->dn_left->dn_type);
+		mod = dt_module_lookup_by_ctf(dnp->dn_dtp,
+		    dnp->dn_ctfp);
 
-		if (dnp->dn_op == DT_TOK_PTR) {
-			type = ctf_type_reference(ctfp, type);
-			type = ctf_type_resolve(ctfp, type);
-		}
+		/*
+		 * We check if this particular node has a type that's defined
+		 * by the current D script. If so, we won't generate any
+		 * relocations, and instead process it fully. We also ignore the
+		 * potential return of CTF_ERR here, as it can occur in valid
+		 * scenarios.
+		 */
+		if (dt_resolve(dnp->dn_target, 0) == 0 ||
+		    dnp->dn_target[0] == '\0')
+			copied = ctf_type_copied(dnp->dn_ctfp, dnp->dn_type);
+		else
+			copied = 0;
 
-		if ((ctfp = dt_cg_membinfo(octfp = ctfp, type,
-		    dnp->dn_right->dn_string, &m)) == NULL) {
-			yypcb->pcb_hdl->dt_ctferr = ctf_errno(octfp);
-			longjmp(yypcb->pcb_jmpbuf, EDT_CTF);
-		}
-
-		if (m.ctm_offset != 0) {
-			int reg;
-
+		if (copied == 1 || mod != dnp->dn_dtp->dt_ddefs) {
+			/*
+			 * Generate an USETX instruction with the current symbol
+			 * that we will resolve later on in the linking process.
+			 */
 			reg = dt_regset_alloc(drp);
-
-			/*
-			 * If the offset is not aligned on a byte boundary, it
-			 * is a bit-field member and we will extract the value
-			 * bits below after we generate the appropriate load.
-			 */
-			dt_cg_setx(dlp, reg, m.ctm_offset / NBBY);
-
-			instr = DIF_INSTR_FMT(DIF_OP_ADD,
-			    dnp->dn_left->dn_reg, reg, dnp->dn_left->dn_reg);
+			dt_cg_usetx(dlp, reg, dnp->dn_right->dn_string);
+			instr = DIF_INSTR_FMT(DIF_OP_ADD, dnp->dn_left->dn_reg,
+			    reg, dnp->dn_left->dn_reg);
 
 			dt_irlist_append(dlp,
 			    dt_cg_node_alloc(DT_LBL_NONE, instr));
+
 			dt_regset_free(drp, reg);
-		}
-
-		if (!(dnp->dn_flags & DT_NF_REF)) {
-			uint_t ubit = dnp->dn_flags & DT_NF_USERLAND;
 
 			/*
-			 * Save and restore DT_NF_USERLAND across dt_cg_load():
-			 * we need the sign bit from dnp and the user bit from
-			 * dnp->dn_left in order to get the proper opcode.
+			 * In the case that this is specified as a userland
+			 * _value_, we will generate an unresolved load
+			 * instruction, and leave it up to the linker to figure
+			 * out if this is supposed to be an 8/16/32/64-byte
+			 * signed/unsigned load. In the case of a reference, we
+			 * simply add onto the register in order to have a
+			 * pointer to the data.
+			 *
+			 * An example of a userland value would be:
+			 *                        ((userland type)arg0)->foo.
 			 */
-			dnp->dn_flags |=
-			    (dnp->dn_left->dn_flags & DT_NF_USERLAND);
+			if (!(dnp->dn_flags & DT_NF_REF)) {
+				uint_t ubit = dnp->dn_flags & DT_NF_USERLAND;
+				dnp->dn_flags |= (dnp->dn_left->dn_flags &
+				    DT_NF_USERLAND);
 
-			instr = DIF_INSTR_LOAD(dt_cg_load(dnp,
-			    ctfp, m.ctm_type), dnp->dn_left->dn_reg,
-			    dnp->dn_left->dn_reg);
+				instr = DIF_INSTR_LOAD(dt_cg_uload(dnp,
+				    dnp->dn_flags & DT_NF_USERLAND),
+				    dnp->dn_left->dn_reg, dnp->dn_left->dn_reg);
 
-			dnp->dn_flags &= ~DT_NF_USERLAND;
-			dnp->dn_flags |= ubit;
+				dnp->dn_flags &= ~DT_NF_USERLAND;
+				dnp->dn_flags |= ubit;
 
-			dt_irlist_append(dlp,
-			    dt_cg_node_alloc(DT_LBL_NONE, instr));
+				dt_irlist_append(dlp,
+				    dt_cg_node_alloc(DT_LBL_NONE, instr));
+			}
+		} else {
+			ctfp = dnp->dn_left->dn_ctfp;
+			type = ctf_type_resolve(ctfp, dnp->dn_left->dn_type);
 
-			if (dnp->dn_flags & DT_NF_BITFIELD)
-				dt_cg_field_get(dnp, dlp, drp, ctfp, &m);
+			if (dnp->dn_op == DT_TOK_PTR) {
+				type = ctf_type_reference(ctfp, type);
+				type = ctf_type_resolve(ctfp, type);
+			}
+
+			if ((ctfp = dt_lib_membinfo(octfp = ctfp, type,
+				 dnp->dn_right->dn_string, &m)) == NULL) {
+				yypcb->pcb_hdl->dt_ctferr = ctf_errno(octfp);
+				longjmp(yypcb->pcb_jmpbuf, EDT_CTF);
+			}
+
+			if (m.ctm_offset != 0) {
+				int reg;
+
+				reg = dt_regset_alloc(drp);
+
+				/*
+				 * If the offset is not aligned on a byte
+				 * boundary, it is a bit-field member and we
+				 * will extract the value bits below after we
+				 * generate the appropriate load.
+				 */
+				dt_cg_setx(dlp, reg, m.ctm_offset / NBBY);
+
+				instr = DIF_INSTR_FMT(DIF_OP_ADD,
+				    dnp->dn_left->dn_reg, reg,
+				    dnp->dn_left->dn_reg);
+
+				dt_irlist_append(dlp,
+				    dt_cg_node_alloc(DT_LBL_NONE, instr));
+				dt_regset_free(drp, reg);
+			}
+
+			if (!(dnp->dn_flags & DT_NF_REF)) {
+				uint_t ubit = dnp->dn_flags & DT_NF_USERLAND;
+
+				/*
+				 * Save and restore DT_NF_USERLAND across
+				 * dt_cg_load(): we need the sign bit from dnp
+				 * and the user bit from dnp->dn_left in order
+				 * to get the proper opcode.
+				 */
+				dnp->dn_flags |= (dnp->dn_left->dn_flags &
+				    DT_NF_USERLAND);
+
+				instr = DIF_INSTR_LOAD(dt_cg_load(dnp, ctfp,
+							   m.ctm_type),
+				    dnp->dn_left->dn_reg, dnp->dn_left->dn_reg);
+
+				dnp->dn_flags &= ~DT_NF_USERLAND;
+				dnp->dn_flags |= ubit;
+
+				dt_irlist_append(dlp,
+				    dt_cg_node_alloc(DT_LBL_NONE, instr));
+
+				if (dnp->dn_flags & DT_NF_BITFIELD)
+					dt_cg_field_get(dnp, dlp, drp, ctfp,
+					    &m);
+			}
 		}
 
 		dnp->dn_reg = dnp->dn_left->dn_reg;
 		break;
-
+	}
 	case DT_TOK_STRING:
 		dnp->dn_reg = dt_regset_alloc(drp);
 
@@ -2059,6 +2221,25 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 	case DT_TOK_INT:
 		dnp->dn_reg = dt_regset_alloc(drp);
 		dt_cg_setx(dlp, dnp->dn_reg, dnp->dn_value);
+		/*
+		 * Generate a typecast if needed.
+		 */
+		if (dnp->dn_needscast != 0) {
+			ssize_t typeref = 0;
+
+			typeref = dt_strtab_insert(yypcb->pcb_symtab,
+			    dnp->dn_typecast);
+
+			if (typeref == -1L)
+				longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
+
+			if (typeref > DIF_STROFF_MAX)
+				longjmp(yypcb->pcb_jmpbuf, EDT_STR2BIG);
+
+			instr = DIF_INSTR_TYPECAST(typeref, dnp->dn_reg);
+			dt_irlist_append(dlp,
+			    dt_cg_node_alloc(DT_LBL_NONE, instr));
+		}
 		break;
 
 	default:
@@ -2091,6 +2272,9 @@ dt_cg(dt_pcb_t *pcb, dt_node_t *dnp)
 		dt_strtab_destroy(pcb->pcb_strtab);
 
 	if ((pcb->pcb_strtab = dt_strtab_create(BUFSIZ)) == NULL)
+		longjmp(pcb->pcb_jmpbuf, EDT_NOMEM);
+
+	if ((pcb->pcb_symtab = dt_strtab_create(BUFSIZ)) == NULL)
 		longjmp(pcb->pcb_jmpbuf, EDT_NOMEM);
 
 	dt_irlist_destroy(&pcb->pcb_ir);

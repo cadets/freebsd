@@ -50,6 +50,8 @@
 #include <dt_strtab.h>
 #include <dt_impl.h>
 
+#include <dt_resolver.h>
+
 /*
  * Common code for cooking an identifier that uses a typed signature list (we
  * use this for associative arrays and functions).  If the argument list is
@@ -117,6 +119,10 @@ dt_idcook_sign(dt_node_t *dnp, dt_ident_t *idp,
 static void
 dt_idcook_assc(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 {
+	int isbottom;
+
+	isbottom = 0;
+
 	if (idp->di_data == NULL) {
 		dt_idsig_t *isp = idp->di_data = malloc(sizeof (dt_idsig_t));
 		char n[DT_TYPE_NAMELEN];
@@ -151,7 +157,9 @@ dt_idcook_assc(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 		}
 
 		for (i = 0; i < argc; i++, args = args->dn_list) {
-			if (dt_node_is_dynamic(args) || dt_node_is_void(args)) {
+			isbottom = dt_node_is_bottom(args);
+			if (!isbottom &&
+			    dt_node_is_dynamic(args) || dt_node_is_void(args)) {
 				xyerror(D_KEY_TYPE, "%s expression may not be "
 				    "used as %s index: key #%d\n",
 				    dt_node_type_name(args, n, sizeof (n)),
@@ -307,8 +315,8 @@ dt_idcook_func(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 				    p1, dtrace_errmsg(dtp, dtrace_errno(dtp)));
 			}
 
-			dt_node_type_assign(&isp->dis_args[i],
-			    dtt.dtt_ctfp, dtt.dtt_type, B_FALSE);
+			dt_node_type_assign(&isp->dis_args[i], dtt.dtt_ctfp,
+			    dtt.dtt_type, B_FALSE);
 		}
 	}
 
@@ -350,6 +358,9 @@ dt_idcook_args(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *ap)
 		xyerror(D_ARGS_NONE, "%s[ ] may not be referenced outside "
 		    "of a probe clause\n", idp->di_name);
 	}
+
+	if (dt_resolve(ap->dn_target, 0) != 0 && ap->dn_target[0] != '\0')
+		return;
 
 	if (prp == NULL) {
 		xyerror(D_ARGS_MULTI,
@@ -960,12 +971,53 @@ dt_ident_morph(dt_ident_t *idp, ushort_t kind,
 	idp->di_data = NULL;
 }
 
+int
+dt_ident_builtin(dt_node_t *dnp)
+{
+	char *s;
+
+	if (dnp == NULL)
+		return (0);
+
+	if (dnp->dn_kind != DT_NODE_FUNC && dnp->dn_kind != DT_NODE_DFUNC) {
+		if (dnp->dn_ident == NULL)
+			return (0);
+
+		if (dnp->dn_ident->di_name == NULL)
+			return (0);
+	}
+
+	s = dnp->dn_ident->di_name;
+	return (strcmp(s, "arg0") == 0 || strcmp(s, "arg1") == 0 ||
+	    strcmp(s, "arg2") == 0 || strcmp(s, "arg3") == 0 ||
+	    strcmp(s, "arg4") == 0 || strcmp(s, "arg5") == 0 ||
+	    strcmp(s, "arg6") == 0 || strcmp(s, "arg7") == 0 ||
+	    strcmp(s, "arg8") == 0 || strcmp(s, "arg9") == 0 ||
+	    strcmp(s, "args") == 0 || strcmp(s, "regs") == 0 ||
+	    strcmp(s, "uregs") == 0 || strcmp(s, "curthread") == 0 ||
+	    strcmp(s, "timestamp") == 0 || strcmp(s, "vtimestamp") == 0 ||
+	    strcmp(s, "ipl") == 0 || strcmp(s, "epid") == 0 ||
+	    strcmp(s, "id") == 0 || strcmp(s, "stackdepth") == 0 ||
+	    strcmp(s, "caller") == 0 || strcmp(s, "probeprov") == 0 ||
+	    strcmp(s, "probemod") == 0 || strcmp(s, "probefunc") == 0 ||
+	    strcmp(s, "probename") == 0 || strcmp(s, "pid") == 0 ||
+	    strcmp(s, "tid") == 0 || strcmp(s, "execname") == 0 ||
+	    strcmp(s, "zonename") == 0 || strcmp(s, "walltimestamp") == 0 ||
+	    strcmp(s, "ustackdepth") == 0 || strcmp(s, "ucaller") == 0 ||
+	    strcmp(s, "ppid") == 0 || strcmp(s, "uid") == 0 ||
+	    strcmp(s, "gid") == 0 || strcmp(s, "errno") == 0 ||
+	    strcmp(s, "jid") == 0 || strcmp(s, "jailname") == 0 ||
+	    strcmp(s, "vmname") == 0 || strcmp(s, "hostid") == 0 ||
+	    dnp->dn_kind == DT_NODE_FUNC || dnp->dn_kind == DT_NODE_DFUNC);
+}
+
 dtrace_attribute_t
 dt_ident_cook(dt_node_t *dnp, dt_ident_t *idp, dt_node_t **pargp)
 {
 	dtrace_attribute_t attr;
 	dt_node_t *args, *argp;
 	int argc = 0;
+	dtrace_hdl_t *dtp = dnp->dn_dtp;
 
 	attr = dt_node_list_cook(pargp, DT_IDFLG_REF);
 	args = pargp ? *pargp : NULL;
@@ -973,7 +1025,11 @@ dt_ident_cook(dt_node_t *dnp, dt_ident_t *idp, dt_node_t **pargp)
 	for (argp = args; argp != NULL; argp = argp->dn_list)
 		argc++;
 
-	idp->di_ops->di_cook(dnp, idp, argc, args);
+#if 0
+	if (dt_ident_builtin(dnp) || dt_resolve(dnp->dn_target, 0) == 0 ||
+	    dnp->dn_target[0] == '\0')
+#endif
+		idp->di_ops->di_cook(dnp, idp, argc, args);
 
 	if (idp->di_flags & DT_IDFLG_USER)
 		dnp->dn_flags |= DT_NF_USERLAND;

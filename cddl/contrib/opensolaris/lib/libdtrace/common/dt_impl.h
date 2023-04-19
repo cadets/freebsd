@@ -27,50 +27,62 @@
 /*
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
  * Copyright (c) 2011, 2016 by Delphix. All rights reserved.
+ * Copyright (c) 2021 Domagoj Stolfa.  All rights reserved.
  */
 
 #ifndef	_DT_IMPL_H
 #define	_DT_IMPL_H
 
+#undef NDEBUG
+
 #include <sys/param.h>
 #include <sys/objfs.h>
 #ifndef illumos
 #include <sys/bitmap.h>
-#include <sys/utsname.h>
 #include <sys/ioccom.h>
 #include <sys/time.h>
+#include <sys/utsname.h>
+
 #include <string.h>
 #endif
-#include <setjmp.h>
-#include <libctf.h>
 #include <dtrace.h>
 #include <gelf.h>
+#include <libctf.h>
+#include <setjmp.h>
 #ifdef illumos
 #include <synch.h>
 #endif
 
-#ifdef	__cplusplus
+#ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <dt_parser.h>
-#include <dt_regset.h>
-#include <dt_inttab.h>
-#include <dt_strtab.h>
-#include <dt_ident.h>
-#include <dt_list.h>
-#include <dt_decl.h>
 #include <dt_as.h>
-#include <dt_proc.h>
+#include <dt_decl.h>
 #include <dt_dof.h>
+#include <dt_ident.h>
+#include <dt_inttab.h>
+#include <dt_list.h>
+#include <dt_parser.h>
 #include <dt_pcb.h>
 #include <dt_pq.h>
+#include <dt_proc.h>
+#include <dt_program.h>
+#include <dt_regset.h>
+#include <dt_strtab.h>
 
 struct dt_module;		/* see below */
 struct dt_pfdict;		/* see <dt_printf.h> */
 struct dt_arg;			/* see below */
 struct dt_provider;		/* see <dt_provider.h> */
 struct dt_xlator;		/* see <dt_xlator.h> */
+
+extern char t_mtx[MAXPATHLEN];
+extern char t_rw[MAXPATHLEN];
+extern char t_sx[MAXPATHLEN];
+extern char t_thread[MAXPATHLEN];
+extern const dtrace_diftype_t dt_void_rtype;
+extern const dtrace_diftype_t dt_int_rtype;
 
 typedef struct dt_intrinsic {
 	const char *din_name;	/* string name of the intrinsic type */
@@ -231,6 +243,11 @@ typedef struct dt_lib_depend {
 
 typedef uint32_t dt_version_t;		/* encoded version (see below) */
 
+typedef struct dt_identlist {
+	dt_list_t dtil_list;				/* next */
+	unsigned char dtil_ident[DT_PROG_IDENTLEN];	/* identifier */
+} dt_identlist_t;
+
 struct dtrace_hdl {
 	const dtrace_vector_t *dt_vector; /* library vector, if vectored open */
 	void *dt_varg;	/* vector argument, if vectored open */
@@ -272,6 +289,7 @@ struct dtrace_hdl {
 	ctf_id_t dt_type_str;	/* cached CTF identifier for string type */
 	ctf_id_t dt_type_dyn;	/* cached CTF identifier for <DYN> type */
 	ctf_id_t dt_type_stack;	/* cached CTF identifier for stack type */
+	ctf_id_t dt_type_immstack; /* cached CTF identifier for immstack type */
 	ctf_id_t dt_type_symaddr; /* cached CTF identifier for _symaddr type */
 	ctf_id_t dt_type_usymaddr; /* cached CTF ident. for _usymaddr type */
 	size_t dt_maxprobe;	/* max enabled probe ID */
@@ -363,7 +381,12 @@ struct dtrace_hdl {
 	int dt_indent;		/* recommended flow indent */
 	dtrace_epid_t dt_last_epid;	/* most recently consumed EPID */
 	uint64_t dt_last_timestamp;	/* most recently consumed timestamp */
+	char *dt_instance;	/* Current instance name or NULL */
 	boolean_t dt_has_sugar;	/* syntactic sugar used? */
+	boolean_t dt_hypertrace;	/* are we currently hypertracing? */
+	boolean_t dt_is_guest;	/* is a guest? */
+	dt_list_t dt_compile_idents;	/* acceptable program idents */
+	int dt_failmsg_needed;	/* do we need to send a fail message? */
 };
 
 /*
@@ -443,6 +466,9 @@ struct dtrace_hdl {
 #define	DT_STACK_CTFP(dtp)	((dtp)->dt_ddefs->dm_ctfp)
 #define	DT_STACK_TYPE(dtp)	((dtp)->dt_type_stack)
 
+#define	DT_IMMSTACK_CTFP(dtp)	((dtp)->dt_ddefs->dm_ctfp)
+#define	DT_IMMSTACK_TYPE(dtp)	((dtp)->dt_type_immstack)
+
 #define	DT_SYMADDR_CTFP(dtp)	((dtp)->dt_ddefs->dm_ctfp)
 #define	DT_SYMADDR_TYPE(dtp)	((dtp)->dt_type_symaddr)
 
@@ -489,6 +515,7 @@ struct dtrace_hdl {
 #define	DT_ACT_SETOPT		DT_ACT(28)	/* setopt() action */
 #define	DT_ACT_PRINT		DT_ACT(29)	/* print() action */
 #define	DT_ACT_PRINTM		DT_ACT(30)	/* printm() action */
+#define	DT_ACT_IMMSTACK		DT_ACT(31)	/* immstack() action */
 
 /*
  * Sentinel to tell freopen() to restore the saved stdout.  This must not
@@ -575,7 +602,9 @@ enum {
 	EDT_OVERSION,		/* client is requesting deprecated version */
 	EDT_ENABLING_ERR,	/* failed to enable probe */
 	EDT_NOPROBES,		/* no probes sites for declared provider */
-	EDT_CANTLOAD		/* failed to load a module */
+	EDT_CANTLOAD,		/* failed to load a module */
+	EDT_NOSTMT,		/* statement is missing */
+	EDT_ACTLAST,		/* last action of a statement is empty */
 };
 
 /*
@@ -627,6 +656,7 @@ void dt_get_errloc(dtrace_hdl_t *, const char **, int *);
 #endif
 extern void dt_set_errmsg(dtrace_hdl_t *, const char *, const char *,
     const char *, int, const char *, va_list);
+extern void dt_set_progerr(dtrace_hdl_t *, dtrace_prog_t *, const char *, ...);
 
 #ifdef illumos
 extern int dt_ioctl(dtrace_hdl_t *, int, void *);
@@ -642,6 +672,7 @@ extern void *dt_zalloc(dtrace_hdl_t *, size_t);
 extern void *dt_alloc(dtrace_hdl_t *, size_t);
 extern void dt_free(dtrace_hdl_t *, void *);
 extern void dt_difo_free(dtrace_hdl_t *, dtrace_difo_t *);
+extern dtrace_difo_t *dt_difo_dup(dtrace_hdl_t *, dtrace_difo_t *, int *);
 
 extern int dt_gmatch(const char *, const char *);
 extern char *dt_basename(char *);
@@ -713,6 +744,8 @@ extern int dt_handle_setopt(dtrace_hdl_t *, dtrace_setoptdata_t *);
 
 extern int dt_lib_depend_add(dtrace_hdl_t *, dt_list_t *, const char *);
 extern dt_lib_depend_t *dt_lib_depend_lookup(dt_list_t *, const char *);
+extern ctf_file_t *dt_lib_membinfo(ctf_file_t *, ctf_id_t,
+    const char *, ctf_membinfo_t *);
 
 extern dt_pcb_t *yypcb;		/* pointer to current parser control block */
 extern char yyintprefix;	/* int token prefix for macros (+/-) */

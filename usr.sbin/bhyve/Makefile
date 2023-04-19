@@ -3,16 +3,16 @@
 #
 
 .include <src.opts.mk>
-CFLAGS+=-I${.CURDIR}/../../contrib/lib9p
 CFLAGS+=-I${SRCTOP}/sys
 .PATH:  ${SRCTOP}/sys/libkern ${SRCTOP}/sys/cam/ctl
 
 PROG=	bhyve
 PACKAGE=	bhyve
 
-MAN=	bhyve.8 bhyve_config.5
+MAN=	bhyve.8
 
 BHYVE_SYSDIR?=${SRCTOP}
+BHYVE_SRCDIR?=${.CURDIR}
 
 SRCS=	\
 	acpi_device.c		\
@@ -29,6 +29,7 @@ SRCS=	\
 	crc16.c			\
 	ctl_util.c		\
 	ctl_scsi_all.c		\
+	dthyve.c		\
 	e820.c			\
 	fwctl.c			\
 	gdb.c			\
@@ -54,6 +55,7 @@ SRCS=	\
 	pci_virtio_9p.c		\
 	pci_virtio_block.c	\
 	pci_virtio_console.c	\
+	pci_virtio_dtrace.c	\
 	pci_virtio_input.c	\
 	pci_virtio_net.c	\
 	pci_virtio_rnd.c	\
@@ -81,6 +83,8 @@ SRCS=	\
 	xmsr.c			\
 	spinup_ap.c		\
 	iov.c
+
+LDFLAGS+= -l proc -l ctf -l elf -l z -l rtld_db -l pthread -l util
 
 .if ${MK_BHYVE_SNAPSHOT} != "no"
 SRCS+=	snapshot.c
@@ -117,6 +121,9 @@ CFLAGS+=-DOPENSSL_API_COMPAT=0x10100000L
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/e1000
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/mii
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/usb/controller
+CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/virtio/dtrace
+CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
+
 .if ${MK_BHYVE_SNAPSHOT} != "no"
 CFLAGS+= -I${SRCTOP}/contrib/libucl/include
 CFLAGS+= -DBHYVE_SNAPSHOT
@@ -133,5 +140,11 @@ NO_WTHREAD_SAFETY=
 NO_WCAST_ALIGN=
 
 SUBDIR=	kbdlayout
+
+OBJS:=bhyve_provider.o ${OBJS}
+DTRACE_OBJS=${SRCS:C/\.c/.o/}
+
+beforelinking:
+	dtrace -G -s ${BHYVE_SRCDIR}/bhyve_provider.d ${DTRACE_OBJS}
 
 .include <bsd.prog.mk>

@@ -58,7 +58,7 @@
 #define	TAPGIFNAME		TUNGIFNAME
 #define	TAPSVNETHDR		_IOW('t', 91, int)
 #define	TAPGVNETHDR		_IOR('t', 94, int)
-
+#define	TAPSTAGGING	       	TUNSTAGGING
 /* VMware ioctl's */
 #define VMIO_SIOCSIFFLAGS	_IOWINT('V', 0)
 #define VMIO_SIOCSKEEP		_IO('V', 1)

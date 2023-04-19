@@ -24,6 +24,7 @@ CONFS=	DAEMON \
 	defaultroute \
 	devfs \
 	dmesg \
+	dtraced \
 	dumpon \
 	fsck \
 	gbde \

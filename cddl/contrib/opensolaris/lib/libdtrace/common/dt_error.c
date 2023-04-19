@@ -27,11 +27,39 @@
 /*
  * Copyright (c) 2012 by Delphix. All rights reserved.
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2020 Domagoj Stolfa. All rights reserved.
+ *
+ * This software was developed by SRI International and the University of
+ * Cambridge Computer Laboratory (Department of Computer Science and
+ * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+ * DARPA SSITH research programme.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from Arm Limited.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from the Kenneth Hayter Scholarship Fund.
  */
 
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <unistd.h>
+
 #include <dt_impl.h>
+#include <dt_program.h>
+#include <dt_elf.h>
+
+#include <assert.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <err.h>
+#include <errno.h>
+#include <stddef.h>
+
+#include <dtraced.h>
 
 static const struct {
 	int err;
@@ -113,6 +141,8 @@ static const struct {
 	{ EDT_ENABLING_ERR, "Failed to enable probe" },
 	{ EDT_NOPROBES, "No probe sites found for declared provider" },
 	{ EDT_CANTLOAD, "Failed to load module" },
+	{ EDT_NOSTMT, "Statement is missing" },
+	{ EDT_ACTLAST, "Last action of a statement is empty" },
 };
 
 static const int _dt_nerr = sizeof (_dt_errlist) / sizeof (_dt_errlist[0]);
@@ -238,4 +268,123 @@ dtrace_faultstr(dtrace_hdl_t *dtp, int fault)
 	}
 
 	return ("unknown fault");
+}
+
+static void
+get_randname(char *b, size_t len)
+{
+	size_t i;
+
+	/*
+	 * Generate lower-case random characters.
+	 */
+	for (i = 0; i < len; i++)
+		b[i] = arc4random_uniform(25) + 97;
+}
+
+static char *
+gen_filename(const char *dir)
+{
+	char *filename;
+	char *elfpath;
+	size_t len;
+
+	len = (MAXPATHLEN - strlen(dir)) / 64;
+	assert(len > 10);
+
+	filename = malloc(len);
+	if (filename == NULL)
+		return (NULL);
+	
+	filename[0] = '.';
+	get_randname(filename + 1, len - 2);
+	filename[len - 1] = '\0';
+
+	elfpath = malloc(MAXPATHLEN);
+	strcpy(elfpath, dir);
+	strcpy(elfpath + strlen(dir), filename);
+
+	while (access(elfpath, F_OK) != -1) {
+		filename[0] = '.';
+		get_randname(filename + 1, len - 2);
+		filename[len - 1] = '\0';
+		strcpy(elfpath + strlen(dir), filename);
+	}
+
+	free(filename);
+
+	return (elfpath);
+}
+
+void
+dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
+{
+	size_t l = 0;
+	char *elfpath;
+	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
+	char donepath[MAXPATHLEN] = { 0 };
+	size_t donepathlen = 0;
+	size_t dirlen;
+	va_list args;
+	int dtraced_sock, tmpfd;
+	char template[MAXPATHLEN] = "/tmp/ddtrace-set-prog-err.XXXXXXX";
+
+	if (pgp == NULL)
+		return;
+
+	dirlen = strlen(elfdir);
+	elfpath = gen_filename(elfdir);
+	if (elfpath == NULL)
+		errx(EXIT_FAILURE, "gen_filename() failed with %s\n",
+		    strerror(errno));
+
+	pgp->dp_haserror = 1;
+
+	va_start(args, fmt);
+	vfprintf(stderr, fmt, args);
+	va_end(args);
+	fprintf(stderr, "\n");
+
+	va_start(args, fmt);
+	l = vsnprintf(pgp->dp_err, DT_PROG_ERRLEN, fmt, args);
+	va_end(args);
+
+	if (l >= DT_PROG_ERRLEN) {
+		warn("l (%zu) >= DT_PROG_ERRLEN (%llu)\n", l, DT_PROG_ERRLEN);
+		return;
+	}
+
+	/*
+	 * If this is not a guest machine, we don't really have to forward
+	 * anything, instead we just exit with the error.
+	 */
+	if (dtp->dt_is_guest == 0)
+		errx(EXIT_FAILURE, "%s", pgp->dp_err);
+
+	dtraced_sock = open_dtraced(DTD_SUB_READDATA);
+	if (dtraced_sock == -1)
+		errx(EXIT_FAILURE, "failed to open dtraced\n");
+
+	tmpfd = mkstemp(template);
+	if (tmpfd == -1)
+		errx(EXIT_FAILURE, "mkstemp() failed: %s\n", strerror(errno));
+
+	unlink(template);
+	strcpy(template, "/tmp/ddtrace-set-prog-err.XXXXXXX");
+
+	dt_elf_create(pgp, ELFDATA2LSB, tmpfd);
+
+	if (fsync(tmpfd))
+		errx(EXIT_FAILURE, "fsync() failed: %s\n", strerror(errno));
+
+	if (lseek(tmpfd , 0, SEEK_SET))
+		errx(EXIT_FAILURE, "lseek() failed: %s\n", strerror(errno));
+
+	if (dtrace_send_elf(pgp, tmpfd, dtraced_sock, "outbound", 0))
+		errx(EXIT_FAILURE, "dtrace_send_elf() failed\n");
+
+	close(tmpfd);
+	close(dtraced_sock);
+
+	errx(EXIT_FAILURE, "%s", pgp->dp_err);
 }

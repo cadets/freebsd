@@ -255,7 +255,6 @@ dt_decl_spec(ushort_t kind, char *name)
 
 	ddp->dd_kind = kind;
 	ddp->dd_name = name;
-
 	return (dt_decl_check(ddp));
 }
 
@@ -314,6 +313,9 @@ dt_decl_prototype(dt_node_t *plist,
 	int is_void, v = 0, i = 1;
 	int form = plist != flist;
 	dt_node_t *dnp;
+	int isbottom;
+
+	isbottom = 0;
 
 	for (dnp = plist; dnp != NULL; dnp = dnp->dn_list, i++) {
 
@@ -329,7 +331,8 @@ dt_decl_prototype(dt_node_t *plist,
 			    dnp->dn_string ? dnp->dn_string : "(anonymous)", i);
 		}
 
-		is_void = dt_node_is_void(dnp);
+		isbottom = dt_node_is_bottom(dnp);
+		is_void = isbottom ? 0 : dt_node_is_void(dnp);
 		v += is_void;
 
 		if (is_void && !(flags & DT_DP_VOID)) {
@@ -484,9 +487,9 @@ dt_decl_sou(uint_t kind, char *name)
 		xyerror(D_DECL_TYPERED, "type redeclared: %s\n", n);
 
 	if (kind == CTF_K_STRUCT)
-		type = ctf_add_struct(ctfp, flag, name);
+		type = ctf_add_struct_cp(ctfp, flag, name);
 	else
-		type = ctf_add_union(ctfp, flag, name);
+		type = ctf_add_union_cp(ctfp, flag, name);
 
 	if (type == CTF_ERR || ctf_update(ctfp) == CTF_ERR) {
 		xyerror(D_UNKNOWN, "failed to define %s: %s\n",
@@ -623,9 +626,10 @@ dt_decl_member(dt_node_t *dnp)
 	if (dtt.dtt_ctfp != dsp->ds_ctfp &&
 	    dtt.dtt_ctfp != ctf_parent_file(dsp->ds_ctfp)) {
 
-		dtt.dtt_type = ctf_add_type(dsp->ds_ctfp,
+		dtt.dtt_type = ctf_add_type_cp(dsp->ds_ctfp,
 		    dtt.dtt_ctfp, dtt.dtt_type);
 		dtt.dtt_ctfp = dsp->ds_ctfp;
+		dtt.dtt_copied_ctf = 1;
 
 		if (dtt.dtt_type == CTF_ERR ||
 		    ctf_update(dtt.dtt_ctfp) == CTF_ERR) {
@@ -932,9 +936,10 @@ dt_decl_type(dt_decl_t *ddp, dtrace_typeinfo_t *tip)
 		if (tip->dtt_ctfp != dmp->dm_ctfp &&
 		    tip->dtt_ctfp != ctf_parent_file(dmp->dm_ctfp)) {
 
-			tip->dtt_type = ctf_add_type(dmp->dm_ctfp,
+			tip->dtt_type = ctf_add_type_cp(dmp->dm_ctfp,
 			    tip->dtt_ctfp, tip->dtt_type);
 			tip->dtt_ctfp = dmp->dm_ctfp;
+			tip->dtt_copied_ctf = 1;
 
 			if (tip->dtt_type == CTF_ERR ||
 			    ctf_update(tip->dtt_ctfp) == CTF_ERR) {
@@ -1027,7 +1032,7 @@ dt_decl_type(dt_decl_t *ddp, dtrace_typeinfo_t *tip)
 	case CTF_K_STRUCT:
 	case CTF_K_UNION:
 	case CTF_K_ENUM:
-		type = ctf_add_forward(dmp->dm_ctfp, flag,
+		type = ctf_add_forward_cp(dmp->dm_ctfp, flag,
 		    ddp->dd_name, ddp->dd_kind);
 		break;
 	default:

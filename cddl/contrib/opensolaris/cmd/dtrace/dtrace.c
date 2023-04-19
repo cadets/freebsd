@@ -26,23 +26,35 @@
 /*
  * Copyright (c) 2012 by Delphix. All rights reserved.
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2020 Domagoj Stolfa. All rights reserved.
  */
 
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 
+#include <machine/vmm.h>
+
+#include <assert.h>
+#include <dt_benchmark.h>
+#include <dt_elf.h>
+#include <dt_resolver.h>
+#include <dt_program.h>
 #include <dtrace.h>
-#include <stdlib.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <signal.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <syslog.h>
 #include <unistd.h>
-#include <limits.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <signal.h>
 #ifdef illumos
 #include <alloca.h>
 #endif
@@ -51,9 +63,12 @@
 #include <libproc.h>
 #endif
 #ifdef __FreeBSD__
+#include <dt_prog_link.h>
 #include <locale.h>
 #include <spawn.h>
 #endif
+#include <dtraced.h>
+#include <pthread.h>
 
 typedef struct dtrace_cmd {
 	void (*dc_func)(struct dtrace_cmd *);	/* function to compile arg */
@@ -65,22 +80,52 @@ typedef struct dtrace_cmd {
 	char dc_ofile[PATH_MAX];		/* derived output file name */
 } dtrace_cmd_t;
 
+typedef struct dtd_arg {
+	int rx_sock;
+	int wx_sock;
+	dtrace_prog_t *hostpgp;
+} dtd_arg_t;
+
+typedef struct dt_pgplist {
+	dt_list_t list;
+	dtrace_prog_t *pgp;
+	dtrace_prog_t *gpgp;
+	dtrace_prog_t *response;
+	uint16_t vmid;
+} dt_pgplist_t;
+
+typedef struct dt_probelist {
+	dt_list_t list;
+	const dtrace_probedesc_t *pdesc;
+} dt_probelist_t;
+
 #define	DMODE_VERS	0	/* display version information and exit (-V) */
 #define	DMODE_EXEC	1	/* compile program for enabling (-a/e/E) */
 #define	DMODE_ANON	2	/* compile program for anonymous tracing (-A) */
 #define	DMODE_LINK	3	/* compile program for linking with ELF (-G) */
 #define	DMODE_LIST	4	/* compile program and list probes (-l) */
 #define	DMODE_HEADER	5	/* compile program for headergen (-h) */
+#define	DMODE_LISTVMS	6	/* ask dtraced about instrumentable vms (-M) */
+
+#define	PGPL_ALLOC	0x01	/* allocate a new entry */
+#define	PGPL_SRCIDENT	0x02	/* use srcident */
+#define	PGPL_HOST	0x04	/* search for the host program */
+#define	PGPL_GUEST	0x08	/* search for the guest program */
 
 #define	E_SUCCESS	0
 #define	E_ERROR		1
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CdD:ef:FGhHi:I:lL:m:n:o:p:P:qs:SU:vVwx:X:Z";
+	"1:3:6:aAb:Bc:CdD:eEf:FGhHi:I:lL:m:Mn:No:p:P:qrs:SuU:vVwx:y:Y:X:Z";
 
+static char g_bench_path[MAXPATHLEN] = "/root/bench/userspace_e2e.json";
+static char *g_script;
+static dt_benchmark_t *g_e2ebench;
 static char **g_argv;
 static int g_argc;
+static int g_guest = 0;
+static int g_failmsg_needed = 0;
 static char **g_objv;
 static int g_objc;
 static dtrace_cmd_t *g_cmdv;
@@ -91,23 +136,59 @@ static int g_pslive;
 static char *g_pname;
 static int g_quiet;
 static int g_flowindent;
-static int g_intr;
-static int g_impatient;
-static int g_newline;
+static int g_allow_root_srcident;
+static int g_unsafe;
+static int g_has_idents;
+static _Atomic int g_intr;
+static _Atomic int g_stop;
+static _Atomic int g_impatient;
+static _Atomic int g_newline;
+
+/*
+ * Program list for HyperTrace
+ */
+static dt_list_t g_probe_advlist;
+static dt_list_t g_pgplist;
+static dt_list_t g_kill_list;
+static dt_list_t g_benchlist;
+static pthread_mutex_t g_pgplistmtx;
+static pthread_cond_t g_pgpcond;
+static pthread_mutex_t g_pgpcondmtx;
+static pthread_mutex_t g_benchlistmtx;
+
 #ifdef __FreeBSD__
-static int g_siginfo;
+static _Atomic int g_siginfo;
+static uint32_t rslv;
 #endif
 static int g_total;
 static int g_cflags;
 static int g_oflags;
 static int g_verbose;
 static int g_exec = 1;
+static int g_elf = 0;
+static const char *g_graphfile = NULL;
 static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
 static int g_grabanon = 0;
+
+static pthread_t g_dtracedtd;
+static pthread_t g_worktd;
+
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
+
+static pthread_mutex_t g_dtpmtx;
 static dtrace_hdl_t *g_dtp;
+
+#define CALL_EAGAIN     1
+#define ABORTED         2
+#define VPROG_CREATION  3
+
+typedef struct dt_benchlist {
+	dt_list_t next;
+	dt_benchmark_t *bench;
+} dt_benchlist_t;
+
 #ifdef illumos
 static char *g_etcfile = "/etc/system";
 static const char *g_etcbegin = "* vvvv Added by DTrace";
@@ -125,12 +206,18 @@ static const char *g_etc[] =  {
 NULL };
 #endif
 
+#if !defined(illumos) && defined(NEED_ERRLOC)
+void dt_get_errloc(dtrace_hdl_t *, char **, int *);
+#endif /* !illumos && NEED_ERRLOC */
+
+static void go(void);
+
 static int
 usage(FILE *fp)
 {
 	static const char predact[] = "[[ predicate ] action ]";
 
-	(void) fprintf(fp, "Usage: %s [-32|-64] [-aACdeFGhHlqSvVwZ] "
+	(void) fprintf(fp, "Usage: %s [-32|-64] [-1aACdeFGhHlqSvVwZ] "
 	    "[-b bufsz] [-c cmd] [-D name[=def]]\n\t[-I path] [-L path] "
 	    "[-o output] [-p pid] [-s script] [-U name]\n\t"
 	    "[-x opt[=val]] [-X a|c|s|t]\n\n"
@@ -145,6 +232,7 @@ usage(FILE *fp)
 	(void) fprintf(fp, "\t   action -> '{' D-statements '}'\n");
 
 	(void) fprintf(fp, "\n"
+	    "\t-1  specify benchmark file suffix [default: userspace_e2e.json]\n"
 	    "\t-32 generate 32-bit D programs and ELF files\n"
 	    "\t-64 generate 64-bit D programs and ELF files\n\n"
 	    "\t-a  claim anonymous tracing state\n"
@@ -155,9 +243,11 @@ usage(FILE *fp)
 	    "\t-d  dump script after syntactic transformations\n"
 	    "\t-D  define symbol when invoking preprocessor\n"
 	    "\t-e  exit after compiling request but prior to enabling probes\n"
+	    "\t-E  operate in HyperTrace mode (use ELF instead of DOF)\n"
 	    "\t-f  enable or list probes matching the specified function name\n"
 	    "\t-F  coalesce trace output by function\n"
 	    "\t-G  generate an ELF file containing embedded dtrace program\n"
+	    "\t-g  output GraphViz Dot representation of script actions\n"
 	    "\t-h  generate a header file with definitions for static probes\n"
 	    "\t-H  print included files when invoking preprocessor\n"
 	    "\t-i  enable or list probes matching the specified probe id\n"
@@ -166,6 +256,7 @@ usage(FILE *fp)
 	    "\t-L  add library directory to library search path\n"
 	    "\t-m  enable or list probes matching the specified module name\n"
 	    "\t-n  enable or list probes matching the specified probe name\n"
+	    "\t-N  accept only programs with given identefiers (HyperTrace)\n"
 	    "\t-o  set output file\n"
 	    "\t-p  grab specified process-ID and cache its symbol tables\n"
 	    "\t-P  enable or list probes matching the specified provider name\n"
@@ -178,6 +269,8 @@ usage(FILE *fp)
 	    "\t-w  permit destructive actions\n"
 	    "\t-x  enable or modify compiler and tracing options\n"
 	    "\t-X  specify ISO C conformance settings for preprocessor\n"
+	    "\t-y  run the provided ELF file\n"
+	    "\t-Y  process the provided ELF file in a HyperTrace context\n"
 	    "\t-Z  permit probe descriptions that match zero probes\n");
 
 	return (E_USAGE);
@@ -209,10 +302,26 @@ fatal(const char *fmt, ...)
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
+	pthread_mutex_lock(&g_dtpmtx);
 	if (g_dtp)
 		dtrace_close(g_dtp);
+	g_dtp = NULL;
+	pthread_mutex_unlock(&g_dtpmtx);
 
+	pthread_mutex_destroy(&g_dtpmtx);
 	exit(E_ERROR);
+}
+
+/*PRINTFLIKE1*/
+static void
+dabort(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	verror(fmt, ap);
+	va_end(ap);
+	abort();
 }
 
 /*PRINTFLIKE1*/
@@ -250,7 +359,12 @@ dfatal(const char *fmt, ...)
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
+	pthread_mutex_lock(&g_dtpmtx);
 	dtrace_close(g_dtp);
+	g_dtp = NULL;
+	pthread_mutex_unlock(&g_dtpmtx);
+
+	pthread_mutex_destroy(&g_dtpmtx);
 
 	exit(E_ERROR);
 }
@@ -322,6 +436,55 @@ make_argv(char *s)
 
 	argv[argc] = NULL;
 	return (argv);
+}
+
+/*ARGSUSED*/
+static void
+intr(int signo)
+{
+	if (!atomic_load(&g_intr))
+		atomic_store(&g_newline, 1);
+
+	if (atomic_fetch_add(&g_intr, 1))
+		atomic_store(&g_impatient, 1);
+}
+
+#ifdef __FreeBSD__
+static void
+siginfo(int signo __unused)
+{
+
+	atomic_fetch_add(&g_siginfo, 1);
+	atomic_store(&g_newline, 1);
+}
+#endif
+
+static void
+installsighands(void)
+{
+	struct sigaction act, oact;
+
+	(void) sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	act.sa_handler = intr;
+
+	if (sigaction(SIGINT, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGINT, &act, NULL);
+
+	if (sigaction(SIGTERM, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGTERM, &act, NULL);
+
+#ifdef __FreeBSD__
+	if (sigaction(SIGPIPE, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGPIPE, &act, NULL);
+
+	if (sigaction(SIGUSR1, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGUSR1, &act, NULL);
+
+	act.sa_handler = siginfo;
+	if (sigaction(SIGINFO, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGINFO, &act, NULL);
+#endif
 }
 
 static void
@@ -618,6 +781,886 @@ info_stmt(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	return (0);
 }
 
+static bool
+checkmodref(int action_modref, int cumulative_modref,
+    const dtrace_probedesc_t *dp, FILE *output)
+{
+
+	if ((cumulative_modref & DTRACE_MODREF_ANY_MOD) == 0) {
+		// We don't care about pre-modification behaviour.
+		return (true);
+	}
+
+	if (action_modref & DTRACE_MODREF_ANY_REF) {
+		fprintf(output, "ref-after-mod in %s:%s:%s:%s:",
+			dp->dtpd_provider, dp->dtpd_mod, dp->dtpd_func,
+			dp->dtpd_name);
+		if (action_modref & DTRACE_MODREF_GLOBAL_REF)
+			fprintf(output, " global");
+		if (action_modref & DTRACE_MODREF_THREAD_LOCAL_REF)
+			fprintf(output, " thread");
+		if (action_modref & DTRACE_MODREF_CLAUSE_LOCAL_REF)
+			fprintf(output, " clause");
+		if (action_modref & DTRACE_MODREF_MEMORY_REF)
+			fprintf(output, " external");
+		if (action_modref & DTRACE_MODREF_STATE_REF)
+			fprintf(output, " internal");
+		fprintf(output, "\n");
+
+		return (false);
+	}
+
+	return (true);
+}
+
+static dt_pgplist_t *
+get_pgplist_entry(char *ident, uint16_t vmid, int *found, int flags)
+{
+	dt_pgplist_t *pgpl;
+	dtrace_prog_t *pgp;
+	int use_srcident;
+	char *_ident;
+	int err;
+
+	assert((flags & PGPL_HOST) != 0 || (flags & PGPL_GUEST) != 0);
+
+	*found = 0;
+	use_srcident = flags & PGPL_SRCIDENT;
+	for (pgpl = dt_list_next(&g_pgplist); pgpl;
+	    pgpl = dt_list_next(pgpl)) {
+		pgp = flags & PGPL_HOST ? pgpl->pgp :
+		    flags & PGPL_GUEST ? pgpl->gpgp : NULL;
+
+		/*
+		 * If for some reason we're in a state where we don't have a
+		 * program associated with this pgp list entry, we simply
+		 * continue.
+		 */
+		if (pgp == NULL)
+			continue;
+
+		_ident = use_srcident ? pgp->dp_srcident : pgp->dp_ident;
+
+		if (memcmp(_ident, ident, DT_PROG_IDENTLEN) == 0 &&
+		    pgp->dp_vmid == vmid) {
+			*found = 1;
+			return (pgpl);
+		}
+	}
+
+	if ((flags & PGPL_ALLOC) == 0)
+		return (NULL);
+
+	pgpl = malloc(sizeof(dt_pgplist_t));
+	if (pgpl == NULL)
+		return (NULL);
+
+	memset(pgpl, 0, sizeof(dt_pgplist_t));
+	return (pgpl);
+}
+
+static int
+pgpl_valid(dt_pgplist_t *pgpl)
+{
+	if (pgpl == NULL)
+		return (0);
+
+	return ((pgpl->vmid > 0 && pgpl->pgp && pgpl->gpgp && pgpl->response) ||
+	    (pgpl->vmid == 0 && pgpl->pgp));
+}
+
+static int
+send_kill(int tofd, dtrace_prog_t *pgp)
+{
+	pid_t pid_to_kill;
+	size_t nbytes;
+	/*
+	 * For a kill message, we have everything we need in the header.
+	 * Therefore we don't really need to make a large message and the header
+	 * itself is sufficient.
+	 */
+	dtraced_hdr_t msg;
+
+	if (tofd == -1) {
+		fprintf(stderr, "file descriptor must be != -1\n");
+		return (-1);
+	}
+
+	memset(&msg, 0, DTRACED_MSGHDRSIZE);
+
+	assert(pgp != NULL);
+	pid_to_kill = pgp->dp_pid;
+
+	/*
+	 * It is highly unlikely we will have dtrace running as pid0 or init...
+	 */
+	assert(pid_to_kill != 0 && pid_to_kill != 1);
+
+	DTRACED_MSG_TYPE(msg) = DTRACED_MSG_KILL;
+	DTRACED_MSG_KILLPID(msg) = pid_to_kill;
+	DTRACED_MSG_KILLVMID(msg) = pgp->dp_vmid;
+
+	nbytes = DTRACED_MSGHDRSIZE;
+	if (send(tofd, &nbytes, sizeof(nbytes), 0) < 0) {
+		fprintf(stderr, "send() to %d failed with: %s\n", tofd,
+		    strerror(errno));
+	}
+
+	if (send(tofd, &msg, sizeof(msg), 0) < 0) {
+		fprintf(stderr, "send() to %d failed: %s\n", tofd,
+		    strerror(errno));
+		return (-1);
+	}
+
+	return (0);
+}
+
+static void
+set_snapshot_names(void)
+{
+#ifdef __DTRACE_RUN_BENCHMARKS__
+	dt_benchlist_t *be;
+	dt_benchmark_t *b;
+	size_t i;
+	const char *names[] = {
+		"ELF parsing - start",
+		"ELF parsing - end",
+		"Virtual program creation - start",
+		"Virtual program creation - persisted",
+		"Virtual program creation - sent to dtraced"
+	};
+
+	for (be = dt_list_next(&g_benchlist); be; be = dt_list_next(be)) {
+		b = be->bench;
+		if (b == g_e2ebench)
+			continue;
+
+		assert(b != NULL);
+		assert(b->dtbe_nsnapshots == 5);
+
+		for (i = 0; i < b->dtbe_nsnapshots; i++) {
+			if (b->dtbe_timesnaps[i].__data == ABORTED) {
+				dt_snapshot_setinfo(b, i, "aborted call");
+				break;
+			}
+
+			dt_snapshot_setinfo(b, i, names[i]);
+		}
+	}
+#endif
+}
+
+static void *
+merge_benchmarks(void)
+{
+	void *merge;
+	dt_benchlist_t *be;
+	dt_benchmark_t *b;
+
+	merge = dt_merge_new();
+	if (merge == NULL)
+		abort();
+
+	for (be = dt_list_next(&g_benchlist); be; be = dt_list_next(be)) {
+		b = be->bench;
+		assert(b != NULL);
+
+		if (dt_bench_merge(merge, b) == NULL)
+			abort();
+	}
+
+	return (merge);
+}
+
+static dt_benchlist_t *
+new_bench_list_entry(dt_benchmark_t *bench)
+{
+	dt_benchlist_t *new;
+
+	new = malloc(sizeof(dt_benchlist_t));
+	if (new == NULL)
+		abort();
+
+	memset(new, 0, sizeof(dt_benchlist_t));
+	new->bench = bench;
+	return (new);
+}
+
+static void *
+listen_dtraced(void *arg)
+{
+	int rx_sockfd;
+	int wx_sockfd;
+	int novm = 0;
+	size_t elflen;
+	char *elf;
+	size_t *sizep, size;
+	dtrace_prog_t *newprog;
+	dtrace_prog_t *hostpgp, *guestpgp;
+	int fd;
+	int err;
+	char template[128] = "/tmp/ddtrace-elf.XXXXXXXXXXXX";
+	int tmpfd;
+	char vm_name[VM_MAX_NAMELEN] = { 0 };
+	char *name;
+	dtd_arg_t *dtd_arg = (dtd_arg_t *)arg;
+	dt_pgplist_t *newpgpl;
+	int done;
+	uint16_t vmid;
+	size_t lentowrite;
+	int found;
+	ssize_t r;
+	uintptr_t elf_ptr;
+	size_t len_to_recv;
+	dtraced_hdr_t header;
+	void *verictx;
+	dt_snapshot_hdl_t cshdl;
+	dt_benchmark_t *bench;
+	char buf[1024];
+
+	rx_sockfd = 0;
+	elflen = 0;
+	elf = NULL;
+	sizep = NULL;
+	size = 0;
+	newprog = NULL;
+	fd = 0;
+	err = 0;
+	name = NULL;
+	done = 0;
+	vmid = 0;
+	lentowrite = 0;
+
+	/*
+	 * Assume this is an int.
+	 */
+	rx_sockfd = dtd_arg->rx_sock;
+	wx_sockfd = dtd_arg->wx_sock;
+	hostpgp = dtd_arg->hostpgp;
+	guestpgp = NULL;
+
+	verictx = dt_verictx_init(g_dtp);
+
+	do {
+		newpgpl = NULL;
+		/*
+		 * Now that we have created an ELF file, we wait for dtraced
+		 * to give us the new ELF file that contains all the applied
+		 * relocations. We will then verify that the relocations that
+		 * were applied are sensible, get the identifier of which VM
+		 * it actually is and fill in the necessary filters.
+		 */
+		if (!done && !atomic_load(&g_intr) &&
+		    ((r = recv(rx_sockfd, &header, DTRACED_MSGHDRSIZE, 0)) < 0) &&
+		    errno != EINTR) {
+			dabort("failed to read elf length");
+		}
+		bench = __dt_bench_new_time(5);
+		if (dt_bench_start(bench) == -1)
+			fatal("failed to start bench: %s", __LINE__);
+
+		if (atomic_load(&g_intr)) {
+			done = 1;
+			break;
+		}
+
+		if (r != DTRACED_MSGHDRSIZE) {
+			dabort("received %zu bytes, expected %zu\n", r,
+			    sizeof(elflen));
+		}
+
+		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
+			/*
+			 * We shouldn't be receiving a kill command, so let's
+			 * just report it and ignore it...
+			 */
+			fprintf(stderr,
+			    "received unknown message (%lu), ignoring...\n",
+			    DTRACED_MSG_TYPE(header));
+			continue;
+		}
+
+		elflen = DTRACED_MSG_LEN(header);
+
+		if (elflen <= 0)
+			dabort("elflen is <= 0");
+
+		elf = malloc(elflen);
+		if (elf == NULL)
+			dabort("elf is NULL");
+
+		memset(elf, 0, elflen);
+
+		elf_ptr = (uintptr_t)elf;
+		len_to_recv = elflen;
+
+		while (!done && !atomic_load(&g_intr) && len_to_recv > 0 &&
+		    ((r = recv(rx_sockfd,
+		    (void *)elf_ptr, len_to_recv, 0)) != len_to_recv)) {
+			if (r < 0)
+				dabort("failed to read from dtraced: %s",
+				    strerror(errno));
+
+			len_to_recv -= r;
+			elf_ptr += r;
+		}
+
+		if (atomic_load(&g_intr)) {
+			done = 1;
+			break;
+		}
+
+		/*
+		 * 8-byte aligned
+		 */
+		assert(((uintptr_t)elf & 7) == 0);
+
+		if (elf[0] == 0x7F && elf[1] == 'E' &&
+		    elf[2] == 'L'  && elf[3] == 'F') {
+			novm = 1;
+			dt_bench_hdl_attach(bench, DT_BENCH_TOPLEVEL, 0);
+			goto process_prog;
+		}
+
+		novm = 0;
+
+		/*
+		 * 2-byte aligned
+		 */
+		assert(((uintptr_t)elf & 1) == 0);
+		vmid = *((uint16_t *)elf);
+		elf += sizeof(uint16_t) + 6;
+		dt_bench_hdl_attach(bench, DT_BENCH_TOPLEVEL, vmid);
+
+		/*
+		 * 8-byte aligned
+		 */
+		assert(((uintptr_t)elf & 7) == 0);
+		sizep = (uint64_t *)elf;
+
+		elf += sizeof(uint64_t);
+
+		size = *sizep;
+		name = elf;
+		elf += size;
+
+		if (size > VM_MAX_NAMELEN)
+			dabort("size (%zu) > VM_MAX_NAMELEN (%zu)",
+			    size, VM_MAX_NAMELEN);
+
+		memcpy(vm_name, name, size);
+
+process_prog:
+		fd = mkstemp(template);
+		if (fd == -1)
+			dabort("failed to create a temporary file (%s)",
+			    strerror(errno));
+
+		unlink(template);
+		strcpy(template, "/tmp/ddtrace-elf.XXXXXXXXXXXX");
+
+		lentowrite = novm ?
+		    elflen :
+		    (elflen - size - sizeof(uint64_t) - sizeof(uint16_t) - 6);
+		if (write(fd, elf, lentowrite) < 0)
+			dabort("failed to write to a temporary file");
+
+		if (fsync(fd))
+			dabort("failed to sync file");
+
+		cshdl = __dt_bench_snapshot_time(bench);
+		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
+		if (newprog == NULL && err != EAGAIN) {
+			dt_bench_hdl_attach(bench, cshdl, ABORTED);
+			close(fd);
+			continue;
+		}
+
+		if (newprog == NULL) {
+			char buf[DT_PROG_IDENTLEN];
+
+			dt_bench_hdl_attach(bench, cshdl, CALL_EAGAIN);
+
+			(void) dt_get_srcident(buf);
+			pthread_mutex_lock(&g_pgplistmtx);
+			newpgpl = get_pgplist_entry(buf, vmid, &found,
+			    PGPL_GUEST);
+
+			/*
+			 * If we found nothing, we're simply going to go back to
+			 * sleep. This program is not for us. If we have found
+			 * something, but it's a valid pgpl, we've raced against
+			 * another thread that is currently busy processing this
+			 * particular entry. Report it and go back to sleep.
+			 */
+			if (found == 0) {
+				__dt_bench_stop_time(bench);
+				dt_bench_hdl_attach(bench, cshdl, ABORTED);
+				pthread_mutex_unlock(&g_pgplistmtx);
+				continue;
+			} else if (pgpl_valid(newpgpl)) {
+				fprintf(stderr,
+				    "Found a valid pgpl. Sleeping...");
+				pthread_mutex_unlock(&g_pgplistmtx);
+				continue;
+			}
+
+			newprog = dt_elf_to_prog(g_dtp, fd, 0, &err,
+			    newpgpl->gpgp);
+			if (newprog == NULL) {
+				__dt_bench_stop_time(bench);
+				dt_bench_hdl_attach(bench, cshdl, ABORTED);
+				close(fd);
+				pthread_mutex_unlock(&g_pgplistmtx);
+				continue;
+			}
+		}
+
+		__dt_bench_snapshot_time(bench);
+
+		close(fd);
+
+		newprog->dp_vmid = vmid;
+		memcpy(newprog->dp_vmname, vm_name, size);
+
+		/*
+		 * srcident only is not sufficient here, as it's an one-to-many
+		 * relation. However, scoping it with vmid as well *should* give
+		 * us a unique program.
+		 */
+		if (newpgpl == NULL) {
+			pthread_mutex_lock(&g_pgplistmtx);
+			newpgpl = get_pgplist_entry(newprog->dp_srcident, vmid,
+			    &found, PGPL_ALLOC | PGPL_HOST);
+		}
+
+		if (newpgpl == NULL)
+			dabort("malloc of newpgpl failed");
+
+		if (pgpl_valid(newpgpl)) {
+			fprintf(stderr, "Found a valid pgpl. Sleeping...");
+			pthread_mutex_unlock(&g_pgplistmtx);
+			continue;
+		}
+
+		/*
+		 * vmid is only 0 when we haven't filled in the program we will
+		 * execute on the host.
+		 *
+		 * We check that we don't have a guest trying to pretend that it
+		 * is someone else.
+		 */
+		if (newpgpl->vmid != 0 && (newpgpl->vmid != vmid)) {
+			pthread_mutex_unlock(&g_pgplistmtx);
+			syslog(LOG_SECURITY, "vmid (%u) is claiming to be %u\n",
+			    vmid, newpgpl->vmid);
+			fprintf(stderr, "vmid (%u) is claiming to be %u\n",
+			    vmid, newpgpl->vmid);
+			continue;
+		}
+
+		if (found) {
+			newpgpl->response = newprog;
+		} else {
+			if (dt_prog_verify(verictx, hostpgp, newprog)) {
+				fprintf(stderr,
+				    "failed to verify DIF from %s (%u)\n",
+				    vm_name == NULL ? "host" : vm_name, vmid);
+				free(newpgpl);
+				pthread_mutex_unlock(&g_pgplistmtx);
+				continue;
+			}
+
+			newpgpl->vmid = vmid;
+			newpgpl->pgp = newprog;
+		}
+
+		if (!found && novm == 0) {
+			cshdl = __dt_bench_snapshot_time(bench);
+			dt_bench_hdl_attach(bench, cshdl, VPROG_CREATION);
+			guestpgp =
+			    dt_vprog_from(g_dtp, newprog, PGP_KIND_HYPERCALLS);
+			if (guestpgp == NULL) {
+				dabort("failed to create a guest program");
+			}
+
+			if (g_verbose > 1) {
+				fprintf(stderr, "GENERATED PROGRAM:\n");
+				fprintf(stderr,
+				    "=================================================================="
+				    "\n");
+				dtrace_dump_actions(guestpgp);
+				fprintf(stderr,
+				    "=================================================================="
+				    "\n");
+			}
+
+			guestpgp->dp_exec = DT_PROG_EXEC;
+
+			tmpfd = mkstemp(template);
+			if (tmpfd == -1)
+				dabort("failed to mkstemp()");
+
+			unlink(template);
+
+			dt_elf_create(guestpgp, ELFDATA2LSB, tmpfd);
+			if (fsync(tmpfd)) {
+				fprintf(stderr, "failed to sync file: %s\n",
+				    strerror(errno));
+				dt_verictx_teardown(verictx);
+				pthread_mutex_unlock(&g_pgplistmtx);
+				pthread_exit(NULL);
+			}
+
+			if (lseek(tmpfd, 0, SEEK_SET)) {
+				fprintf(stderr, "lseek() failed: %s\n",
+				    strerror(errno));
+				dt_verictx_teardown(verictx);
+				pthread_mutex_unlock(&g_pgplistmtx);
+				pthread_exit(NULL);
+			}
+			__dt_bench_snapshot_time(bench);
+
+			err = dtrace_send_elf_async(guestpgp, tmpfd,
+			    wx_sockfd, template, "outbound", 0);
+			strcpy(template, "/tmp/ddtrace-elf.XXXXXXXXXXXX");
+
+			if (err) {
+				fprintf(stderr,
+				    "failed to dtrace_send_elf(): %s\n",
+				    strerror(err));
+				dt_verictx_teardown(verictx);
+				pthread_mutex_unlock(&g_pgplistmtx);
+				pthread_exit(NULL);
+			}
+
+			__dt_bench_snapshot_time(bench);
+
+			newpgpl->gpgp = guestpgp;
+		}
+
+		__dt_bench_stop_time(bench);
+		dt_bench_setinfo(bench, "rcvpgp",
+		    "Received program", DT_BENCHKIND_TIME);
+		pthread_mutex_lock(&g_benchlistmtx);
+		dt_list_append(&g_benchlist, new_bench_list_entry(bench));
+		pthread_mutex_unlock(&g_benchlistmtx);
+
+		/*
+		 * If this is a new program, we add it to the list.
+		 */
+		if (newpgpl->pgp == newprog) {
+			dt_list_append(&g_pgplist, newpgpl);
+		}
+		pthread_mutex_unlock(&g_pgplistmtx);
+
+		/*
+		 * For vmid == 0, we allow signalling because there will never
+		 * be a guest program that will be run.
+		 */
+		if (pgpl_valid(newpgpl)) {
+			pthread_mutex_lock(&g_pgpcondmtx);
+			pthread_cond_signal(&g_pgpcond);
+			pthread_mutex_unlock(&g_pgpcondmtx);
+		}
+	} while (!done);
+
+	dt_verictx_teardown(verictx);
+	return (arg);
+}
+
+/*ARGSUSED*/
+static int
+chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
+{
+	dtrace_actkind_t act;
+	uintptr_t addr;
+
+	if (rec == NULL) {
+		/*
+		 * We have processed the final record; output the newline if
+		 * we're not in quiet mode.
+		 */
+		if (!g_quiet)
+			oprintf("\n");
+
+		return (DTRACE_CONSUME_NEXT);
+	}
+
+	act = rec->dtrd_action;
+	addr = (uintptr_t)data->dtpda_data;
+
+	if (act == DTRACEACT_EXIT) {
+		g_status = *((uint32_t *)addr);
+		return (DTRACE_CONSUME_NEXT);
+	}
+
+	return (DTRACE_CONSUME_THIS);
+}
+
+/*ARGSUSED*/
+static int
+chew(const dtrace_probedata_t *data, void *arg)
+{
+	dtrace_probedesc_t *pd = data->dtpda_pdesc;
+	processorid_t cpu = data->dtpda_cpu;
+	static int heading;
+
+	if (atomic_load(&g_impatient)) {
+		atomic_store(&g_newline, 0);
+		return (DTRACE_CONSUME_ABORT);
+	}
+
+	if (heading == 0) {
+		if (!g_flowindent) {
+			if (!g_quiet) {
+				oprintf("%3s %6s %32s\n",
+				    "CPU", "ID", "FUNCTION:NAME");
+			}
+		} else {
+			oprintf("%3s %-41s\n", "CPU", "FUNCTION");
+		}
+		heading = 1;
+	}
+
+	if (!g_flowindent) {
+		if (!g_quiet) {
+			char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
+
+			(void) snprintf(name, sizeof (name), "%s:%s",
+			    pd->dtpd_func, pd->dtpd_name);
+
+			oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
+		}
+	} else {
+		int indent = data->dtpda_indent;
+		char *name;
+		size_t len;
+
+		if (data->dtpda_flow == DTRACEFLOW_NONE) {
+			len = indent + DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 5;
+			name = alloca(len);
+			(void) snprintf(name, len, "%*s%s%s:%s", indent, "",
+			    data->dtpda_prefix, pd->dtpd_func,
+			    pd->dtpd_name);
+		} else {
+			len = indent + DTRACE_FUNCNAMELEN + 5;
+			name = alloca(len);
+			(void) snprintf(name, len, "%*s%s%s", indent, "",
+			    data->dtpda_prefix, pd->dtpd_func);
+		}
+
+		oprintf("%3d %-41s ", cpu, name);
+	}
+
+	return (DTRACE_CONSUME_THIS);
+}
+
+static void
+setup_tracing(void)
+{
+	dtrace_optval_t opt;
+	int i;
+
+	/*
+	 * Start tracing.  Once we dtrace_go(), reload any options that affect
+	 * our globals in case consuming anonymous state has changed them.
+	 */
+	go();
+
+	if (g_elf == 0) {
+		(void) dtrace_getopt(g_dtp, "flowindent", &opt);
+		g_flowindent = opt != DTRACEOPT_UNSET;
+
+		(void) dtrace_getopt(g_dtp, "grabanon", &opt);
+		g_grabanon = opt != DTRACEOPT_UNSET;
+
+		(void) dtrace_getopt(g_dtp, "quiet", &opt);
+		g_quiet = opt != DTRACEOPT_UNSET;
+
+		(void) dtrace_getopt(g_dtp, "destructive", &opt);
+		if (opt != DTRACEOPT_UNSET)
+			notice("allowing destructive actions\n");
+	}
+
+	installsighands();
+
+	/*
+	 * Now that tracing is active and we are ready to consume trace data,
+	 * continue any grabbed or created processes, setting them running
+	 * using the /proc control mechanism inside of libdtrace.
+	 */
+	for (i = 0; i < g_psc; i++)
+		dtrace_proc_continue(g_dtp, g_psv[i]);
+
+	g_pslive = g_psc; /* count for prochandler() */
+}
+
+static void *
+dtc_work(void *arg)
+{
+	int done = 0;
+	dtrace_consumer_t con;
+
+	con.dc_consume_probe = chew;
+	con.dc_consume_rec = chewrec;
+	con.dc_get_buf = NULL;
+	con.dc_put_buf = NULL;
+
+	do {
+		if (!atomic_load(&g_intr) && !done)
+			dtrace_sleep(g_dtp);
+
+#ifdef __FreeBSD__
+		if (atomic_load(&g_siginfo)) {
+			(void)dtrace_aggregate_print(g_dtp, g_ofp, NULL);
+			atomic_store(&g_siginfo, 0);
+		}
+#endif
+
+		if (atomic_load(&g_newline)) {
+			/*
+			 * Output a newline just to make the output look
+			 * slightly cleaner.  Note that we do this even in
+			 * "quiet" mode...
+			 */
+			oprintf("\n");
+			atomic_store(&g_newline, 0);
+		}
+
+		if (done || atomic_load(&g_intr) || (g_psc != 0 && g_pslive == 0)) {
+			done = 1;
+			if (dtrace_stop(g_dtp) == -1)
+				dfatal("couldn't stop tracing");
+		}
+
+		pthread_mutex_lock(&g_dtpmtx);
+		switch (dtrace_work(g_dtp, g_ofp, &con, NULL)) {
+		case DTRACE_WORKSTATUS_DONE:
+			done = 1;
+			break;
+		case DTRACE_WORKSTATUS_OKAY:
+			break;
+		default:
+			if (!atomic_load(&g_impatient) &&
+			    dtrace_errno(g_dtp) != EINTR) {
+				pthread_mutex_unlock(&g_dtpmtx);
+				dfatal("processing aborted");
+			}
+		}
+		pthread_mutex_unlock(&g_dtpmtx);
+
+		if (g_ofp != NULL && fflush(g_ofp) == EOF)
+			clearerr(g_ofp);
+
+	} while (!done);
+
+	oprintf("\n");
+
+	if (!atomic_load(&g_impatient)) {
+		if (dtrace_aggregate_print(g_dtp, g_ofp, NULL) == -1 &&
+		    dtrace_errno(g_dtp) != EINTR)
+			dfatal("failed to print aggregations");
+	}
+
+	pthread_mutex_lock(&g_pgpcondmtx);
+	pthread_cond_signal(&g_pgpcond);
+	pthread_mutex_unlock(&g_pgpcondmtx);
+
+	return (NULL);
+}
+
+static void
+process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
+{
+	static size_t n_pgps = 0;
+	dtrace_proginfo_t dpi;
+	int i, n;
+
+	if (gpgp_resp == NULL && pgp->dp_vmid != 0) {
+		if (atomic_fetch_add(&g_intr, 1))
+			atomic_store(&g_impatient, 1);
+		fprintf(stderr,
+		    "the guest program can only be NULL if program's vmid "
+		    "is 0, but it is %u\n",
+		    pgp->dp_vmid);
+	}
+
+	if (gpgp_resp && (pgp->dp_vmid != gpgp_resp->dp_vmid)) {
+		if (atomic_fetch_add(&g_intr, 1))
+			atomic_store(&g_impatient, 1);
+		fprintf(stderr,
+		    "mismatch between pgp and gpgp_resp vmids (%u != %u)",
+		    pgp->dp_vmid, gpgp_resp->dp_vmid);
+	}
+
+	if (pgp->dp_vmid != 0) {
+		/*
+		 * If no probes were enabled for this program, we don't need to
+		 * do anything.
+		 */
+		if (gpgp_resp->dp_neprobes == 0) {
+			if (g_quiet == 0)
+				fprintf(stderr,
+				    "Ignoring 0 probes from VMID %u\n",
+				    gpgp_resp->dp_vmid);
+			return;
+		}
+
+		n = dt_vprobes_create(g_dtp, gpgp_resp);
+		if (n == -1) {
+			if (atomic_fetch_add(&g_intr, 1))
+				atomic_store(&g_impatient, 1);
+			fprintf(stderr, "failed to create vprobes: %s\n",
+			    strerror(errno));
+		}
+	}
+
+	/*
+	 * Dump actions if we ask for verbose output.
+	 */
+	if (g_verbose) {
+		fprintf(stderr, "Processing new program from: %s\n", pgp->dp_vmname);
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
+		dtrace_dump_actions(pgp);
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
+	}
+	if (g_verbose > 1)
+		dtrace_dump_ecbs(pgp);
+
+	if (n_pgps == 0) {
+		if (dtrace_program_exec(g_dtp, pgp, &dpi) == -1) {
+			if (atomic_fetch_add(&g_intr, 1))
+				atomic_store(&g_impatient, 1);
+			fprintf(stderr, "failed to enable program: %s",
+			    strerror(errno));
+		} else {
+			notice("matched %u probe%s\n", dpi.dpi_matches,
+			    dpi.dpi_matches == 1 ? "" : "s");
+		}
+
+		setup_tracing();
+		pthread_create(&g_worktd, NULL, dtc_work, NULL);
+	} else {
+		if (dt_augment_tracing(g_dtp, pgp)) {
+			if (atomic_fetch_add(&g_intr, 1))
+				atomic_store(&g_impatient, 1);
+			fprintf(stderr, "failed to augment tracing: %s",
+			    strerror(errno));
+		} else {
+			notice("augmented with probes from %u\n", pgp->dp_vmid);
+		}
+	}
+
+	if (n_pgps > 0 && dt_hypertrace_options_update(g_dtp) == -1)
+		fatal("failed to load options");
+	n_pgps++;
+}
+
 /*
  * Execute the specified program by enabling the corresponding instrumentation.
  * If -e has been specified, we get the program info but do not enable it.  If
@@ -628,16 +1671,279 @@ exec_prog(const dtrace_cmd_t *dcp)
 {
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
+	char template[MAXPATHLEN] = "/tmp/dtrace-execprog.XXXXXXXX";
+	char bench_path[MAXPATHLEN] = { 0 };
+	char *elf;
+	size_t elflen;
+	int rx_sock;
+	int wx_sock;
+	size_t l;
+	int fd;
+	int err = 0;
+	dtd_arg_t *dtd_arg = NULL;
+	void *rval;
+	dt_pgplist_t *pgpl = NULL;
+	int again = 0;
+	int tmpfd;
+	uint64_t subs = 0;
+	void *verictx, *merge;
+	dtrace_prog_t *resp;
+	dt_benchlist_t *be;
 
-	if (!g_exec) {
-		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
-	} else if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
-		dfatal("failed to enable '%s'", dcp->dc_name);
-	} else {
-		notice("%s '%s' matched %u probe%s\n",
-		    dcp->dc_desc, dcp->dc_name,
-		    dpi.dpi_matches, dpi.dpi_matches == 1 ? "" : "s");
+	dcp->dc_prog->dp_rflags = rslv;
+
+	if (g_graphfile) {
+		FILE *graph_file = fopen(g_graphfile, "w");
+		if (graph_file == NULL) {
+			fprintf(stderr, "Failed to open %s for writing\n",
+				g_graphfile);
+			return;
+		}
+
+		dtrace_graph_program(g_dtp, dcp->dc_prog, graph_file);
+		fclose(graph_file);
 	}
+
+	if (g_unsafe) {
+		return;
+	} else if (!g_exec) {
+		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
+		if (g_elf) {
+			tmpfd = mkstemp(template);
+			if (tmpfd == -1)
+				fatal("failed to mkstemp()");
+
+
+			/*
+			 * In this case we don't really send anything, we just
+			 * create the ELF file for debugging purposes and output
+			 * where it was created.
+			 */
+			dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
+			printf("%s\n", template);
+			strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
+
+			close(tmpfd);
+		}
+	} else if (g_elf) {
+		/*
+		 * We open a dtraced socket because we expect the following
+		 * things to happen:
+		 *  (1) We write our ELF file to /var/ddtrace/outbound
+		 *  (2) dtraced forwards it to the traced machine (can be host)
+		 *  (3) dtraced DTrace applies relocations to the program
+		 *  (4) dtraced dtraced sends it back to host dtraced
+		 *  (5) dtraced writes out the ELF file to this DTrace
+		 *      instance for further processing.
+		 */
+		if ((err = pthread_mutex_init(&g_pgplistmtx, NULL)) != 0)
+			fatal("failed to init pgplistmtx");
+
+		if ((err = pthread_mutex_init(&g_pgpcondmtx, NULL)) != 0)
+			fatal("failed to init pgpcondmtx");
+
+		if ((err = pthread_cond_init(&g_pgpcond, NULL)) != 0)
+			fatal("failed to init pgpcond");
+
+		if ((err = pthread_mutex_init(&g_benchlistmtx, NULL)) != 0)
+			fatal("failed to init benchlistmtx");
+
+		rx_sock = open_dtraced(DTD_SUB_ELFWRITE);
+		if (rx_sock == -1)
+			fatal("failed to open rx_sock");
+
+		wx_sock = open_dtraced(DTD_SUB_READDATA);
+		if (wx_sock == -1)
+			fatal("failed to open wx_sock");
+
+		g_e2ebench = dt_bench_new("hypertrace_end2end",
+		    "HyperTrace end to end benchmark", DT_BENCHKIND_TIME, 0);
+
+		if (g_e2ebench == NULL)
+			fatal("failed to create new benchmark");
+
+		if (dt_bench_start(g_e2ebench) == -1)
+			fatal("failed to start g_e2ebench");
+
+		tmpfd = mkstemp(template);
+		if (tmpfd == -1)
+			fatal("failed to mkstemp()");
+		unlink(template);
+		strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
+
+		if (g_verbose) {
+			fprintf(stderr, "Initial program:\n");
+			fprintf(stderr,
+			    "=================================================================="
+			    "\n");
+			dtrace_dump_actions(dcp->dc_prog);
+			fprintf(stderr,
+			    "=================================================================="
+			    "\n");
+		}
+		if (g_verbose > 1)
+			dtrace_dump_ecbs(dcp->dc_prog);
+
+		dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
+
+		if (fsync(tmpfd))
+			fatal("failed to sync file");
+
+		if (lseek(tmpfd, 0, SEEK_SET))
+			fatal("lseek() failed");
+
+		if (dtrace_send_elf(dcp->dc_prog, tmpfd, wx_sock, "base", 0))
+			fatal("failed to dtrace_send_elf()");
+
+		close(tmpfd);
+
+		dtd_arg = malloc(sizeof(dtd_arg_t));
+		if (dtd_arg == NULL)
+			fatal("failed to malloc dtd_arg");
+
+		dtd_arg->rx_sock = rx_sock;
+		dtd_arg->wx_sock = wx_sock;
+		dtd_arg->hostpgp = dcp->dc_prog;
+
+		err = pthread_create(&g_dtracedtd, NULL,
+		    listen_dtraced, dtd_arg);
+		if (err != 0)
+			fatal("failed to create g_dtracedtd");
+
+		for (;;) {
+			/*
+			 * Wait for us to actually have a program in the list
+			 */
+again:
+			pthread_mutex_lock(&g_pgpcondmtx);
+			pthread_mutex_lock(&g_pgplistmtx);
+			while (!atomic_load(&g_intr) && !atomic_load(&g_stop) &&
+			    ((pgpl = dt_list_next(&g_pgplist)) == NULL ||
+			    again == 1)) {
+				pthread_mutex_unlock(&g_pgplistmtx);
+				pthread_cond_wait(&g_pgpcond, &g_pgpcondmtx);
+				again = 0;
+				pthread_mutex_lock(&g_pgplistmtx);
+			}
+			pthread_mutex_unlock(&g_pgplistmtx);
+			pthread_mutex_unlock(&g_pgpcondmtx);
+
+			assert(pgpl != NULL || atomic_load(&g_intr) ||
+			    atomic_load(&g_stop));
+
+			if (atomic_load(&g_intr))
+				break;
+
+			/*
+			 * We are in a situation where the condition variable
+			 * has been triggered and we expect to have at least one
+			 * pgplist entry which contains both the probe
+			 * specification that we need to create on the host and
+			 * the program that we need to run.
+			 */
+			pthread_mutex_lock(&g_pgplistmtx);
+			for (; pgpl; pgpl = dt_list_next(pgpl)) {
+				if (pgpl_valid(pgpl))
+					break;
+			}
+
+			if (pgpl == NULL) {
+				again = 1;
+				pthread_mutex_unlock(&g_pgplistmtx);
+				goto again;
+			}
+
+			/*
+			 * Something's gone horribly wrong, report it and go to
+			 * sleep again.
+			 */
+			if (!pgpl_valid(pgpl)) {
+				fprintf(stderr, "%s",
+				    pgpl->pgp ? "probe specification is NULL"
+						", sleeping...\n" :
+						"program to run is NULL"
+						", sleeping...\n");
+				again = 1;
+				pthread_mutex_unlock(&g_pgplistmtx);
+				goto again;
+			}
+
+			dt_list_delete(&g_pgplist, pgpl);
+			pthread_mutex_unlock(&g_pgplistmtx);
+
+			resp = pgpl->response;
+			process_new_pgp(pgpl->pgp, resp);
+			if (pgpl->vmid != 0)
+				dt_list_append(&g_kill_list, resp);
+		}
+
+		for (resp = dt_list_next(&g_kill_list); resp;
+		     resp = dt_list_next(resp)) {
+			if (send_kill(wx_sock, resp))
+				fprintf(stderr, "send_kill() failed with: %s\n",
+				    strerror(errno));
+		}
+
+		dt_bench_stop(g_e2ebench);
+		pthread_mutex_lock(&g_benchlistmtx);
+		dt_list_append(&g_benchlist, new_bench_list_entry(g_e2ebench));
+		pthread_mutex_unlock(&g_benchlistmtx);
+
+		set_snapshot_names();
+		merge = merge_benchmarks();
+
+		if ((rval = dt_bench_file(g_bench_path, bench_path)) != bench_path) {
+			fprintf(stderr, "realpath(%s) failed: %s\n",
+			    g_bench_path, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
+		dt_bench_dump(dt_merge_get(merge), dt_merge_size(merge),
+		    bench_path, g_script);
+
+		pthread_mutex_lock(&g_benchlistmtx);
+		while ((be = dt_list_next(&g_benchlist)) != NULL) {
+			dt_list_delete(&g_benchlist, be);
+			dt_bench_free(be->bench);
+			free(be);
+		}
+		pthread_mutex_unlock(&g_benchlistmtx);
+
+		dt_merge_cleanup(merge);
+
+		(void)pthread_kill(g_dtracedtd, SIGTERM);
+		(void)pthread_kill(g_worktd, SIGTERM);
+
+		err = pthread_join(g_dtracedtd, &rval);
+		if (err != 0)
+			fprintf(stderr, "failed to join g_dtracedtd\n");
+		err = pthread_join(g_worktd, &rval);
+		if (err != 0)
+			fprintf(stderr, "failed to join g_worktd\n");
+
+		pthread_mutex_destroy(&g_pgplistmtx);
+		pthread_mutex_destroy(&g_pgpcondmtx);
+		pthread_cond_destroy(&g_pgpcond);
+		pthread_mutex_destroy(&g_benchlistmtx);
+		dtrace_close(g_dtp);
+		exit(0);
+	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
+		//dtrace_dump_actions(dcp->dc_prog);
+		verictx = dt_verictx_init(g_dtp);
+		if (dt_prog_verify(verictx, dcp->dc_prog, dcp->dc_prog) != 0)
+			dfatal("failed to verify %p", dcp->dc_prog);
+
+		dt_verictx_teardown(verictx);
+		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
+			dfatal("failed to enable '%s'", dcp->dc_name);
+		} else {
+			notice("%s '%s' matched %u probe%s\n",
+			    dcp->dc_desc, dcp->dc_name,
+			    dpi.dpi_matches, dpi.dpi_matches == 1 ? "" : "s");
+		}
+	} else
+		dfatal("failed to apply relocations");
+
 
 	if (g_verbose) {
 		oprintf("\nStability attributes for %s %s:\n",
@@ -752,8 +2058,9 @@ list_probe(dtrace_hdl_t *dtp, const dtrace_probedesc_t *pdp, void *arg)
 	if (g_verbose && dtrace_probe_info(dtp, pdp, &p) == 0)
 		print_probe_info(&p);
 
-	if (g_intr != 0)
+	if (atomic_load(&g_intr) != 0)
 		return (1);
+
 
 	return (0);
 }
@@ -813,6 +2120,164 @@ compile_file(dtrace_cmd_t *dcp)
 
 	dcp->dc_desc = "script";
 	dcp->dc_name = dcp->dc_arg;
+}
+
+static int 
+link_elf(dtrace_cmd_t *dcp, char *progpath)
+{
+	int fd;
+	dt_stmt_t *stp;
+	int err = 0;
+	void *dof = NULL;
+	int prog_exec = 0;
+
+	assert(g_elf == 1);
+
+	if ((fd = open(progpath, O_RDONLY)) < 0)
+		fatal("failed to open %s with %s", progpath, strerror(errno));
+
+	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1, &err, NULL)) == NULL) {
+		errno = err;
+		fatal("failed to parse the ELF file %s", dcp->dc_arg);
+	}
+
+	prog_exec = dcp->dc_prog->dp_exec;
+	close(fd);
+
+	dcp->dc_desc = "ELF file";
+	dcp->dc_name = dcp->dc_arg;
+
+	return (prog_exec);
+}
+
+static void
+process_elf(dtrace_cmd_t *dcp)
+{
+
+	(void) link_elf(dcp, dcp->dc_arg);
+}
+
+static void
+process_elf_hypertrace(dtrace_cmd_t *dcp)
+{
+	char template[MAXPATHLEN] = "/tmp/dtrace-process-elf.XXXXXXXX";
+	char *progpath;
+	char *hostorguest;
+	int host;
+	int prog_exec;
+	dtrace_proginfo_t dpi;
+	int i;
+	int tmpfd;
+	int dtraced_sock;
+
+	progpath = strtok(dcp->dc_arg, ",");
+	if (progpath == NULL)
+		fatal("failed to tokenize %s", dcp->dc_arg);
+
+	hostorguest = strtok(NULL, ",");
+	if (hostorguest && strcmp(hostorguest, "host") == 0)
+		host = 1;
+	else if (hostorguest && strcmp(hostorguest, "guest") == 0)
+		host = 0;
+	else if (hostorguest == NULL)
+		host = 0;
+	else
+		fatal("unexpected string in -Y: %s", hostorguest);
+
+	prog_exec = link_elf(dcp, progpath);
+	if (g_verbose) {
+		fprintf(stderr, "Unrelocated program:\n");
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
+		dtrace_dump_actions(dcp->dc_prog);
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
+	}
+
+	if (g_verbose > 1) {
+		fprintf(stderr, "ECBs from an unrelocated program:\n");
+		dtrace_dump_ecbs(dcp->dc_prog);
+	}
+
+
+	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
+		dfatal("Failed to apply relocations");
+
+	if (g_verbose) {
+		fprintf(stderr, "Relocated program:\n");
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
+		dtrace_dump_actions(dcp->dc_prog);
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
+	}
+
+	if (g_verbose > 1) {
+		fprintf(stderr, "ECBs from a relocated program:\n");
+		dtrace_dump_ecbs(dcp->dc_prog);
+	}
+
+	if ((prog_exec == DT_PROG_EXEC && g_allow_root_srcident) ||
+	    (prog_exec == DT_PROG_EXEC && g_has_idents)) {
+		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
+			dfatal("failed to enable program");
+		} else {
+			notice(
+			    "process_elf_hypertrace(): matched %u probe%s\n",
+			    dpi.dpi_matches, dpi.dpi_matches == 1 ? "" : "s");
+		}
+
+		/*
+		 * If we are actually tracing things, we will need to stop at
+		 * some point. Get the pid so that the host can send a message
+		 * to dtraced to kill us later.
+		 */
+		assert(dtrace_is_guest(g_dtp) != 0);
+		dcp->dc_prog->dp_pid = getpid();
+		setup_tracing();
+		pthread_create(&g_worktd, NULL, dtc_work, NULL);
+	}
+
+	dtraced_sock = open_dtraced(DTD_SUB_READDATA);
+	if (dtraced_sock == -1)
+		fatal("failed to open dtraced");
+
+	tmpfd = mkstemp(template);
+	if (tmpfd == -1)
+		fatal("mkstemp() failed (%s)", template);
+
+	unlink(template);
+	strcpy(template, "/tmp/dtrace-process-elf.XXXXXXXX");
+
+	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
+	if (fsync(tmpfd))
+		fatal("failed to sync file");
+
+	if (lseek(tmpfd, 0, SEEK_SET))
+		fatal("lseek() failed");
+
+	if (dtrace_send_elf(dcp->dc_prog, tmpfd, dtraced_sock,
+	    host ? "inbound" : "outbound",
+	    host ? 0 : prog_exec == DT_PROG_EXEC ? 0 : 1))
+		fatal("failed to dtrace_send_elf()");
+
+	close(tmpfd);
+	close(dtraced_sock);
+
+	if (prog_exec == DT_PROG_EXEC)
+		(void)pthread_join(g_worktd, NULL);
+
+	pthread_mutex_lock(&g_dtpmtx);
+	dtrace_close(g_dtp);
+	g_dtp = NULL;
+	pthread_mutex_unlock(&g_dtpmtx);
+
+	pthread_mutex_destroy(&g_dtpmtx);
+	exit(g_status);
 }
 
 static void
@@ -885,6 +2350,11 @@ prochandler(struct ps_prochandle *P, const char *msg, void *arg)
 		} else {
 			notice("pid %d has exited\n", pid);
 		}
+
+		atomic_store(&g_stop, 1);
+		pthread_mutex_lock(&g_pgpcondmtx);
+		pthread_cond_signal(&g_pgpcond);
+		pthread_mutex_unlock(&g_pgpcondmtx);
 		g_pslive--;
 		break;
 
@@ -1071,93 +2541,6 @@ bufhandler(const dtrace_bufdata_t *bufdata, void *arg)
 	return (DTRACE_HANDLE_OK);
 }
 
-/*ARGSUSED*/
-static int
-chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
-{
-	dtrace_actkind_t act;
-	uintptr_t addr;
-
-	if (rec == NULL) {
-		/*
-		 * We have processed the final record; output the newline if
-		 * we're not in quiet mode.
-		 */
-		if (!g_quiet)
-			oprintf("\n");
-
-		return (DTRACE_CONSUME_NEXT);
-	}
-
-	act = rec->dtrd_action;
-	addr = (uintptr_t)data->dtpda_data;
-
-	if (act == DTRACEACT_EXIT) {
-		g_status = *((uint32_t *)addr);
-		return (DTRACE_CONSUME_NEXT);
-	}
-
-	return (DTRACE_CONSUME_THIS);
-}
-
-/*ARGSUSED*/
-static int
-chew(const dtrace_probedata_t *data, void *arg)
-{
-	dtrace_probedesc_t *pd = data->dtpda_pdesc;
-	processorid_t cpu = data->dtpda_cpu;
-	static int heading;
-
-	if (g_impatient) {
-		g_newline = 0;
-		return (DTRACE_CONSUME_ABORT);
-	}
-
-	if (heading == 0) {
-		if (!g_flowindent) {
-			if (!g_quiet) {
-				oprintf("%3s %6s %32s\n",
-				    "CPU", "ID", "FUNCTION:NAME");
-			}
-		} else {
-			oprintf("%3s %-41s\n", "CPU", "FUNCTION");
-		}
-		heading = 1;
-	}
-
-	if (!g_flowindent) {
-		if (!g_quiet) {
-			char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
-
-			(void) snprintf(name, sizeof (name), "%s:%s",
-			    pd->dtpd_func, pd->dtpd_name);
-
-			oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
-		}
-	} else {
-		int indent = data->dtpda_indent;
-		char *name;
-		size_t len;
-
-		if (data->dtpda_flow == DTRACEFLOW_NONE) {
-			len = indent + DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 5;
-			name = alloca(len);
-			(void) snprintf(name, len, "%*s%s%s:%s", indent, "",
-			    data->dtpda_prefix, pd->dtpd_func,
-			    pd->dtpd_name);
-		} else {
-			len = indent + DTRACE_FUNCNAMELEN + 5;
-			name = alloca(len);
-			(void) snprintf(name, len, "%*s%s%s", indent, "",
-			    data->dtpda_prefix, pd->dtpd_func);
-		}
-
-		oprintf("%3d %-41s ", cpu, name);
-	}
-
-	return (DTRACE_CONSUME_THIS);
-}
-
 static void
 go(void)
 {
@@ -1254,53 +2637,35 @@ go(void)
 	}
 }
 
-/*ARGSUSED*/
 static void
-intr(int signo)
+print_imsgs(dtraced_infomsg_t *imsgs, size_t nimsgs)
 {
-	if (!g_intr)
-		g_newline = 1;
+	size_t i, j, k;
+	dtraced_infomsg_t *imsg;
+	char *processed[1024] = { 0 };
+	int process;
 
-	if (g_intr++)
-		g_impatient = 1;
-}
+	oprintf("HyperTrace-aware VMs:\n\n");
+	j = 0;
+	for (i = 0; i < nimsgs; i++) {
+		imsg = &imsgs[i];
 
-#ifdef __FreeBSD__
-static void
-siginfo(int signo __unused)
-{
+		process = 1;
+		for (k = 0; k < j; k++)
+			if (strcmp(processed[k], imsg->client_name) == 0)
+				process = 0;
 
-	g_siginfo++;
-	g_newline = 1;
-}
-#endif
+		if (process == 0)
+			continue;
 
-static void
-installsighands(void)
-{
-	struct sigaction act, oact;
+		if (imsg->client_kind == DTRACED_KIND_FORWARDER)
+			oprintf("%s\n", imsg->client_name);
 
-	(void) sigemptyset(&act.sa_mask);
-	act.sa_flags = 0;
-	act.sa_handler = intr;
+		processed[j++] = strdup(imsg->client_name);
+	}
 
-	if (sigaction(SIGINT, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGINT, &act, NULL);
-
-	if (sigaction(SIGTERM, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGTERM, &act, NULL);
-
-#ifdef __FreeBSD__
-	if (sigaction(SIGPIPE, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGPIPE, &act, NULL);
-
-	if (sigaction(SIGUSR1, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGUSR1, &act, NULL);
-
-	act.sa_handler = siginfo;
-	if (sigaction(SIGINFO, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGINFO, &act, NULL);
-#endif
+	for (i = 0; i < j; i++)
+		free(processed[j]);
 }
 
 int
@@ -1308,15 +2673,23 @@ main(int argc, char *argv[])
 {
 	dtrace_bufdesc_t buf;
 	dtrace_status_t status[2];
-	dtrace_optval_t opt;
 	dtrace_cmd_t *dcp;
+	dtrace_optval_t opt;
 
 	g_ofp = stdout;
 	int done = 0, mode = 0;
-	int err, i, c;
-	char *p, **v;
+	int err, i, c, rv;
+	char *p, *p2, **v;
 	struct ps_prochandle *P;
 	pid_t pid;
+	size_t len1, len2;
+	size_t idents_to_read;
+	unsigned char *idents;
+
+	p2 = NULL;
+
+	rslv = (1 << DT_RSLV_HOSTNAME) | (1 << DT_RSLV_VERSION);
+	len1 = len2 = 0;
 
 #ifdef __FreeBSD__
 	/* For %'d and the like. */
@@ -1388,6 +2761,15 @@ main(int argc, char *argv[])
 				done = 1;
 				break;
 
+			case 'E':
+				g_elf = 1;
+				done = 1;
+				break;
+
+			case 'g':
+				g_graphfile = optarg;
+				break;
+
 			case 'h':
 				g_mode = DMODE_HEADER;
 				g_oflags |= DTRACE_O_NODEV;
@@ -1401,6 +2783,30 @@ main(int argc, char *argv[])
 				g_oflags |= DTRACE_O_NODEV;
 				g_cflags |= DTRACE_C_ZDEFS; /* -G implies -Z */
 				g_exec = 0;
+				mode++;
+				break;
+
+			case 'y':
+				dcp = &g_cmdv[g_cmdc++];
+				dcp->dc_func = process_elf;
+				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
+				dcp->dc_arg = optarg;
+				g_elf = 1;
+				g_guest = 1;
+				break;
+
+			case 'Y':
+				dcp = &g_cmdv[g_cmdc++];
+				dcp->dc_func = process_elf_hypertrace;
+				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
+				dcp->dc_arg = optarg;
+				g_elf = 1;
+				g_guest = 1;
+				g_failmsg_needed = 1;
+				break;
+
+			case 'M':
+				g_mode = DMODE_LISTVMS;
 				mode++;
 				break;
 
@@ -1433,6 +2839,74 @@ main(int argc, char *argv[])
 
 	if (g_mode == DMODE_VERS)
 		return (printf("%s: %s\n", g_pname, _dtrace_version) <= 0);
+
+	if (g_mode == DMODE_LISTVMS) {
+		int fd, rval;
+		dtraced_infomsg_t *imsgs;
+		void *curpos;
+		size_t len, count, nbytes;
+		dtraced_hdr_t hdr = { 0 };
+
+		fd = open_dtraced(DTD_SUB_INFO);
+
+		if ((rval = recv(fd, &hdr, DTRACED_MSGHDRSIZE, 0)) <= 0) {
+			fprintf(stderr, "Failed to recv from sub.sock: %s\n",
+			    strerror(errno));
+			close(fd);
+			exit(EXIT_FAILURE);
+		}
+
+		assert(rval == DTRACED_MSGHDRSIZE);
+
+		if (hdr.msg_type != DTRACED_MSG_INFO) {
+			fprintf(stderr,
+			    "dtraced hdr: expected INFO message, got: %" PRIx64 "\n",
+			    hdr.msg_type);
+			close(fd);
+			exit(EXIT_FAILURE);
+		}
+
+		count = hdr.info.count;
+		len = count * sizeof(dtraced_infomsg_t);
+
+		imsgs = malloc(len);
+		if (imsgs == NULL)
+			abort();
+
+		memset(imsgs, 0, len);
+
+		nbytes = len;
+		curpos = (void *)imsgs;
+		while ((rval = recv(fd, curpos, nbytes, 0)) != nbytes) {
+			if (rval < 0) {
+				fprintf(stderr, "recv(): failed: %s\n",
+				    strerror(errno));
+				close(fd);
+				free(imsgs);
+				exit(EXIT_FAILURE);
+			}
+
+			assert(rval != 0);
+
+			curpos += rval;
+			nbytes -= rval;
+		}
+
+		assert(nbytes == rval);
+
+		if (rval == 0) {
+			fprintf(stderr, "recv(): 0 bytes from dtraced\n");
+			close(fd);
+			free(imsgs);
+			exit(EXIT_FAILURE);
+		}
+
+		print_imsgs(imsgs, count);
+
+		free(imsgs);
+		close(fd);
+		exit(EXIT_SUCCESS);
+	}
 
 	/*
 	 * If we're in linker mode and the data model hasn't been specified,
@@ -1488,6 +2962,9 @@ main(int argc, char *argv[])
 	 * Open libdtrace.  If we are not actually going to be enabling any
 	 * instrumentation attempt to reopen libdtrace using DTRACE_O_NODEV.
 	 */
+	if (pthread_mutex_init(&g_dtpmtx, NULL))
+		fatal("failed to create the dtp mutex");
+
 	while ((g_dtp = dtrace_open(DTRACE_VERSION, g_oflags, &err)) == NULL) {
 		if (!(g_oflags & DTRACE_O_NODEV) && !g_exec && !g_grabanon) {
 			g_oflags |= DTRACE_O_NODEV;
@@ -1498,6 +2975,16 @@ main(int argc, char *argv[])
 		    dtrace_errmsg(NULL, err));
 	}
 
+	if (g_guest)
+		dtrace_set_guest(g_dtp);
+
+	if (g_elf)
+		dt_enable_hypertrace(g_dtp);
+
+	if (g_failmsg_needed)
+		dt_set_failmsg_needed(g_dtp);
+
+
 #if defined(__i386__)
 	/* XXX The 32-bit seems to need more buffer space by default -sson */
 	(void) dtrace_setopt(g_dtp, "bufsize", "12m");
@@ -1507,6 +2994,7 @@ main(int argc, char *argv[])
 	(void) dtrace_setopt(g_dtp, "aggsize", "4m");
 #endif
 	(void) dtrace_setopt(g_dtp, "temporal", "yes");
+	(void) dtrace_setopt(g_dtp, "strsize", "256");
 
 	/*
 	 * If -G is specified, enable -xlink=dynamic and -xunodefs to permit
@@ -1564,9 +3052,11 @@ main(int argc, char *argv[])
 				g_cflags |= DTRACE_C_SUGAR;
 				break;
 
-			case 'D':
-				if (dtrace_setopt(g_dtp, "define", optarg) != 0)
-					dfatal("failed to set -D %s", optarg);
+			case '1':
+				if (strlen(optarg) >= MAXPATHLEN)
+					fatal("strlen(%s) (%zu) > %zu", optarg,
+					    strlen(optarg), MAXPATHLEN / 4 - 1);
+				strcpy(g_bench_path, optarg);
 				break;
 
 			case 'f':
@@ -1615,6 +3105,31 @@ main(int argc, char *argv[])
 				dcp->dc_func = compile_str;
 				dcp->dc_spec = DTRACE_PROBESPEC_NAME;
 				dcp->dc_arg = optarg;
+				g_script = strdup(optarg);
+				break;
+
+			case 'N':
+				if (read(STDIN_FILENO, &idents_to_read,
+				    sizeof(idents_to_read)) == -1)
+					fatal(
+					    "failed to read number of identifiers");
+
+				idents =
+				    malloc(idents_to_read * DT_PROG_IDENTLEN);
+				if (idents == NULL)
+					fatal("failed to allocate idents");
+
+				if ((rv = read(STDIN_FILENO, idents,
+				    idents_to_read * DT_PROG_IDENTLEN)) == -1)
+					fatal("failed to read identifiers");
+
+				if (rv == 0)
+					fatal("expected identifiers, got 0 bytes");
+
+				dtrace_compile_idents_set(
+				    g_dtp, idents, idents_to_read);
+				free(idents);
+				g_has_idents = 1;
 				break;
 
 			case 'P':
@@ -1627,6 +3142,10 @@ main(int argc, char *argv[])
 			case 'q':
 				if (dtrace_setopt(g_dtp, "quiet", 0) != 0)
 					dfatal("failed to set -q");
+				break;
+
+			case 'r':
+				g_allow_root_srcident = 1;
 				break;
 
 			case 'o':
@@ -1649,6 +3168,10 @@ main(int argc, char *argv[])
 					dfatal("failed to set -U %s", optarg);
 				break;
 
+			case 'u':
+				g_unsafe = 1;
+				break;
+
 			case 'v':
 				g_verbose++;
 				break;
@@ -1661,6 +3184,34 @@ main(int argc, char *argv[])
 			case 'x':
 				if ((p = strchr(optarg, '=')) != NULL)
 					*p++ = '\0';
+
+				len1 = strlen(optarg);
+				len2 = strlen("resolvers");
+
+				/*
+				 * If the option is of form
+				 * "resolvers=hostname,version"
+				 * we get the two arguments, set the global
+				 * variable to have the appropriate flags and
+				 * break out of the switch statement.
+				 */
+				if (len1 == len2 &&
+				    strncmp(optarg, "resolvers", len1) == 0) {
+					if ((p2 = strchr(p, ',')) != NULL)
+						*p2++ = '\0';
+
+					if (strcmp(p, "hostname") != 0      &&
+					    ((p2 && strcmp(p2, "hostname")) ||
+					    p2 == NULL))
+						rslv &= ~(1 << DT_RSLV_HOSTNAME);
+
+					if (strcmp(p, "version") != 0      &&
+					    ((p2 && strcmp(p2, "version")) ||
+					    p2 == NULL))
+						rslv &= ~(1 << DT_RSLV_VERSION);
+
+					break;
+				}
 
 				if (dtrace_setopt(g_dtp, optarg, p) != 0)
 					dfatal("failed to set -x %s", optarg);
@@ -1681,6 +3232,8 @@ main(int argc, char *argv[])
 			}
 		}
 	}
+
+	dt_resolver_setflags(rslv);
 
 	if (g_ofp == NULL && g_mode != DMODE_EXEC) {
 		(void) fprintf(stderr, "%s: -B not valid in combination"
@@ -1777,11 +3330,19 @@ main(int argc, char *argv[])
 		if (g_ofile != NULL && (g_ofp = fopen(g_ofile, "a")) == NULL)
 			fatal("failed to open output file '%s'", g_ofile);
 
+
 		for (i = 0; i < g_cmdc; i++)
 			exec_prog(&g_cmdv[i]);
 
 		if (done && !g_grabanon) {
-			dtrace_close(g_dtp);
+			pthread_mutex_lock(&g_dtpmtx);
+			if (g_dtp)
+				dtrace_close(g_dtp);
+			g_dtp = NULL;
+			pthread_mutex_unlock(&g_dtpmtx);
+
+			pthread_mutex_destroy(&g_dtpmtx);
+
 			return (g_status);
 		}
 		break;
@@ -1804,7 +3365,13 @@ main(int argc, char *argv[])
 #endif
 
 		if (g_cmdc == 0) {
+			pthread_mutex_lock(&g_dtpmtx);
 			dtrace_close(g_dtp);
+			g_dtp = NULL;
+			pthread_mutex_unlock(&g_dtpmtx);
+
+			pthread_mutex_destroy(&g_dtpmtx);
+
 			return (g_status);
 		}
 
@@ -1839,8 +3406,9 @@ main(int argc, char *argv[])
 		etcsystem_add();
 		error("run update_drv(1M) or reboot to enable changes\n");
 #endif
-
+		
 		dtrace_close(g_dtp);
+
 		return (g_status);
 
 	case DMODE_LINK:
@@ -1848,6 +3416,7 @@ main(int argc, char *argv[])
 			(void) fprintf(stderr, "%s: -G requires one or more "
 			    "scripts or enabling options\n", g_pname);
 			dtrace_close(g_dtp);
+
 			return (E_USAGE);
 		}
 
@@ -1884,6 +3453,7 @@ main(int argc, char *argv[])
 			(void) dtrace_probe_iter(g_dtp, NULL, list_probe, NULL);
 
 		dtrace_close(g_dtp);
+
 		return (g_status);
 
 	case DMODE_HEADER:
@@ -1891,6 +3461,7 @@ main(int argc, char *argv[])
 			(void) fprintf(stderr, "%s: -h requires one or more "
 			    "scripts or enabling options\n", g_pname);
 			dtrace_close(g_dtp);
+
 			return (E_USAGE);
 		}
 
@@ -1902,6 +3473,7 @@ main(int argc, char *argv[])
 				    "output file if multiple scripts are "
 				    "specified\n", g_pname);
 				dtrace_close(g_dtp);
+				
 				return (E_USAGE);
 			}
 
@@ -1910,6 +3482,7 @@ main(int argc, char *argv[])
 				(void) fprintf(stderr, "%s: -h requires an "
 				    "output file if no scripts are "
 				    "specified\n", g_pname);
+				
 				dtrace_close(g_dtp);
 				return (E_USAGE);
 			}
@@ -1940,87 +3513,13 @@ main(int argc, char *argv[])
 	if (g_total == 0 && !g_grabanon && !(g_cflags & DTRACE_C_ZDEFS))
 		dfatal("no probes %s\n", g_cmdc ? "matched" : "specified");
 
-	/*
-	 * Start tracing.  Once we dtrace_go(), reload any options that affect
-	 * our globals in case consuming anonymous state has changed them.
-	 */
-	go();
+	setup_tracing();
+	(void) dtc_work(NULL);
+	pthread_mutex_lock(&g_dtpmtx);
+	if (g_dtp)
+		dtrace_close(g_dtp);
+	pthread_mutex_unlock(&g_dtpmtx);
 
-	(void) dtrace_getopt(g_dtp, "flowindent", &opt);
-	g_flowindent = opt != DTRACEOPT_UNSET;
-
-	(void) dtrace_getopt(g_dtp, "grabanon", &opt);
-	g_grabanon = opt != DTRACEOPT_UNSET;
-
-	(void) dtrace_getopt(g_dtp, "quiet", &opt);
-	g_quiet = opt != DTRACEOPT_UNSET;
-
-	(void) dtrace_getopt(g_dtp, "destructive", &opt);
-	if (opt != DTRACEOPT_UNSET)
-		notice("allowing destructive actions\n");
-
-	installsighands();
-
-	/*
-	 * Now that tracing is active and we are ready to consume trace data,
-	 * continue any grabbed or created processes, setting them running
-	 * using the /proc control mechanism inside of libdtrace.
-	 */
-	for (i = 0; i < g_psc; i++)
-		dtrace_proc_continue(g_dtp, g_psv[i]);
-
-	g_pslive = g_psc; /* count for prochandler() */
-
-	do {
-		if (!g_intr && !done)
-			dtrace_sleep(g_dtp);
-
-#ifdef __FreeBSD__
-		if (g_siginfo) {
-			(void)dtrace_aggregate_print(g_dtp, g_ofp, NULL);
-			g_siginfo = 0;
-		}
-#endif
-
-		if (g_newline) {
-			/*
-			 * Output a newline just to make the output look
-			 * slightly cleaner.  Note that we do this even in
-			 * "quiet" mode...
-			 */
-			oprintf("\n");
-			g_newline = 0;
-		}
-
-		if (done || g_intr || (g_psc != 0 && g_pslive == 0)) {
-			done = 1;
-			if (dtrace_stop(g_dtp) == -1)
-				dfatal("couldn't stop tracing");
-		}
-
-		switch (dtrace_work(g_dtp, g_ofp, chew, chewrec, NULL)) {
-		case DTRACE_WORKSTATUS_DONE:
-			done = 1;
-			break;
-		case DTRACE_WORKSTATUS_OKAY:
-			break;
-		default:
-			if (!g_impatient && dtrace_errno(g_dtp) != EINTR)
-				dfatal("processing aborted");
-		}
-
-		if (g_ofp != NULL && fflush(g_ofp) == EOF)
-			clearerr(g_ofp);
-	} while (!done);
-
-	oprintf("\n");
-
-	if (!g_impatient) {
-		if (dtrace_aggregate_print(g_dtp, g_ofp, NULL) == -1 &&
-		    dtrace_errno(g_dtp) != EINTR)
-			dfatal("failed to print aggregations");
-	}
-
-	dtrace_close(g_dtp);
+	pthread_mutex_destroy(&g_dtpmtx);
 	return (g_status);
 }

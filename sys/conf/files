@@ -1598,6 +1598,7 @@ dev/drm2/ttm/ttm_execbuf_util.c	optional drm2
 dev/drm2/ttm/ttm_memory.c	optional drm2
 dev/drm2/ttm/ttm_page_alloc.c	optional drm2
 dev/drm2/ttm/ttm_bo_vm.c	optional drm2
+dev/dttransport/dttransport.c	standard
 dev/efidev/efidev.c		optional efirt
 dev/efidev/efirt.c		optional efirt
 dev/efidev/efirtc.c		optional efirt
@@ -3411,6 +3412,7 @@ dev/virtio/balloon/virtio_balloon.c	optional	virtio_balloon
 dev/virtio/scsi/virtio_scsi.c		optional	virtio_scsi
 dev/virtio/random/virtio_random.c	optional	virtio_random
 dev/virtio/console/virtio_console.c	optional	virtio_console
+dev/virtio/dtrace/virtio_dtrace.c	optional	virtio_dtrace
 dev/vkbd/vkbd.c			optional vkbd
 dev/vmgenc/vmgenc_acpi.c	optional acpi
 dev/vmware/vmxnet3/if_vmx.c		optional vmx
@@ -3878,6 +3880,8 @@ kern/subr_module.c		standard
 kern/subr_msan.c		optional kmsan \
 	compile-with "${NORMAL_C:N-fsanitize*:N-fstack-protector*}"
 kern/subr_msgbuf.c		standard
+kern/subr_msgid.c		standard
+kern/subr_mbufid.c		standard
 kern/subr_param.c		standard
 kern/subr_pcpu.c		standard
 kern/subr_pctrie.c		standard
@@ -5114,6 +5118,7 @@ security/audit/bsm_errno.c	optional audit
 security/audit/bsm_fcntl.c	optional audit
 security/audit/bsm_socket_type.c	optional audit
 security/audit/bsm_token.c	optional audit
+security/audit/audit_ret.c	optional audit
 security/mac/mac_audit.c	optional mac audit
 security/mac/mac_cred.c		optional mac
 security/mac/mac_kdb.c		optional mac

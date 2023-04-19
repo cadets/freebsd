@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2019 Vincenzo Maffione <vmaffione@FreeBSD.org>
+ * Copyright (c) 2022 Domagoj Stolfa <ds815@cam.ac.uk>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #ifndef WITHOUT_CAPSICUM
 #include <sys/capsicum.h>
 #endif
+#include <sys/_mbufid.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/uio.h>
@@ -78,8 +80,11 @@ __FBSDID("$FreeBSD$");
 #include <netgraph.h>
 #endif
 
+#include <sys/sdt.h>
+
 #include "config.h"
 #include "debug.h"
+#include "globals.h"
 #include "iov.h"
 #include "mevent.h"
 #include "net_backends.h"
@@ -154,6 +159,16 @@ struct net_backend {
 	int (*set_cap)(struct net_backend *be, uint64_t features,
 	    unsigned int vnet_hdr_len);
 
+	/*
+	 * Figure out if a particular backend supports packet tagging.
+	 */
+	int (*tagging_supported)(struct net_backend *be);
+
+	/*
+	 * Ask a particular backend to enable its packet tagging.
+	 */
+	int (*tagging_enable)(struct net_backend *be);
+
 	struct pci_vtnet_softc *sc;
 	int fd;
 
@@ -167,6 +182,9 @@ struct net_backend {
 
 	/* Size of backend-specific private data. */
 	size_t priv_size;
+
+	/* Does this backend have tagging enabled? */
+	int tagging_enabled;
 
 	/* Backend-specific private data follows. */
 };
@@ -218,6 +236,7 @@ tap_cleanup(struct net_backend *be)
 		close(be->fd);
 		be->fd = -1;
 	}
+	be->tagging_enabled = 0;
 }
 
 static int
@@ -233,6 +252,8 @@ tap_init(struct net_backend *be, const char *devname,
 #endif
 #ifndef WITHOUT_CAPSICUM
 	cap_rights_t rights;
+	cap_ioctl_t ioctls[] = { TAPSTAGGING };
+	size_t nioctls = nitems(ioctls);
 #endif
 
 	if (cb == NULL) {
@@ -292,9 +313,12 @@ tap_init(struct net_backend *be, const char *devname,
 #endif
 
 #ifndef WITHOUT_CAPSICUM
-	cap_rights_init(&rights, CAP_EVENT, CAP_READ, CAP_WRITE);
+	cap_rights_init(&rights, CAP_EVENT, CAP_READ, CAP_WRITE, CAP_IOCTL);
 	if (caph_rights_limit(be->fd, &rights) == -1)
 		errx(EX_OSERR, "Unable to apply rights for sandbox");
+
+	if (cap_ioctls_limit(be->fd, ioctls, nioctls) == -1)
+		errx(EX_OSERR, "Unable to apply ioctl limits for sandbox");
 #endif
 
 	memset(priv->bbuf, 0, sizeof(priv->bbuf));
@@ -319,6 +343,17 @@ error:
 static ssize_t
 tap_send(struct net_backend *be, const struct iovec *iov, int iovcnt)
 {
+	mbufid_t *mbufidp = NULL;
+
+	if (be->tagging_enabled) {
+		if (iovcnt > 0)
+			mbufidp = iov[0].iov_base;
+		else
+			mbufidp = (mbufid_t *)0xFEEDFACE;
+
+		DTRACE_PROBE2(netbe, tap__send, g_vmname, mbufidp);
+	}
+
 	return (writev(be->fd, iov, iovcnt));
 }
 
@@ -357,8 +392,20 @@ tap_recv(struct net_backend *be, const struct iovec *iov, int iovcnt)
 {
 	struct tap_priv *priv = NET_BE_PRIV(be);
 	ssize_t ret;
+	mbufid_t *mbufidp = NULL;
 
 	if (priv->bbuflen > 0) {
+		/*
+		 * If we have a buffer, the mbufid will be at the start of the
+		 * buffer so we can just call the DTrace probe with the pointer
+		 * to the buffer and assume that the script will simply access
+		 * sizeof(mbufid_t) bytes of it.
+		 */
+		if (be->tagging_enabled) {
+			mbufidp = (mbufid_t *)priv->bbuf;
+			DTRACE_PROBE2(netbe, tap__recv, g_vmname, mbufidp);
+		}
+
 		/*
 		 * A packet is available in the bounce buffer, so
 		 * we read it from there.
@@ -375,6 +422,12 @@ tap_recv(struct net_backend *be, const struct iovec *iov, int iovcnt)
 	ret = readv(be->fd, iov, iovcnt);
 	if (ret < 0 && errno == EWOULDBLOCK) {
 		return (0);
+	}
+
+	if (be->tagging_enabled) {
+		assert(iovcnt > 1);
+		mbufidp = iov[1].iov_base;
+		DTRACE_PROBE2(netbe, tap__recv, g_vmname, mbufidp);
 	}
 
 	return (ret);
@@ -411,6 +464,30 @@ tap_set_cap(struct net_backend *be __unused, uint64_t features,
 	return ((features || vnet_hdr_len) ? -1 : 0);
 }
 
+static int
+tap_tagging_supported(struct net_backend *be)
+{
+#ifdef TAPSTAGGING
+	return (1);
+#else
+	return (0);
+#endif
+}
+
+static int
+tap_tagging_enable(struct net_backend *be)
+{
+	int flag = 1;
+
+#ifdef TAPSTAGGING
+	be->tagging_enabled = 1;
+	return (ioctl(be->fd, TAPSTAGGING, &flag));
+#else
+	be->tagging_enabled = 0;
+	return (0);
+#endif
+}
+
 static struct net_backend tap_backend = {
 	.prefix = "tap",
 	.priv_size = sizeof(struct tap_priv),
@@ -423,6 +500,8 @@ static struct net_backend tap_backend = {
 	.recv_disable = tap_recv_disable,
 	.get_cap = tap_get_cap,
 	.set_cap = tap_set_cap,
+	.tagging_supported = tap_tagging_supported,
+	.tagging_enable = tap_tagging_enable,
 };
 
 /* A clone of the tap backend, with a different prefix. */
@@ -438,6 +517,8 @@ static struct net_backend vmnet_backend = {
 	.recv_disable = tap_recv_disable,
 	.get_cap = tap_get_cap,
 	.set_cap = tap_set_cap,
+	.tagging_supported = tap_tagging_supported,
+	.tagging_enable = tap_tagging_enable,
 };
 
 DATA_SET(net_backend_set, tap_backend);
@@ -590,6 +671,8 @@ static struct net_backend ng_backend = {
 	.recv_disable = tap_recv_disable,
 	.get_cap = tap_get_cap,
 	.set_cap = tap_set_cap,
+	.tagging_supported = tap_tagging_supported,
+	.tagging_enable = tap_tagging_enable,
 };
 
 DATA_SET(net_backend_set, ng_backend);
@@ -913,6 +996,20 @@ netmap_recv_disable(struct net_backend *be)
 	mevent_disable(priv->mevp);
 }
 
+static int
+netmap_tagging_supported(struct net_backend *be)
+{
+
+	return (0);
+}
+
+static int
+netmap_tagging_enable(struct net_backend *be)
+{
+
+	return (-1);
+}
+
 static struct net_backend netmap_backend = {
 	.prefix = "netmap",
 	.priv_size = sizeof(struct netmap_priv),
@@ -925,6 +1022,8 @@ static struct net_backend netmap_backend = {
 	.recv_disable = netmap_recv_disable,
 	.get_cap = netmap_get_cap,
 	.set_cap = netmap_set_cap,
+	.tagging_supported = netmap_tagging_supported,
+	.tagging_enable = netmap_tagging_enable,
 };
 
 /* A clone of the netmap backend, with a different prefix. */
@@ -940,6 +1039,8 @@ static struct net_backend vale_backend = {
 	.recv_disable = netmap_recv_disable,
 	.get_cap = netmap_get_cap,
 	.set_cap = netmap_set_cap,
+	.tagging_supported = netmap_tagging_supported,
+	.tagging_enable = netmap_tagging_enable,
 };
 
 DATA_SET(net_backend_set, netmap_backend);
@@ -1098,6 +1199,27 @@ netbe_peek_recvlen(struct net_backend *be)
 	return (be->peek_recvlen(be));
 }
 
+int
+netbe_tagging_enabled(struct net_backend *be)
+{
+
+	return (be->tagging_enabled);
+}
+
+int
+netbe_tagging_supported(struct net_backend *be)
+{
+
+	return (be->tagging_supported(be));
+}
+
+int
+netbe_tagging_enable(struct net_backend *be)
+{
+
+	return (be->tagging_enable(be));
+}
+
 /*
  * Try to read a packet from the backend, without blocking.
  * If no packets are available, return 0. In case of success, return
@@ -1123,7 +1245,7 @@ netbe_rx_discard(struct net_backend *be)
 	 * so there is no need for it to be per-vtnet or locked.
 	 * We only make it large enough for TSO-sized segment.
 	 */
-	static uint8_t dummybuf[65536 + 64];
+	static uint8_t dummybuf[65536 + 64 + sizeof(mbufid_t)];
 	struct iovec iov;
 
 	iov.iov_base = dummybuf;

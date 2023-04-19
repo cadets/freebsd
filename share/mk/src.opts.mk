@@ -198,7 +198,13 @@ __DEFAULT_NO_OPTIONS = \
     CLANG_FORMAT \
     DETECT_TZ_CHANGES \
     DISK_IMAGE_TOOLS_BOOTSTRAP \
+    DTRACE_BENCHMARKS \
+    DTRACE_DEBUG_ASAN \
+    DTRACE_DEBUG_TSAN \
+    DTRACE_OPTIMIZED \
     DTRACE_TESTS \
+    DTRACED_DEBUG \
+    DTRACED_ROBUST \
     EXPERIMENTAL \
     HESIOD \
     LOADER_VERBOSE \
@@ -398,6 +404,12 @@ MK_BSDINSTALL:=	no
 
 .if ${MK_DTRACE} == "no"
 MK_CTF:=	no
+.endif
+
+# TODO: Something to make this work with `make makeman` and perhaps cleaner?
+.if !make(showconfig) && ${MK_DTRACE_DEBUG_ASAN} != "no" && ${MK_DTRACE_DEBUG_TSAN} != "no"
+.error ${.newline}ERROR: WITH_DTRACE_DEBUG_ASAN and WITH_DTRACE_DEBUG_TSAN\
+can not be set together.
 .endif
 
 .if ${MK_MAIL} == "no"

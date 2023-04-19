@@ -399,6 +399,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		dtrace_vstate_t *vstate;
 		int err = 0;
 		int rval;
+		int ndesc = 0;
+		int i;
+		int pbbufsize = 0;
+		dtrace_probedesc_t *probes = NULL;
 		dtrace_enable_io_t *p = (dtrace_enable_io_t *) addr;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_ENABLE\n",__func__,__LINE__);
@@ -413,14 +417,19 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			return (0);
 		}
 
-		if ((dof = dtrace_dof_copyin((uintptr_t) p->dof, &rval)) == NULL)
+		if ((dof = dtrace_dof_copyin((uintptr_t)p->dof, &rval)) == NULL)
 			return (EINVAL);
+
+		state->dts_dof = kmem_alloc(dof->dofh_filesz, KM_SLEEP);
+		bcopy(dof, state->dts_dof, dof->dofh_filesz);
 
 		mutex_enter(&cpu_lock);
 		mutex_enter(&dtrace_lock);
 		vstate = &state->dts_vstate;
+		dtrace_curvmid = p->vmid;
 
 		if (state->dts_activity != DTRACE_ACTIVITY_INACTIVE) {
+			dtrace_curvmid = 0;
 			mutex_exit(&dtrace_lock);
 			mutex_exit(&cpu_lock);
 			dtrace_dof_destroy(dof);
@@ -429,6 +438,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		if (dtrace_dof_slurp(dof, vstate, td->td_ucred, &enab, 0, 0,
 		    B_TRUE) != 0) {
+			dtrace_curvmid = 0;
 			mutex_exit(&dtrace_lock);
 			mutex_exit(&cpu_lock);
 			dtrace_dof_destroy(dof);
@@ -437,6 +447,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		if ((rval = dtrace_dof_options(dof, state)) != 0) {
 			dtrace_enabling_destroy(enab);
+			dtrace_curvmid = 0;
 			mutex_exit(&dtrace_lock);
 			mutex_exit(&cpu_lock);
 			dtrace_dof_destroy(dof);
@@ -445,12 +456,45 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		if ((err = dtrace_enabling_match(enab, &p->n_matched)) == 0) {
 			err = dtrace_enabling_retain(enab);
+			if (err == 0 && p->n_matched > 0 && p->ps != NULL) {
+				/*
+				 * Patch up our probes so that userspace knows
+				 * what was enabled.
+				 */
+				probes = dtrace_enabling_list(
+				    enab, &ndesc, &pbbufsize);
+				if (probes == NULL) {
+					dtrace_curvmid = 0;
+					mutex_exit(&dtrace_lock);
+					mutex_exit(&cpu_lock);
+					return (ENOMEM);
+				}
+
+				if (ndesc > p->n_matched) {
+					dtrace_curvmid = 0;
+					mutex_exit(&dtrace_lock);
+					mutex_exit(&cpu_lock);
+					return (EINTEGRITY);
+				}
+
+				p->n_desc = ndesc;
+			}
 		} else {
 			dtrace_enabling_destroy(enab);
 		}
 
+		dtrace_curvmid = 0;
 		mutex_exit(&cpu_lock);
 		mutex_exit(&dtrace_lock);
+
+		if (err == 0 &&
+		    (ndesc * sizeof(dtrace_probedesc_t) <= p->ps_bufsize)) {
+			err = copyout(probes, p->ps,
+			    ndesc * sizeof(dtrace_probedesc_t));
+		}
+
+		if (probes)
+			kmem_free(probes, pbbufsize);
 		dtrace_dof_destroy(dof);
 
 		return (err);
@@ -485,6 +529,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		epdesc.dtepd_probeid = ecb->dte_probe->dtpr_id;
 		epdesc.dtepd_uarg = ecb->dte_uarg;
 		epdesc.dtepd_size = ecb->dte_size;
+		epdesc.dtepd_vmid = ecb->dte_probe->dtpr_vmid;
 
 		nrecs = epdesc.dtepd_nrecs;
 		epdesc.dtepd_nrecs = 0;
@@ -578,13 +623,17 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_GO\n",__func__,__LINE__);
 
 		rval = dtrace_state_go(state, cpuid);
-
 		return (rval);
 	}
 	case DTRACEIOC_PROBEARG: {
 		dtrace_argdesc_t *desc = (dtrace_argdesc_t *) addr;
 		dtrace_probe_t *probe;
 		dtrace_provider_t *prov;
+		dtrace_probe_t **dtrace_probes;
+		int dtrace_nprobes;
+
+		dtrace_probes = dtrace_vprobes[HYPERTRACE_HOSTID];
+		dtrace_nprobes = dtrace_nvprobes[HYPERTRACE_HOSTID];
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_PROBEARG\n",__func__,__LINE__);
 
@@ -620,7 +669,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		mutex_exit(&dtrace_lock);
 
-		prov = probe->dtpr_provider;
+		prov = (dtrace_provider_t *)probe->dtpr_provider;
 
 		if (prov->dtpv_pops.dtps_getargdesc == NULL) {
 			/*
@@ -654,6 +703,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		uint32_t priv = 0;
 		uid_t uid = 0;
 		zoneid_t zoneid = 0;
+		dtrace_vmid_t vmid;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): %s\n",__func__,__LINE__,
 		    cmd == DTRACEIOC_PROBEMATCH ?
@@ -663,6 +713,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		p_desc->dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
 		p_desc->dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
 		p_desc->dtpd_name[DTRACE_NAMELEN - 1] = '\0';
+		vmid = p_desc->dtpd_vmid;
 
 		/*
 		 * Before we attempt to match this probe, we want to give
@@ -685,8 +736,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_enter(&dtrace_lock);
 
 		if (cmd == DTRACEIOC_PROBEMATCH) {
-			for (i = p_desc->dtpd_id; i <= dtrace_nprobes; i++) {
-				if ((probe = dtrace_probes[i - 1]) != NULL &&
+			for (i = p_desc->dtpd_id;
+			    i <= dtrace_nvprobes[vmid]; i++) {
+				if ((probe =
+				    dtrace_vprobes[vmid][i - 1]) != NULL &&
 				    (m = dtrace_match_probe(probe, &pkey,
 				    priv, uid, zoneid)) != 0)
 					break;
@@ -698,8 +751,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			}
 
 		} else {
-			for (i = p_desc->dtpd_id; i <= dtrace_nprobes; i++) {
-				if ((probe = dtrace_probes[i - 1]) != NULL &&
+			for (i = p_desc->dtpd_id;
+			    i <= dtrace_nvprobes[vmid]; i++) {
+				if ((probe =
+				    dtrace_vprobes[vmid][i - 1]) != NULL &&
 				    dtrace_match_priv(probe, priv, uid, zoneid))
 					break;
 			}
@@ -840,6 +895,114 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_exit(&dtrace_lock);
 
 		return (rval);
+	}
+	case DTRACEIOC_AUGMENT: {
+		dof_hdr_t *dof = NULL;
+		dtrace_enabling_t *enab = NULL;
+		dtrace_vstate_t *vstate;
+		int err = 0;
+		int rval;
+		dtrace_enable_io_t *p = (dtrace_enable_io_t *) addr;
+
+		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_AUGMENT\n",__func__,__LINE__);
+
+		if (p->dof == NULL)
+			return (EINVAL);
+
+		if ((dof = dtrace_dof_copyin(
+		    (uintptr_t)p->dof, &rval)) == NULL)
+			return (EINVAL);
+
+		mutex_enter(&cpu_lock);
+		mutex_enter(&dtrace_lock);
+		vstate = &state->dts_vstate;
+		dtrace_curvmid = p->vmid;
+
+		/*
+		 * XXX: For now we don't allocate a dts_vdof (or dts_dof) for
+		 * DDTrace.
+		 */
+
+		if (state->dts_activity != DTRACE_ACTIVITY_ACTIVE) {
+			mutex_exit(&dtrace_lock);
+			mutex_exit(&cpu_lock);
+			dtrace_dof_destroy(dof);
+			return (ESHUTDOWN);
+		}
+
+		if (dtrace_dof_slurp(dof, vstate, td->td_ucred, &enab, 0, 0,
+		    B_TRUE) != 0) {
+			mutex_exit(&dtrace_lock);
+			mutex_exit(&cpu_lock);
+			dtrace_dof_destroy(dof);
+			return (EINVAL);
+		}
+
+		/*
+		 * We don't allow changing options in this ioctl.
+		 */
+		if ((err = dtrace_enabling_match(enab, &p->n_matched)) == 0)
+			err = dtrace_enabling_retain(enab);
+		else
+			dtrace_enabling_destroy(enab);
+
+		mutex_exit(&cpu_lock);
+		mutex_exit(&dtrace_lock);
+		dtrace_dof_destroy(dof);
+
+		return (err);
+	}
+	case DTRACEIOC_VPROBE_CREATE: {
+		dtrace_vprobe_io_t *p = (dtrace_vprobe_io_t *) addr;
+		dtrace_probedesc_t *vprobes_to_create;
+		dtrace_probedesc_t *vprobe;
+		size_t n_vprobes_to_create;
+		size_t i;
+		int needs_increment = 0;
+		int err;
+		uint16_t vmid;
+		dtrace_id_t id;
+
+		err = 0;
+
+		DTRACE_IOCTL_PRINTF(
+		    "%s(%d): DTRACEIOC_VPROBE_CREATE\n", __func__, __LINE__);
+
+		if (p->eprobes == NULL || p->neprobes == 0)
+			return (EINVAL);
+
+		if (p->vmid == 0)
+			return (EDOOFUS);
+
+		vmid = p->vmid;
+		n_vprobes_to_create = p->neprobes;
+		/*
+		 * We would overflow the integer, so we just return.
+		 */
+		if (n_vprobes_to_create > SIZE_MAX/sizeof(dtrace_probedesc_t))
+			return (EINVAL);
+
+		vprobes_to_create = kmem_zalloc(
+		    sizeof(dtrace_probedesc_t) * n_vprobes_to_create, KM_SLEEP);
+		ASSERT(vprobes_to_create != NULL);
+		ASSERT(n_vprobes_to_create != 0);
+
+		if (copyin(p->eprobes, vprobes_to_create,
+		    sizeof(dtrace_probedesc_t) * n_vprobes_to_create))
+			return (EFAULT);
+
+		mutex_enter(&dtrace_provider_lock);
+		mutex_enter(&cpu_lock);
+		mutex_enter(&dtrace_lock);
+
+		hypertrace_create_probes(vmid, vprobes_to_create,
+		    n_vprobes_to_create);
+
+		mutex_exit(&dtrace_lock);
+		mutex_exit(&cpu_lock);
+		mutex_exit(&dtrace_provider_lock);
+		
+		return (0);
 	}
 	default:
 		error = ENOTTY;
