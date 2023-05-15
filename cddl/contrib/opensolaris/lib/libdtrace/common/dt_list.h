@@ -43,6 +43,8 @@
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
 
+#include <stdint.h>
+
 #ifdef	__cplusplus
 extern "C" {
 #endif

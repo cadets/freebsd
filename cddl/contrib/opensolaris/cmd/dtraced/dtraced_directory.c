@@ -811,11 +811,11 @@ failmsg:
 			if (argv[2] == NULL)
 				abort();
 
-			argv[3] = strdup("-q");
+			argv[3] = strdup("-v");
 			if (argv[3] == NULL)
 				abort();
 
-			argv[4] = strdup("-q");
+			argv[4] = strdup("-v");
 			if (argv[4] == NULL)
 				abort();
 

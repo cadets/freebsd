@@ -2673,9 +2673,6 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		ident = ident_entry->dtil_ident;
 		assert(ident != NULL);
 
-		fprintf(stderr, "cmp %hhx%hhx%hhx with %hhx%hhx%hhx\n",
-		    ident[0], ident[1], ident[2], eprog->dtep_srcident[0],
-		    eprog->dtep_srcident[1], eprog->dtep_srcident[2]);
 		if (memcmp(ident, eprog->dtep_srcident,
 		    DT_PROG_IDENTLEN) == 0) {
 			found = 1;

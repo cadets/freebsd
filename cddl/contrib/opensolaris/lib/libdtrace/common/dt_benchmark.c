@@ -39,6 +39,7 @@
 
 #include <sys/dtrace.h>
 
+#include <assert.h>
 #include <dt_impl.h>
 #include <dtrace.h>
 #include <libxo/xo.h>
@@ -351,6 +352,7 @@ dt_bench_hdl_attach(dt_benchmark_t *b, dt_snapshot_hdl_t hdl, uint64_t data)
 void
 dt_snapshot_setinfo(dt_benchmark_t *b, dt_snapshot_hdl_t snap, const char *name)
 {
+	assert(b->dtbe_snapnames != NULL);
 
 	b->dtbe_snapnames[snap] = strdup(name);
 	if (b->dtbe_snapnames[snap] == NULL)
@@ -385,6 +387,13 @@ dt_bench_file(const char *p, char *rp)
 {
 
 	return (realpath(p, rp));
+}
+
+void
+dt_bench_destroy(dt_benchmark_t *b)
+{
+
+	free(b);
 }
 
 #endif // __DTRACE_RUN_BENCHMARKS__

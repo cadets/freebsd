@@ -986,6 +986,16 @@ new_bench_list_entry(dt_benchmark_t *bench)
 	return (new);
 }
 
+static void
+append_bench_locked(dt_benchmark_t *bench)
+{
+
+	pthread_mutex_lock(&g_benchlistmtx);
+	dt_list_append(&g_benchlist, new_bench_list_entry(bench));
+	pthread_mutex_unlock(&g_benchlistmtx);
+}
+
+
 static void *
 listen_dtraced(void *arg)
 {
@@ -1060,6 +1070,7 @@ listen_dtraced(void *arg)
 			fatal("failed to start bench: %s", __LINE__);
 
 		if (atomic_load(&g_intr)) {
+			dt_bench_destroy(bench);
 			done = 1;
 			break;
 		}
@@ -1070,6 +1081,8 @@ listen_dtraced(void *arg)
 		}
 
 		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
+			dt_bench_destroy(bench);
+
 			/*
 			 * We shouldn't be receiving a kill command, so let's
 			 * just report it and ignore it...
@@ -1106,6 +1119,7 @@ listen_dtraced(void *arg)
 		}
 
 		if (atomic_load(&g_intr)) {
+			dt_bench_destroy(bench);
 			done = 1;
 			break;
 		}
@@ -1171,7 +1185,7 @@ process_prog:
 		cshdl = __dt_bench_snapshot_time(bench);
 		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
 		if (newprog == NULL && err != EAGAIN) {
-			dt_bench_hdl_attach(bench, cshdl, ABORTED);
+			dt_bench_destroy(bench);
 			close(fd);
 			continue;
 		}
@@ -1194,24 +1208,23 @@ process_prog:
 			 * particular entry. Report it and go back to sleep.
 			 */
 			if (found == 0) {
-				__dt_bench_stop_time(bench);
-				dt_bench_hdl_attach(bench, cshdl, ABORTED);
+				dt_bench_destroy(bench);
 				pthread_mutex_unlock(&g_pgplistmtx);
 				continue;
 			} else if (pgpl_valid(newpgpl)) {
 				fprintf(stderr,
-				    "Found a valid pgpl. Sleeping...");
+				    "dtrace: found a valid pgpl, sleeping...");
 				pthread_mutex_unlock(&g_pgplistmtx);
+				dt_bench_destroy(bench);
 				continue;
 			}
 
 			newprog = dt_elf_to_prog(g_dtp, fd, 0, &err,
 			    newpgpl->gpgp);
 			if (newprog == NULL) {
-				__dt_bench_stop_time(bench);
-				dt_bench_hdl_attach(bench, cshdl, ABORTED);
 				close(fd);
 				pthread_mutex_unlock(&g_pgplistmtx);
+				dt_bench_destroy(bench);
 				continue;
 			}
 		}
@@ -1238,8 +1251,10 @@ process_prog:
 			dabort("malloc of newpgpl failed");
 
 		if (pgpl_valid(newpgpl)) {
-			fprintf(stderr, "Found a valid pgpl. Sleeping...");
+			fprintf(stderr,
+			    "dtrace: found a valid pgpl, sleeping...");
 			pthread_mutex_unlock(&g_pgplistmtx);
+			dt_bench_destroy(bench);
 			continue;
 		}
 
@@ -1252,6 +1267,7 @@ process_prog:
 		 */
 		if (newpgpl->vmid != 0 && (newpgpl->vmid != vmid)) {
 			pthread_mutex_unlock(&g_pgplistmtx);
+			dt_bench_destroy(bench);
 			syslog(LOG_SECURITY, "vmid (%u) is claiming to be %u\n",
 			    vmid, newpgpl->vmid);
 			fprintf(stderr, "vmid (%u) is claiming to be %u\n",
@@ -1268,6 +1284,7 @@ process_prog:
 				    vm_name == NULL ? "host" : vm_name, vmid);
 				free(newpgpl);
 				pthread_mutex_unlock(&g_pgplistmtx);
+				dt_bench_destroy(bench);
 				continue;
 			}
 
@@ -1309,6 +1326,7 @@ process_prog:
 				    strerror(errno));
 				dt_verictx_teardown(verictx);
 				pthread_mutex_unlock(&g_pgplistmtx);
+				dt_bench_destroy(bench);
 				pthread_exit(NULL);
 			}
 
@@ -1317,6 +1335,7 @@ process_prog:
 				    strerror(errno));
 				dt_verictx_teardown(verictx);
 				pthread_mutex_unlock(&g_pgplistmtx);
+				dt_bench_destroy(bench);
 				pthread_exit(NULL);
 			}
 			__dt_bench_snapshot_time(bench);
@@ -1331,6 +1350,7 @@ process_prog:
 				    strerror(err));
 				dt_verictx_teardown(verictx);
 				pthread_mutex_unlock(&g_pgplistmtx);
+				dt_bench_destroy(bench);
 				pthread_exit(NULL);
 			}
 
@@ -1342,9 +1362,7 @@ process_prog:
 		__dt_bench_stop_time(bench);
 		dt_bench_setinfo(bench, "rcvpgp",
 		    "Received program", DT_BENCHKIND_TIME);
-		pthread_mutex_lock(&g_benchlistmtx);
-		dt_list_append(&g_benchlist, new_bench_list_entry(bench));
-		pthread_mutex_unlock(&g_benchlistmtx);
+		append_bench_locked(bench);
 
 		/*
 		 * If this is a new program, we add it to the list.
@@ -1639,8 +1657,10 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 			fprintf(stderr, "failed to enable program: %s",
 			    strerror(errno));
 		} else {
-			notice("matched %u probe%s\n", dpi.dpi_matches,
-			    dpi.dpi_matches == 1 ? "" : "s");
+			notice("matched %u probe%s (%hhx%hhx%hhx)\n",
+			    dpi.dpi_matches, dpi.dpi_matches == 1 ? "" : "s",
+			    pgp->dp_ident[0], pgp->dp_ident[1],
+			    pgp->dp_ident[2]);
 		}
 
 		setup_tracing();
@@ -1672,7 +1692,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
 	char template[MAXPATHLEN] = "/tmp/dtrace-execprog.XXXXXXXX";
-	char bench_path[MAXPATHLEN] = { 0 };
 	char *elf;
 	size_t elflen;
 	int rx_sock;
@@ -1892,14 +1911,8 @@ again:
 		set_snapshot_names();
 		merge = merge_benchmarks();
 
-		if ((rval = dt_bench_file(g_bench_path, bench_path)) != bench_path) {
-			fprintf(stderr, "realpath(%s) failed: %s\n",
-			    g_bench_path, strerror(errno));
-			exit(EXIT_FAILURE);
-		}
-
 		dt_bench_dump(dt_merge_get(merge), dt_merge_size(merge),
-		    bench_path, g_script);
+		    g_bench_path, g_script);
 
 		pthread_mutex_lock(&g_benchlistmtx);
 		while ((be = dt_list_next(&g_benchlist)) != NULL) {
@@ -2184,6 +2197,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	else
 		fatal("unexpected string in -Y: %s", hostorguest);
 
+	fprintf(stderr, "dtrace: link_elf(%s)\n", progpath);
 	prog_exec = link_elf(dcp, progpath);
 	if (g_verbose) {
 		fprintf(stderr, "Unrelocated program:\n");
@@ -2250,8 +2264,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	if (tmpfd == -1)
 		fatal("mkstemp() failed (%s)", template);
 
-	unlink(template);
-	strcpy(template, "/tmp/dtrace-process-elf.XXXXXXXX");
+	//unlink(template);
 
 	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
 	if (fsync(tmpfd))
@@ -2260,11 +2273,13 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	if (lseek(tmpfd, 0, SEEK_SET))
 		fatal("lseek() failed");
 
+	fprintf(stderr, "dtrace: send_elf(%s)\n", template);
 	if (dtrace_send_elf(dcp->dc_prog, tmpfd, dtraced_sock,
 	    host ? "inbound" : "outbound",
 	    host ? 0 : prog_exec == DT_PROG_EXEC ? 0 : 1))
 		fatal("failed to dtrace_send_elf()");
 
+	strcpy(template, "/tmp/dtrace-process-elf.XXXXXXXX");
 	close(tmpfd);
 	close(dtraced_sock);
 

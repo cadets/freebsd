@@ -91,6 +91,9 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 			    DTRACED_PROGIDENTLEN);
 
 			LOCK(&s->identlistmtx);
+			EVENT("%d: %s(): identifier: insert %hhx%hhx%hhx\n",
+			    __LINE__, __func__, newident->ident[0],
+			    newident->ident[1], newident->ident[2]);
 			dt_list_append(&s->identlist, newident);
 			UNLOCK(&s->identlistmtx);
 		}
@@ -291,7 +294,11 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 			return;
 		}
 
-		assert(r != 0);
+		if (r == 0) {
+			ERR("%d: %s(): recv() returned 0 for %s", __LINE__,
+			    __func__, dfd->ident);
+			exit(1); // FIXME(dstolfa): Shouldn't do this.
+		}
 
 		_buf += r;
 		nbytes -= r;

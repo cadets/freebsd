@@ -42,7 +42,6 @@
 
 #include <sys/types.h>
 
-#include <assert.h>
 #include <time.h>
 #include <stdlib.h>
 
@@ -97,6 +96,7 @@ void           dt_bench_hdl_attach(dt_benchmark_t *, dt_snapshot_hdl_t, uint64_t
 void           dt_bench_setinfo(dt_benchmark_t *, const char *, const char *, int);
 void           dt_snapshot_setinfo(dt_benchmark_t *, dt_snapshot_hdl_t, const char *);
 char           *dt_bench_file(const char *, char *);
+void           dt_bench_destroy(dt_benchmark_t *);
 
 static __inline dt_snapshot_hdl_t
 __dt_bench_snapshot_time(dt_benchmark_t *__b)
@@ -110,8 +110,8 @@ __dt_bench_snapshot_time(dt_benchmark_t *__b)
 #else
 	clock_gettime(CLOCK_MONOTONIC,
 	    &__b->dtbe_timesnaps[__b->dtbe_cursnapshot].__time);
+#endif /* __DTRACE_SAFE_BENCH__ */
 	return (__b->dtbe_cursnapshot++);
-#endif // __DTRACE_SAFE_BENCH__
 }
 
 static __inline void
@@ -124,7 +124,8 @@ __dt_bench_stop_time(dt_benchmark_t *__b)
 	assert(clock_gettime(CLOCK_MONOTONIC, &__b->dtbe_endtime) == 0);
 #else
 	clock_gettime(CLOCK_MONOTONIC, &__b->dtbe_endtime);
-#endif // __DTRACE_SAFE_BENCH__
+#endif /* __DTRACE_SAFE_BENCH__ */
+	__b->dtbe_running = 0; /* set the benchmark to stopped */
 }
 
 static __inline dt_benchmark_t *
@@ -165,11 +166,12 @@ typedef size_t dt_snapshot_hdl_t;
 #define  dt_bench_hdl_attach(...)
 #define  dt_bench_setinfo(...)
 #define  dt_snapshot_setinfo(...)
+#define  dt_bench_destroy(...)
 #define  dt_bench_file(p, rp) ((void *)rp) /* XXX: Oof. */
 #define  __dt_bench_snapshot_time(...) (0)
 #define  __dt_bench_stop_time(...)
 #define  __dt_bench_new_time(...) ((void *)1) /* XXX: Oof. */
 
-#endif // __DTRACE_RUN_BENCHMARKS__
+#endif /* __DTRACE_RUN_BENCHMARKS__ */
 
-#endif // __DT_BENCHMARK_H_
+#endif /* __DT_BENCHMARK_H_ */

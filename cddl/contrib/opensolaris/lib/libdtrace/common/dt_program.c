@@ -1578,6 +1578,7 @@ dtrace_vprog_genargloads(dtrace_difo_t *difo, dif_instr_t *loads,
 			var = DIF_INSTR_VAR(instr);
 			argno = var - DIF_VAR_ARG0;
 			break;
+
 		case DIF_OP_LDGA:
 			var = DIF_INSTR_VAR(instr);
 			if (var == DIF_VAR_ARGS)
@@ -1587,6 +1588,9 @@ dtrace_vprog_genargloads(dtrace_difo_t *difo, dif_instr_t *loads,
 			 */
 			var = DIF_VAR_ARG0 + argno;
 			break;
+
+		default:
+			argno = 0;
 		}
 
 		if (argno < 5 || argno > 9)
