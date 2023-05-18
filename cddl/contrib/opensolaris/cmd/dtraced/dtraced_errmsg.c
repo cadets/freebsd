@@ -107,6 +107,24 @@ dump_warnmsg(const char *msg, ...)
 	}
 }
 
+void
+EVENT(const char *msg, ...)
+{
+	va_list ap;
+
+	if (quiet)
+		return;
+
+	if (msg) {
+		pthread_mutex_lock(&printmtx);
+		va_start(ap, msg);
+		vfprintf(stdout, msg, ap);
+		va_end(ap);
+		fprintf(stdout, "\n");
+		pthread_mutex_unlock(&printmtx);
+	}
+}
+
 #ifdef DTRACED_DEBUG
 void
 dump_debugmsg(const char *msg, ...)

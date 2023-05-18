@@ -139,6 +139,8 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 		job->j.kill.pid = DTRACED_MSG_KILLPID(*h);
 		job->j.kill.vmid = DTRACED_MSG_KILLVMID(*h);
 
+		EVENT("%d: %s: job %s: dispatch KILL on %d", __LINE__,
+		    __func__, dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);
@@ -238,6 +240,8 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 				abort();
 		}
 
+		EVENT("%d: %s: job %s: dispatch CLEANUP on %d", __LINE__,
+		    __func__, dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);

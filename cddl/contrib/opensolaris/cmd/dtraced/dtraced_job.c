@@ -117,8 +117,8 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		dt_list_prepend(&s->dispatched_jobs, job);
 		UNLOCK(&s->dispatched_jobsmtx);
 
-		DEBUG("%d: %s(): Dispatching EVFILT_READ on %d", __LINE__,
-		    __func__, ev->ident);
+		EVENT("%d: %s(): job %s: dispatch EVFILT_READ on %d", __LINE__,
+		    __func__, dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistcvmtx);
 		SIGNAL(&s->joblistcv);
 		UNLOCK(&s->joblistcvmtx);
@@ -141,8 +141,6 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		/*
 		 * Signal the workers to pick up our dispatched jobs.
 		 */
-		DEBUG("%d: %s(): Dispatching EVFILT_WRITE on %d", __LINE__,
-		    __func__, ev->ident);
 		LOCK(&s->joblistcvmtx);
 		SIGNAL(&s->joblistcv);
 		UNLOCK(&s->joblistcvmtx);
@@ -203,6 +201,8 @@ process_joblist(void *_s)
 			ERR("%d: %s(): Job %u out of bounds", __LINE__,
 			    __func__, curjob->job);
 
+		EVENT("%d: %s: job %s: processing (kind=%d)\n", __LINE__,
+		    __func__, dtraced_job_identifier(curjob), curjob->job);
 		switch (curjob->job) {
 		case READ_DATA:
 			handle_read_data(s, curjob);

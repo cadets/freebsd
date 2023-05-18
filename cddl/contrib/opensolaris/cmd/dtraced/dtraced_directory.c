@@ -557,6 +557,9 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 				abort();
 			}
 
+			EVENT("%d: %s: job %s: dispatch EVFILT_WRITE on %d",
+			    __LINE__, __func__, dtraced_job_identifier(job),
+			    dfd->fd);
 			LOCK(&s->joblistmtx);
 			dt_list_append(&s->joblist, job);
 			UNLOCK(&s->joblistmtx);
@@ -1140,6 +1143,8 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 			abort();
 		}
 
+		EVENT("%d: %s: job %s: dispatch EVFILT_WRITE on %d",
+		    __LINE__, __func__, dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);

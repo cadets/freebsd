@@ -154,6 +154,8 @@ enqueue_info_message(struct dtraced_state *s, dtraced_fd_t *dfd)
 	if (job == NULL)
 		abort();
 
+	EVENT("%d: %s: job %s: dispatch SEND_INFO on %d", __LINE__, __func__,
+	    dtraced_job_identifier(job), dfd->fd);
 	LOCK(&s->joblistmtx);
 	dt_list_append(&s->joblist, job);
 	UNLOCK(&s->joblistmtx);

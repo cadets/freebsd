@@ -48,6 +48,7 @@
 void be_quiet(void);
 void dump_errmsg(const char *, ...);
 void dump_warnmsg(const char *, ...);
+void EVENT(const char *, ...);
 
 #ifdef DTRACED_DEBUG
 void dump_debugmsg(const char *, ...);
