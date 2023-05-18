@@ -154,7 +154,6 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		SIGNAL(&s->joblistcv);
 		UNLOCK(&s->joblistcvmtx);
 	} else {
-		free(job);
 		ERR("%d: %s(): Unexpected event flags: %d", __LINE__, __func__,
 		    ev->flags);
 		return (-1);
