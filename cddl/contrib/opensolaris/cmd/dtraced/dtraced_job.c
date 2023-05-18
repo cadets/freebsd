@@ -59,6 +59,34 @@
 #include "dtraced_state.h"
 
 /*
+ * Allocates a new job and populates the fields used in all the jobs. The caller
+ * is responsible for filling out kind-specific fields.
+ */
+dtraced_job_t *
+dtraced_new_job(int job_kind, dtraced_fd_t *dfd)
+{
+	dtraced_job_t *j = NULL;
+
+	j = malloc(sizeof(dtraced_job_t));
+	if (j == NULL)
+		return (NULL);
+
+	memset(j, 0, sizeof(dtraced_job_t));
+
+	j->job = job_kind;
+	j->connsockfd = dfd;
+	dtraced_tag_job(dfd->id, j);
+
+	j->ident_str = calloc(sizeof(j->identifier) + 2, 1);
+	j->ident_str[sizeof(j->identifier)] = '\0';
+
+	sprintf(j->ident_str, "%lx-%lx", j->identifier.job_initiator_id,
+	    j->identifier.job_id);
+
+	return (j);
+}
+
+/*
  * NOTE: dispatch_event assumes that event has already been handled correctly in
  * the main loop.
  */
@@ -78,16 +106,12 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		 * /var/ddtrace/base directory for the directory monitoring
 		 * kqueues to wake up and process it further.
 		 */
-		job = malloc(sizeof(struct dtraced_job));
+		job = dtraced_new_job(READ_DATA, dfd);
 		if (job == NULL) {
-			ERR("%d: %s(): malloc() failed with: %m", __LINE__,
-			    __func__);
+			ERR("%d: %s(): dtraced_new_job() failed with: %m",
+			    __LINE__, __func__);
 			abort();
 		}
-
-		memset(job, 0, sizeof(struct dtraced_job));
-		job->job = READ_DATA;
-		job->connsockfd = dfd;
 
 		LOCK(&s->dispatched_jobsmtx);
 		dt_list_prepend(&s->dispatched_jobs, job);
@@ -212,3 +236,9 @@ process_joblist(void *_s)
 	pthread_exit(s);
 }
 
+const char *
+dtraced_job_identifier(dtraced_job_t *j)
+{
+
+	return ((const char *)j->ident_str);
+}

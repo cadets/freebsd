@@ -13,6 +13,7 @@ SRCS=		dtraced.c \
 		dtraced_dttransport.c \
 		dtraced_elfjob.c \
 		dtraced_errmsg.c \
+		dtraced_id.c \
 		dtraced_job.c \
 		dtraced_killjob.c \
 		dtraced_lock.c \

@@ -129,17 +129,13 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 			continue;
 		}
 
-		job = malloc(sizeof(struct dtraced_job));
+		job = dtraced_new_job(KILL, dfd);
 		if (job == NULL) {
-			ERR("%d: %s(): malloc() failed with: %m", __LINE__,
+			ERR("%d: %s(): dtraced_new_job() failed: %m", __LINE__,
 			    __func__);
 			abort();
 		}
 
-		memset(job, 0, sizeof(struct dtraced_job));
-
-		job->job = KILL;
-		job->connsockfd = dfd;
 		job->j.kill.pid = DTRACED_MSG_KILLPID(*h);
 		job->j.kill.vmid = DTRACED_MSG_KILLVMID(*h);
 
@@ -221,17 +217,10 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 			entries[i] = buf;
 		}
 
-		job = malloc(sizeof(struct dtraced_job));
+		job = dtraced_new_job(CLEANUP, dfd);
 		if (job == NULL)
 			abort();
 
-		memset(job, 0, sizeof(struct dtraced_job));
-
-		/*
-		 * Prepare the job.
-		 */
-		job->job = CLEANUP;
-		job->connsockfd = dfd;
 		job->j.cleanup.n_entries = n_entries;
 		if (n_entries > 0) {
 			job->j.cleanup.entries = malloc(

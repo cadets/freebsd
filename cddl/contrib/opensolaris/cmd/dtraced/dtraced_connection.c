@@ -55,6 +55,7 @@
 #include "dtraced_connection.h"
 #include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
+#include "dtraced_id.h"
 #include "dtraced_job.h"
 #include "dtraced_lock.h"
 #include "dtraced_misc.h"
@@ -149,12 +150,9 @@ enqueue_info_message(struct dtraced_state *s, dtraced_fd_t *dfd)
 
 	fd_acquire(dfd);
 
-	job = malloc(sizeof(struct dtraced_job));
+	job = dtraced_new_job(SEND_INFO, dfd);
 	if (job == NULL)
 		abort();
-
-	job->job = SEND_INFO;
-	job->connsockfd = dfd;
 
 	LOCK(&s->joblistmtx);
 	dt_list_append(&s->joblist, job);
@@ -211,6 +209,7 @@ accept_new_connection(struct dtraced_state *s)
 	dfd->kind = initmsg.kind;
 	dfd->subs = initmsg.subs;
 	memcpy(dfd->ident, initmsg.ident, DTRACED_FDIDENTLEN);
+	dtraced_tag_fd(dfd);
 
 	if (enable_fd(s->kq_hdl, connsockfd, EVFILT_READ, dfd) < 0) {
 		close(connsockfd);

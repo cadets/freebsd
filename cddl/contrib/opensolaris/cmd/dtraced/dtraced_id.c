@@ -1,19 +1,11 @@
 /*-
- * Copyright (c) 2021 Domagoj Stolfa
+ * Copyright (c) 2023 Domagoj Stolfa
  * All rights reserved.
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
  * DARPA SSITH research programme.
- *
- * This software was developed by the University of Cambridge Computer
- * Laboratory (Department of Computer Science and Technology) with support
- * from Arm Limited.
- *
- * This software was developed by the University of Cambridge Computer
- * Laboratory (Department of Computer Science and Technology) with support
- * from the Kenneth Hayter Scholarship Fund.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,24 +29,33 @@
  * SUCH DAMAGE.
  */
 
-#ifndef __DTRACED_CONNECTION_H_
-#define __DTRACED_CONNECTION_H_
+#include <stdlib.h>
 
-#include <sys/types.h>
-#include "dtraced.h"
+#include "dtraced_connection.h"
+#include "dtraced_id.h"
+#include "dtraced_job.h"
 
-#include <dt_list.h>
+static uint64_t
+dtraced_genid(void)
+{
+	uint64_t r;
+	arc4random_buf(&r, sizeof(r));
+	return (r);
+}
 
-#define DTRACED_FDIDENTLEN             128ull
+void
+dtraced_tag_job(uint64_t initiator_id, struct dtraced_job *j)
+{
+	if (j == NULL)
+		return;
 
-typedef struct dtraced_fd {
-	dt_list_t   list;               /* next element */
-	int         fd;                 /* the actual filedesc */
-	int         kind;               /* consumer/forwarder */
-	uint64_t    subs;               /* events that efd subscribed to */
-	_Atomic int __count;            /* reference count */
-	char ident[DTRACED_FDIDENTLEN]; /* human-readable identifier */
-	uint64_t id;                    /* initiator id */
-} dtraced_fd_t;
+	j->identifier.job_initiator_id = initiator_id;
+	j->identifier.job_id = dtraced_genid();
+}
 
-#endif // __DTRACED_CONNECTION_H_
+void
+dtraced_tag_fd(dtraced_fd_t *dfd)
+{
+
+	dfd->id = dtraced_genid();
+}

@@ -539,16 +539,13 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			}
 
 			jfd = dfd->fd;
-			job = malloc(sizeof(struct dtraced_job));
+			job = dtraced_new_job(NOTIFY_ELFWRITE, dfd);
 			if (job == NULL) {
-				ERR("%d: %s(): Failed to malloc a new job: %m",
+				ERR("%d: %s(): dtraced_new_job() failed: %m",
 				    __LINE__, __func__);
 				abort();
 			}
 
-			memset(job, 0, sizeof(struct dtraced_job));
-			job->job = NOTIFY_ELFWRITE;
-			job->connsockfd = dfd;
 			job->j.notify_elfwrite.path = strdup(f->d_name);
 			job->j.notify_elfwrite.pathlen = strlen(f->d_name);
 			job->j.notify_elfwrite.dir = dir;
@@ -1125,17 +1122,13 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		}
 
 		jfd = dfd->fd;
-		job = malloc(sizeof(struct dtraced_job));
+		job = dtraced_new_job(NOTIFY_ELFWRITE, dfd);
 		if (job == NULL) {
-			ERR("%d: %s(): Failed to malloc a new job: %m",
+			ERR("%d: %s(): dtraced_new_job() failed: %m",
 			    __LINE__, __func__);
 			abort();
 		}
 
-		memset(job, 0, sizeof(struct dtraced_job));
-
-		job->job = NOTIFY_ELFWRITE;
-		job->connsockfd = dfd;
 		job->j.notify_elfwrite.path = strdup(f->d_name);
 		job->j.notify_elfwrite.pathlen = strlen(f->d_name);
 		job->j.notify_elfwrite.dir = dir;

@@ -45,9 +45,10 @@
 
 #include <dt_list.h>
 
-#include "dtraced.h"
 #include "_dtraced_connection.h"
+#include "dtraced.h"
 #include "dtraced_directory.h"
+#include "dtraced_id.h"
 
 typedef struct identlist {
 	dt_list_t list;
@@ -58,13 +59,16 @@ typedef struct identlist {
 typedef struct dtraced_job {
 	dt_list_t    list;       /* next element */
 	int          job;        /* job kind */
-	dtraced_fd_t *connsockfd; /* which socket do we send this on? */
 #define NOTIFY_ELFWRITE    1
 #define KILL               2
 #define READ_DATA          3
 #define CLEANUP            4
 #define SEND_INFO          5
 #define JOB_LAST           5
+
+	dtraced_fd_t *connsockfd; /* which socket do we send this on? */
+	dtraced_id_t identifier; /* unique job identifier within this dtraced */
+	char         *ident_str; /* identifier string */
 
 	union {
 		struct {
@@ -89,7 +93,9 @@ typedef struct dtraced_job {
 	} j;
 } dtraced_job_t;
 
+dtraced_job_t *dtraced_new_job(int, dtraced_fd_t *);
 int  dispatch_event(struct dtraced_state *, struct kevent *);
 void *process_joblist(void *);
+const char *dtraced_job_identifier(dtraced_job_t *);
 
 #endif // _DTRACED_JOB_H_

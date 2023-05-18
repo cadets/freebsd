@@ -1,19 +1,11 @@
 /*-
- * Copyright (c) 2021 Domagoj Stolfa
+ * Copyright (c) 2023 Domagoj Stolfa
  * All rights reserved.
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
  * DARPA SSITH research programme.
- *
- * This software was developed by the University of Cambridge Computer
- * Laboratory (Department of Computer Science and Technology) with support
- * from Arm Limited.
- *
- * This software was developed by the University of Cambridge Computer
- * Laboratory (Department of Computer Science and Technology) with support
- * from the Kenneth Hayter Scholarship Fund.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,24 +29,20 @@
  * SUCH DAMAGE.
  */
 
-#ifndef __DTRACED_CONNECTION_H_
-#define __DTRACED_CONNECTION_H_
+#ifndef _DTRACED_ID_H_
+#define _DTRACED_ID_H_
 
-#include <sys/types.h>
-#include "dtraced.h"
+#include <stdint.h>
 
-#include <dt_list.h>
+typedef struct dtraced_id {
+	uint64_t job_initiator_id; /* who initiated this job? */
+	uint64_t job_id;
+} dtraced_id_t;
 
-#define DTRACED_FDIDENTLEN             128ull
+struct dtraced_job;
+struct dtraced_fd;
 
-typedef struct dtraced_fd {
-	dt_list_t   list;               /* next element */
-	int         fd;                 /* the actual filedesc */
-	int         kind;               /* consumer/forwarder */
-	uint64_t    subs;               /* events that efd subscribed to */
-	_Atomic int __count;            /* reference count */
-	char ident[DTRACED_FDIDENTLEN]; /* human-readable identifier */
-	uint64_t id;                    /* initiator id */
-} dtraced_fd_t;
+void dtraced_tag_job(uint64_t, struct dtraced_job *);
+void dtraced_tag_fd(struct dtraced_fd *);
 
-#endif // __DTRACED_CONNECTION_H_
+#endif /* _DTRACED_ID_H_ */
