@@ -129,14 +129,23 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		 * file descriptor as the destination, we put it in the dispatch
 		 * list.
 		 */
+		LOCK(&s->joblistmtx);
 		for (job = dt_list_next(&s->joblist); job;
 		     job = dt_list_next(job)) {
 			dfd = job->connsockfd;
 			if (dfd->fd == ev->ident) {
+				EVENT(
+				    "%d: %s(): job %s: dispatch EVFILT_WRITE on %d",
+				    __LINE__, __func__,
+				    dtraced_job_identifier(job), dfd->fd);
 				dt_list_delete(&s->joblist, job);
+
+				LOCK(&s->dispatched_jobsmtx);
 				dt_list_append(&s->dispatched_jobs, job);
+				UNLOCK(&s->dispatched_jobsmtx);
 			}
 		}
+		UNLOCK(&s->joblistmtx);
 
 		/*
 		 * Signal the workers to pick up our dispatched jobs.
