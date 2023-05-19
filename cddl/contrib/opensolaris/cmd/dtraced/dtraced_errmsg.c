@@ -46,6 +46,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#include <unistd.h>
 
 #include "dtraced_errmsg.h"
 #include "dtraced_misc.h"
@@ -121,6 +122,7 @@ EVENT(const char *msg, ...)
 		vfprintf(stdout, msg, ap);
 		va_end(ap);
 		fprintf(stdout, "\n");
+		fsync(STDOUT_FILENO);
 		pthread_mutex_unlock(&printmtx);
 	}
 }

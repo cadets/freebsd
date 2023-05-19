@@ -971,6 +971,8 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 	}
 
+	EVENT("%d: %s(): processing %s", __LINE__, __func__, f->d_name);
+
 	dirpath = strdup(dir->dirpath);
 	UNLOCK(&dir->dirmtx);
 
@@ -997,8 +999,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	dtraced_copyfile(fullpath, newname);
 	strcpy(donename, outbounddirpath);
 	strcpy(donename + dirpathlen, newname + dirpathlen + 1);
-	DEBUG("%d: %s(): Renaming %s -> %s", __LINE__, __func__, newname,
-	    donename);
+	EVENT("%d: %s(): create final file: %s", __LINE__, __func__, donename);
 	if (rename(newname, donename))
 		ERR("%d: %s(): Failed to rename %s to %s: %m", __LINE__,
 		    __func__, newname, donename);
@@ -1031,6 +1032,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 			abort();
 
 		argv[4] = NULL;
+		EVENT("%d: %s(): execve(dtrace, -qY %s)", __LINE__, __func__, fullarg);
 		execve("/usr/sbin/dtrace", argv, NULL);
 		exit(EXIT_FAILURE);
 	}

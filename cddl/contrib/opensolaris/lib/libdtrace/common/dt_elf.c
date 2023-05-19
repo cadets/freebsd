@@ -2712,6 +2712,10 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	dt_elf_get_stmts(dtp, e, prog, eprog->dtep_first_stmt);
 	if (dt_list_next(&prog->dp_stmts) == NULL) {
+		fprintf(stderr, "%hhx%hhx%hhx has no statements\n",
+		    eprog->dtep_ident[0], eprog->dtep_ident[1],
+		    eprog->dtep_ident[2]);
+
 		/*
 		 * NOTE: We don't free the program here because it will be
 		 * handled in dtrace_close(), as we've created it with
@@ -2725,7 +2729,6 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 			unlink(filename);
 			close(fd);
 		}
-		fprintf(stderr, "The program has no statements\n");
 		return (NULL);
 	}
 

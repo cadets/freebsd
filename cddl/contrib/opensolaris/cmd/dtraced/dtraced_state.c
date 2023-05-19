@@ -149,6 +149,13 @@ setup_threads(struct dtraced_state *s)
 		return (-1);
 	}
 
+	err = pthread_create(&s->jobcleantd, NULL, clean_jobs, s);
+	if (err != 0) {
+		ERR("%d: %s(): Failed to create job cleaning thread: %m",
+		    __LINE__, __func__);
+		return (-1);
+	}
+
 	return (0);
 }
 
@@ -201,6 +208,13 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 	}
 
 	if ((err = mutex_init(
+	    &s->jobcleancvmtx, NULL, "jobcleancvmtx", CHECKOWNER_YES)) != 0) {
+		ERR("%d: %s(): Failed to create jobcleancv mutex: %m", __LINE__,
+		    __func__);
+		return (-1);
+	}
+
+	if ((err = mutex_init(
 	    &s->kill_listmtx, NULL, "kill list", CHECKOWNER_YES)) != 0) {
 		ERR("%d: %s(): Failed to create kill list mutex: %m", __LINE__,
 		    __func__);
@@ -243,6 +257,12 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 
 	if ((err = pthread_cond_init(&s->joblistcv, NULL)) != 0) {
 		ERR("%d: %s(): Failed to create joblist condvar: %m", __LINE__,
+		    __func__);
+		return (-1);
+	}
+
+	if ((err = pthread_cond_init(&s->jobcleancv, NULL)) != 0) {
+		ERR("%d: %s(): Failed to create jobclean condvar: %m", __LINE__,
 		    __func__);
 		return (-1);
 	}
@@ -423,6 +443,14 @@ destroy_state(struct dtraced_state *s)
 		abort();
 	}
 
+	(void) pthread_kill(s->jobcleantd, SIGTERM);
+	if (pthread_timedjoin_np(s->jobcleantd,
+	    (void **)&retval, &ts) == ETIMEDOUT) {
+		ERR("%d: %s(): jobcleantd join timed out", __LINE__,
+		    __func__);
+		abort();
+	}
+
 	LOCK(&s->joblistmtx);
 	for (j = dt_list_next(&s->joblist); j; j = next) {
 		next = dt_list_next(j);
@@ -437,8 +465,10 @@ destroy_state(struct dtraced_state *s)
 	(void) mutex_destroy(&s->kill_listmtx);
 	(void) mutex_destroy(&s->killcvmtx);
 	(void) mutex_destroy(&s->deadfdsmtx);
+	(void) mutex_destroy(&s->jobcleancvmtx);
 	(void) pthread_cond_destroy(&s->killcv);
 	(void) pthread_cond_destroy(&s->joblistcv);
+	(void) pthread_cond_destroy(&s->jobcleancv);
 
 	dtd_closedir(s->outbounddir);
 	dtd_closedir(s->inbounddir);

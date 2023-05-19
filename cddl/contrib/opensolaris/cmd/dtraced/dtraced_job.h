@@ -66,9 +66,9 @@ typedef struct dtraced_job {
 #define SEND_INFO          5
 #define JOB_LAST           5
 
-	dtraced_fd_t *connsockfd; /* which socket do we send this on? */
-	dtraced_id_t identifier; /* unique job identifier within this dtraced */
-	char         *ident_str; /* identifier string */
+	dtraced_fd_t *connsockfd;    /* which socket do we send this on? */
+	dtraced_id_t identifier;     /* unique job identifier within this dtraced */
+	char         ident_str[256]; /* identifier string */
 
 	union {
 		struct {
@@ -97,5 +97,6 @@ dtraced_job_t *dtraced_new_job(int, dtraced_fd_t *);
 int  dispatch_event(struct dtraced_state *, struct kevent *);
 void *process_joblist(void *);
 const char *dtraced_job_identifier(dtraced_job_t *);
+void *clean_jobs(void *);
 
 #endif // _DTRACED_JOB_H_

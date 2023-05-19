@@ -77,8 +77,7 @@ dtraced_new_job(int job_kind, dtraced_fd_t *dfd)
 	j->connsockfd = dfd;
 	dtraced_tag_job(dfd->id, j);
 
-	j->ident_str = calloc(sizeof(j->identifier) + 2, 1);
-	j->ident_str[sizeof(j->identifier)] = '\0';
+	j->ident_str[sizeof(j->ident_str) - 1] = '\0';
 
 	sprintf(j->ident_str, "%lx-%lx", j->identifier.job_initiator_id,
 	    j->identifier.job_id);
@@ -129,10 +128,13 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		 * file descriptor as the destination, we put it in the dispatch
 		 * list.
 		 */
+		EVENT("%d: %s(): EVFILT_WRITE: notified", __LINE__, __func__);
 		LOCK(&s->joblistmtx);
 		for (job = dt_list_next(&s->joblist); job;
 		     job = dt_list_next(job)) {
 			dfd = job->connsockfd;
+			EVENT("%d: %s(): EVFILT_WRITE: compare %d and %d",
+			    __LINE__, __func__, dfd->fd, ev->ident);
 			if (dfd->fd == ev->ident) {
 				EVENT(
 				    "%d: %s(): job %s: dispatch EVFILT_WRITE on %d",
@@ -249,4 +251,52 @@ dtraced_job_identifier(dtraced_job_t *j)
 {
 
 	return ((const char *)j->ident_str);
+}
+
+void *
+clean_jobs(void *_s)
+{
+	struct dtraced_state *s = (struct dtraced_state *)_s;
+	dtraced_job_t *j, *next;
+	dtraced_fd_t *dfd;
+
+	while (atomic_load(&s->shutdown) == 0) {
+		LOCK(&s->jobcleancvmtx);
+		LOCK(&s->deadfdsmtx);
+		while (dt_list_next(&s->deadfds) == NULL &&
+		    atomic_load(&s->shutdown) == 0) {
+			UNLOCK(&s->deadfdsmtx);
+			WAIT(&s->jobcleancv, pmutex_of(&s->jobcleancvmtx));
+			LOCK(&s->deadfdsmtx);
+		}
+		UNLOCK(&s->deadfdsmtx);
+		UNLOCK(&s->jobcleancvmtx);
+
+		if (atomic_load(&s->shutdown) == 1)
+			pthread_exit(_s);
+
+		/*
+		 * Delete any jobs that our dead file descriptors have started.
+		 * We don't need to do anything with them, as the initiating
+		 * process is gone.
+		 */
+		LOCK(&s->deadfdsmtx);
+		for (dfd = dt_list_next(&s->deadfds); dfd;
+		     dfd = dt_list_next(dfd)) {
+			LOCK(&s->joblistmtx);
+			for (j = dt_list_next(&s->joblist); j; j = next) {
+				next = dt_list_next(j);
+				if (j->identifier.job_initiator_id == dfd->id) {
+					dt_list_delete(&s->joblist, j);
+				}
+			}
+			UNLOCK(&s->joblistmtx);
+
+			/* Release the filedesc to allow for cleanup */
+			fd_release(dfd);
+		}
+		UNLOCK(&s->deadfdsmtx);
+	}
+
+	pthread_exit(_s);
 }

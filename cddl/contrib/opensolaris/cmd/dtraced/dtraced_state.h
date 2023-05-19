@@ -94,8 +94,8 @@ struct dtraced_state {
 	pthread_cond_t joblistcv;   /* joblist condvar */
 	mutex_t joblistmtx;         /* joblist mutex */
 	dt_list_t joblist;          /* the joblist itself */
-	mutex_t dispatched_jobsmtx; /* joblist mutex */
-	dt_list_t dispatched_jobs;  /* the joblist itself */
+	mutex_t dispatched_jobsmtx; /* dispatched joblist mutex */
+	dt_list_t dispatched_jobs;  /* the dispatched joblist itself */
 
 	/*
 	 * Children management.
@@ -116,6 +116,10 @@ struct dtraced_state {
 	dt_list_t deadfds;  /* dead file descriptor list (to close) */
 	mutex_t deadfdsmtx; /* mutex for deadfds */
 	pthread_t closetd;  /* file descriptor closing thread */
+
+	mutex_t jobcleancvmtx;      /* job cleaning thread condvar mutex */
+	pthread_cond_t jobcleancv;  /* job cleaning thread condvar */
+	pthread_t jobcleantd;       /* job cleaning thread */
 
 	/*
 	 * Consumer threads

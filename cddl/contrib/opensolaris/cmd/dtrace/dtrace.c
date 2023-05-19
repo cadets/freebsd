@@ -2264,7 +2264,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	if (tmpfd == -1)
 		fatal("mkstemp() failed (%s)", template);
 
-	//unlink(template);
+	unlink(template);
 
 	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
 	if (fsync(tmpfd))

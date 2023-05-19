@@ -72,6 +72,8 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 	else
 		dir = NULL;
 
+	EVENT("%d: %s(): elfmsg on directory: %s", __LINE__, __func__,
+	    dir ? dir->dirpath : "(null)");
 	if (dir == NULL) {
 		ERR("%d: %s(): unrecognized location: %s", __LINE__, __func__,
 		    DTRACED_MSG_LOC(*h));
@@ -99,6 +101,8 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 		}
 	}
 
+	EVENT("%d: %s(): write_data(%s, [buf], %zu)", __LINE__, __func__,
+	    dir ? dir->dirpath : "(null)", bsize);
 	if (write_data(dir, buf, bsize))
 		ERR("%d: %s(): write_data() failed", __LINE__, __func__);
 
@@ -271,10 +275,12 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	fd = dfd->fd;
 	totalbytes = 0;
 
+	EVENT("%d: %s(): READ_DATA: entry", __LINE__, __func__);
 	if ((r = recv(fd, &totalbytes, sizeof(totalbytes), 0)) < 0) {
 		ERR("%d: %s(): recv() failed with: %m", __LINE__, __func__);
 		return;
 	}
+	EVENT("%d: %s(): READ_DATA: %zu bytes", __LINE__, __func__, totalbytes);
 
 	assert(r == sizeof(totalbytes));
 	nbytes = totalbytes;
@@ -286,6 +292,7 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	}
 
 	_buf = buf;
+	EVENT("%d: %s(): READ_DATA: get all the data", __LINE__, __func__);
 	while ((r = recv(fd, _buf, nbytes, 0)) != nbytes) {
 		if (r < 0) {
 			ERR("%d: %s(): recv() failed with: %m", __LINE__,
@@ -303,6 +310,7 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 		_buf += r;
 		nbytes -= r;
 	}
+	EVENT("%d: %s(): READ_DATA: got data", __LINE__, __func__);
 
 	if (r < 0) {
 		if (send_nak(fd) < 0) {
@@ -332,6 +340,8 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	 */
 
 	memcpy(&header, buf, DTRACED_MSGHDRSIZE);
+	EVENT("%d: %s(): READ_DATA: handle %d", __LINE__, __func__,
+	    DTRACED_MSG_TYPE(header));
 	switch (DTRACED_MSG_TYPE(header)) {
 	case DTRACED_MSG_ELF:
 		_buf += DTRACED_MSGHDRSIZE;
@@ -371,6 +381,7 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	 * We are done receiving the data and nothing
 	 * failed, re-enable the event and keep going.
 	 */
+	EVENT("%d: %s(): READ_DATA: reenable_fd(%d)", __LINE__, __func__, fd);
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_READ))
 		ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
 		    __func__);

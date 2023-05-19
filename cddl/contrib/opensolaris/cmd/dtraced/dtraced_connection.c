@@ -131,7 +131,7 @@ close_filedescs(void *_s)
 
 			dt_list_delete(&s->deadfds, dfd);
 			assert(atomic_load(&dfd->__count) == 0);
-			DEBUG("%d: %s(): Destroying fd (%p, %d)", __LINE__,
+			EVENT("%d: %s(): close(%p, %d)", __LINE__,
 			    __func__, dfd, dfd->fd);
 			close(dfd->fd);
 			next = dt_list_next(dfd);
@@ -229,7 +229,7 @@ accept_new_connection(struct dtraced_state *s)
 		return (-1);
 	}
 
-	DEBUG("%d: %s(): Accepted (%d, %x, 0x%x, %s)", __LINE__, __func__,
+	EVENT("%d: %s(): accept(%d, %x, 0x%x, %s)", __LINE__, __func__,
 	    dfd->fd, dfd->kind, dfd->subs, dfd->ident);
 	LOCK(&s->socklistmtx);
 	dt_list_append(&s->sockfds, dfd);
@@ -350,7 +350,18 @@ process_consumers(void *_s)
 					dt_list_append(&s->deadfds, dfd);
 				UNLOCK(&s->deadfdsmtx);
 
-				fd_release(dfd);
+				LOCK(&s->jobcleancvmtx);
+				SIGNAL(&s->jobcleancv);
+				UNLOCK(&s->jobcleancvmtx);
+
+				/*
+				 * NOTE: We aren't forgetting to fd_release()
+				 * here because by signaling a jobcleancv, a
+				 * thread will wake up which will clean up all
+				 * the jobs with the id of the current dfd and
+				 * then release the filedesc, allowing the
+				 * garbage collection thread to do its job.
+				 */
 				ERR("%d: %s(): event error: %m", __LINE__,
 				    __func__);
 				continue;
@@ -389,7 +400,18 @@ process_consumers(void *_s)
 					dt_list_append(&s->deadfds, dfd);
 				UNLOCK(&s->deadfdsmtx);
 
-				fd_release(dfd);
+				LOCK(&s->jobcleancvmtx);
+				SIGNAL(&s->jobcleancv);
+				UNLOCK(&s->jobcleancvmtx);
+
+				/*
+				 * NOTE: We aren't forgetting to fd_release()
+				 * here because by signaling a jobcleancv, a
+				 * thread will wake up which will clean up all
+				 * the jobs with the id of the current dfd and
+				 * then release the filedesc, allowing the
+				 * garbage collection thread to do its job.
+				 */
 				continue;
 			}
 
