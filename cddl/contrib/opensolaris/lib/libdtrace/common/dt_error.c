@@ -282,61 +282,16 @@ get_randname(char *b, size_t len)
 		b[i] = arc4random_uniform(25) + 97;
 }
 
-static char *
-gen_filename(const char *dir)
-{
-	char *filename;
-	char *elfpath;
-	size_t len;
-
-	len = (MAXPATHLEN - strlen(dir)) / 64;
-	assert(len > 10);
-
-	filename = malloc(len);
-	if (filename == NULL)
-		return (NULL);
-	
-	filename[0] = '.';
-	get_randname(filename + 1, len - 2);
-	filename[len - 1] = '\0';
-
-	elfpath = malloc(MAXPATHLEN);
-	strcpy(elfpath, dir);
-	strcpy(elfpath + strlen(dir), filename);
-
-	while (access(elfpath, F_OK) != -1) {
-		filename[0] = '.';
-		get_randname(filename + 1, len - 2);
-		filename[len - 1] = '\0';
-		strcpy(elfpath + strlen(dir), filename);
-	}
-
-	free(filename);
-
-	return (elfpath);
-}
-
 void
 dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 {
 	size_t l = 0;
-	char *elfpath;
-	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
-	char donepath[MAXPATHLEN] = { 0 };
-	size_t donepathlen = 0;
-	size_t dirlen;
 	va_list args;
 	int dtraced_sock, tmpfd;
 	char template[MAXPATHLEN] = "/tmp/ddtrace-set-prog-err.XXXXXXX";
 
 	if (pgp == NULL)
 		return;
-
-	dirlen = strlen(elfdir);
-	elfpath = gen_filename(elfdir);
-	if (elfpath == NULL)
-		errx(EXIT_FAILURE, "gen_filename() failed with %s\n",
-		    strerror(errno));
 
 	pgp->dp_haserror = 1;
 

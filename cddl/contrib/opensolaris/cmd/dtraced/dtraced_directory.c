@@ -73,9 +73,9 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 {
 	struct dtraced_state *s;
 	__cleanup(freep) char *dirpath = NULL;
-	__cleanup(freep) char *newname = NULL;
 	char donename[MAXPATHLEN];
 	size_t dirpathlen;
+	char template[MAXPATHLEN];
 	__cleanup(closefd_generic) int fd = -1;
 
 	if (dir == NULL) {
@@ -95,37 +95,41 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	}
 
 	LOCK(&dir->dirmtx);
-	dirpath = strdup(dir->dirpath);
+	sprintf(template, "%s.XXXXXXXXXXXXXX.elf", dir->dirpath);
+	dirpathlen = strlen(dir->dirpath);
 	UNLOCK(&dir->dirmtx);
 
-	if (dirpath == NULL) {
-		ERR("%d: %s(): Failed to strdup() dirpath: %m", __LINE__,
-		    __func__);
-		abort();
-	}
-
-	dirpathlen = strlen(dirpath);
-	newname = gen_filename(dirpath);
-	strcpy(donename, dirpath);
-	strcpy(donename + dirpathlen, newname + dirpathlen + 1);
-
-	fd = open(newname, O_WRONLY | O_CREAT);
+	fd = mkstemp(template);
 	if (fd == -1) {
-		ERR("%d: %s(): open() failed with: %m", __LINE__, __func__);
+		ERR("%d: %s(): mkstemp() failed with: %m", __LINE__, __func__);
+		LOCK(&dir->dirmtx);
+		sprintf(template, "%s.XXXXXXXXXXXXXX.elf", dir->dirpath);
+		UNLOCK(&dir->dirmtx);
 		return (-1);
 	}
 
 	if (write(fd, data, nbytes) < 0) {
 		ERR("%d: %s(): write() failed with: %m", __LINE__, __func__);
+		LOCK(&dir->dirmtx);
+		sprintf(template, "%s.XXXXXXXXXXXXXX.elf", dir->dirpath);
+		UNLOCK(&dir->dirmtx);
 		return (-1);
 	}
 
-	if (rename(newname, donename)) {
+	strncpy(donename, template, dirpathlen);
+	strcpy(donename + dirpathlen, template + dirpathlen + 1);
+	if (rename(template, donename)) {
 		ERR("%d: %s(): rename() failed %s -> %s: %m", __LINE__,
-		    __func__, newname, donename);
+		    __func__, template, donename);
+		LOCK(&dir->dirmtx);
+		sprintf(template, "%s.XXXXXXXXXXXXXX.elf", dir->dirpath);
+		UNLOCK(&dir->dirmtx);
 		return (-1);
 	}
 
+	LOCK(&dir->dirmtx);
+	sprintf(template, "%s.XXXXXXXXXXXXXX.elf", dir->dirpath);
+	UNLOCK(&dir->dirmtx);
 	return (0);
 }
 
@@ -858,7 +862,7 @@ cleanup:
 }
 
 static void
-dtraced_copyfile(const char *src, const char *dst)
+dtraced_copyfile(const char *src, int fd_dst, const char *dst)
 {
 	__cleanup(closefd_generic) int fd = -1;
 	__cleanup(closefd_generic) int newfd = -1;
@@ -891,15 +895,8 @@ dtraced_copyfile(const char *src, const char *dst)
 		return;
 	}
 
-	newfd = open(dst, O_WRONLY | O_CREAT);
-	if (newfd == -1) {
-		ERR("%d: %s(): Failed to open and create %s: %m", __LINE__,
-		    __func__, dst);
-		return;
-	}
-
-	if (write(newfd, buf, len) < 0) {
-		ERR("%d: %s(): Failed to write %zu bytes to %s (%d): %m",
+	if (write(fd_dst, buf, len) < 0) {
+		ERR("%d: %s(): failed to write %zu bytes to %s (%d): %m",
 		    __LINE__, __func__, len, dst, newfd);
 		return;
 	}
@@ -910,16 +907,15 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 {
 	struct dtraced_state *s;
 	int idx, err;
-	__cleanup(freep) char *newname = NULL;
 	char fullpath[MAXPATHLEN] = { 0 };
-	int status = 0;
+	int status = 0, fd = -1;
 	pid_t pid;
 	char *argv[5];
 	char fullarg[MAXPATHLEN*2 + 1] = { 0 };
 	size_t offset;
 	__cleanup(freep) char *dirpath = NULL;
-	__cleanup(freep) char *outbounddirpath = NULL;
 	char donename[MAXPATHLEN] = { 0 };
+	char template[MAXPATHLEN];
 	size_t dirpathlen = 0;
 
 	if (dir == NULL) {
@@ -982,27 +978,35 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		abort();
 	}
 
-	LOCK(&s->outbounddir->dirmtx);
-	outbounddirpath = strdup(s->outbounddir->dirpath);
-	UNLOCK(&s->outbounddir->dirmtx);
+	strcpy(fullpath, dirpath);
+	strcpy(fullpath + strlen(fullpath), f->d_name);
 
-	if (outbounddirpath == NULL) {
-		ERR("%d: %s(): failed to strdup() outbounddirpath: %m",
-		    __LINE__, __func__);
+	LOCK(&s->outbounddir->dirmtx);
+	sprintf(template, "%s.XXXXXXXXXXXXXX.elf", s->outbounddir->dirpath);
+	dirpathlen = strlen(s->outbounddir->dirpath);
+	UNLOCK(&s->outbounddir->dirmtx);
+	fd = mkstemp(template);
+	if (fd == -1) {
+		ERR("%d: %s(): mkstemp(%s) failed: %m", __LINE__, __func__,
+		    template);
 		abort();
 	}
 
-	newname = gen_filename(outbounddirpath);
-	dirpathlen = strlen(outbounddirpath);
-	strcpy(fullpath, dirpath);
-	strcpy(fullpath + strlen(fullpath), f->d_name);
-	dtraced_copyfile(fullpath, newname);
-	strcpy(donename, outbounddirpath);
-	strcpy(donename + dirpathlen, newname + dirpathlen + 1);
+	dtraced_copyfile(fullpath, fd, template);
+
+	LOCK(&s->outbounddir->dirmtx);
+	strncpy(donename, template, dirpathlen);
+	strcpy(donename + dirpathlen, template + dirpathlen + 1);
+	UNLOCK(&s->outbounddir->dirmtx);
 	EVENT("%d: %s(): create final file: %s", __LINE__, __func__, donename);
-	if (rename(newname, donename))
-		ERR("%d: %s(): Failed to rename %s to %s: %m", __LINE__,
-		    __func__, newname, donename);
+	if (rename(template, donename))
+		ERR("%d: %s(): failed to rename %s to %s: %m", __LINE__,
+		    __func__, template, donename);
+
+	LOCK(&s->outbounddir->dirmtx);
+	sprintf(template, "%s.XXXXXXXXXXXXXX.elf", s->outbounddir->dirpath);
+	UNLOCK(&s->outbounddir->dirmtx);
+
 
 	pid = fork();
 
@@ -1067,7 +1071,6 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	struct dtraced_job *job;
 	struct dtraced_state *s;
 	int idx, ch;
-	char *newname = NULL;
 
 	if (dir == NULL) {
 		ERR("%d: %s(): dir is NULL", __LINE__, __func__);

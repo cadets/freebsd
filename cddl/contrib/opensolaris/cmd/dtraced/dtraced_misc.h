@@ -59,7 +59,6 @@
 #define __cleanup(fn) __attribute__((__cleanup__(fn)))
 
 void get_randname(char *, size_t);
-char *gen_filename(const char *);
 void freep(void *);
 void closefd_generic(int *);
 void closedir_generic(DIR **);

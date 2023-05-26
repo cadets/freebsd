@@ -69,13 +69,12 @@ static size_t dirlen;
 static void
 dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 {
+	static char template[MAXPATHLEN];
 	static int fd = 0;
 	static char *elf = NULL;
-	static char *path = NULL;
 	static size_t len = 0;
 	static size_t offs = 0;
 	char donepath[MAXPATHLEN] = { 0 };
-	size_t donepathlen;
 	char msg[128] = { 0 };
 
 	if (fd == -1)
@@ -90,19 +89,14 @@ retry:
 	 */
 	if (fd == 0) {
 		LOCK(&s->inbounddir->dirmtx);
-		path = gen_filename(s->inbounddir->dirpath);
+		sprintf(template, "%s.XXXXXXXXXXXXXX.elf",
+		    s->inbounddir->dirpath);
 		UNLOCK(&s->inbounddir->dirmtx);
 
-		if (path == NULL) {
-			ERR("%d: %s(): gen_filename() failed with %s", __LINE__,
-			    __func__, strerror(errno));
-			goto retry;
-		}
-		fd = open(path, O_CREAT | O_WRONLY, 0600);
-
+		fd = mkstemp(template);
 		if (fd == -1) {
-			ERR("%d: %s(): Failed to open %s: %m", __LINE__,
-			    __func__, path);
+			ERR("%d: %s(): failed to mkstemp(%s): %m", __LINE__,
+			    __func__, template);
 			return;
 		}
 
@@ -134,29 +128,28 @@ retry:
 			if (errno == EINTR)
 				pthread_exit(s);
 
-			ERR("%d: %s(): Failed to write data to %s: %m",
-			    __LINE__, __func__, path);
+			ERR("%d: %s(): failed to write data to %s: %m",
+			    __LINE__, __func__, template);
 		}
 
-		donepathlen = strlen(path) - 1;
-		assert(donepathlen < MAXPATHLEN);
-		memset(donepath, 0, donepathlen);
-		memcpy(donepath, path, dirlen);
-		memcpy(donepath + dirlen, path + dirlen + 1,
-		    donepathlen - dirlen);
+		strncpy(donepath, template, dirlen);
+		strcpy(donepath + dirlen, template + dirlen + 1);
 
-		if (rename(path, donepath)) {
-			ERR("%d: %s(): Failed to move %s to %s: %m", __LINE__,
-			    __func__, path, donepath);
+		if (rename(template, donepath)) {
+			ERR("%d: %s(): failed to move %s to %s: %m", __LINE__,
+			    __func__, template, donepath);
 		}
 
 		free(elf);
 		close(fd);
-		free(path);
 		fd = 0;
 		offs = 0;
 		len = 0;
-		path = NULL;
+
+		LOCK(&s->inbounddir->dirmtx);
+		sprintf(template, "%s.XXXXXXXXXXXXXX.elf",
+		    s->inbounddir->dirpath);
+		UNLOCK(&s->inbounddir->dirmtx);
 	}
 }
 

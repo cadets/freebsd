@@ -65,47 +65,6 @@ get_randname(char *b, size_t len)
 		b[i] = arc4random_uniform(25) + 97;
 }
 
-char *
-gen_filename(const char *dir)
-{
-	__cleanup(freep) char *filename = NULL;
-	char *elfpath;
-	size_t len;
-
-	len = (MAXPATHLEN - strlen(dir)) / 64;
-	assert(len > 10);
-
-	filename = malloc(len);
-	if (filename == NULL) {
-		ERR("%d: %s(): Failed to malloc filename: %m", __LINE__,
-		    __func__);
-		abort();
-	}
-
-	filename[0] = '.';
-	get_randname(filename + 1, len - 2);
-	filename[len - 1] = '\0';
-
-	elfpath = malloc(MAXPATHLEN);
-	if (elfpath == NULL) {
-		ERR("%d: %s(): Failed to malloc elfpath: %m", __LINE__,
-		    __func__);
-		abort();
-	}
-
-	strcpy(elfpath, dir);
-	strcpy(elfpath + strlen(dir), filename);
-
-	while (access(elfpath, F_OK) != -1) {
-		filename[0] = '.';
-		get_randname(filename + 1, len - 2);
-		filename[len - 1] = '\0';
-		strcpy(elfpath + strlen(dir), filename);
-	}
-
-	return (elfpath);
-}
-
 void
 freep(void *mem)
 {
