@@ -918,7 +918,7 @@ svm_handle_hypercall(struct svm_vcpu *vcpu, struct vmcb *vmcb, struct vm_exit *v
 	struct vm_guest_paging *paging;
 	struct vmcb_segment seg;
 	uint64_t rsp;
-	int error;
+	int error __unused;
 
 	paging = &vmexit->u.hypercall.paging;
 	vmexit->exitcode = VM_EXITCODE_HYPERCALL;

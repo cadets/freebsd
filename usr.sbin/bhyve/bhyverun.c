@@ -1275,6 +1275,7 @@ main(int argc, char *argv[])
 
 #ifdef BHYVE_SNAPSHOT
 	optstr = "aedhuwxACDHIPSWYk:f:o:p:G:c:s:m:l:K:U:r:";
+#else
 	optstr = "aedhuwxACDHIPSWYk:f:o:p:G:c:s:m:l:K:U:";
 #endif
 	while ((c = getopt(argc, argv, optstr)) != -1) {

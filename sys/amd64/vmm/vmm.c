@@ -1953,7 +1953,7 @@ bhyve_handle_hypercall(uint64_t hcid, struct vcpu *vcpu, struct vm_exit *vmexit,
 	struct vm_guest_paging *paging;
 	uint64_t args[HYPERCALL_MAX_ARGS] = { 0 };
 	int64_t retval;
-	int error, i;
+	int error __unused, i;
 
 	/*
 	 * The SystemV ABI specifies a calling convetion that
@@ -1993,7 +1993,7 @@ vm_handle_hypercall(struct vcpu *vcpu, struct vm_exit *vmexit, bool *retu)
 {
 	struct seg_desc cs_desc;
 	uint64_t hcid;
-	int error;
+	int error __unused;
 
 	error = vm_get_register(vcpu, VM_REG_GUEST_RAX, &hcid);
 	KASSERT(error == 0, ("%s: error %d getting RAX",
@@ -2045,7 +2045,7 @@ hc_handle_test(struct vcpu *vcpu, uintptr_t *args,
 {
 	int copied_int = 0;
 	struct seg_desc ds_desc;
-	int err;
+	int err __unused;
 
 	err = vm_get_seg_desc(vcpu, VM_REG_GUEST_DS, &ds_desc);
 	KASSERT(err == 0, ("%s: error %d getting DS descriptor",
@@ -2070,7 +2070,7 @@ hc_handle_dtrace_probe(struct vcpu *vcpu, uintptr_t *args,
 
 	uintptr_t dt_probe_args[5];
 	hypertrace_args_t htr_args;
-	int err;
+	int err __unused;
 
 	vhdl->vcpu = vcpu;
 	vhdl->paging = paging;

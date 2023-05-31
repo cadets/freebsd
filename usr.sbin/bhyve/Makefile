@@ -5,6 +5,7 @@
 .include <src.opts.mk>
 CFLAGS+=-I${SRCTOP}/sys
 .PATH:  ${SRCTOP}/sys/libkern ${SRCTOP}/sys/cam/ctl
+CFLAGS+=-I${.CURDIR}/../../contrib/lib9p
 
 PROG=	bhyve
 PACKAGE=	bhyve

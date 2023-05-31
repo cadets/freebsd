@@ -560,7 +560,7 @@ static void
 vtdtr_queue_requeue_ctrl(struct virtio_dtrace_queue *q,
     struct virtio_dtrace_control *ctrl, int readable, int writable)
 {
-	int error;
+	int error __unused;
 
 	memset(ctrl, 0, sizeof(struct virtio_dtrace_control));
 	error = vtdtr_queue_enqueue_ctrl(q, ctrl, readable, writable);
@@ -849,7 +849,7 @@ vtdtr_enable_interrupts(struct vtdtr_softc *sc)
 static int
 vtdtr_vq_enable_intr(struct virtio_dtrace_queue *q)
 {
-	struct vtdtr_softc *sc;
+	struct vtdtr_softc *sc __unused;
 	sc = q->vtdq_sc;
 
 	mtx_assert(&sc->vtdtr_mtx, MA_OWNED);
@@ -862,7 +862,7 @@ vtdtr_vq_enable_intr(struct virtio_dtrace_queue *q)
 static void
 vtdtr_vq_disable_intr(struct virtio_dtrace_queue *q)
 {
-	struct vtdtr_softc *sc;
+	struct vtdtr_softc *sc __unused;
 	sc = q->vtdq_sc;
 
 	mtx_assert(&sc->vtdtr_mtx, MA_OWNED);
