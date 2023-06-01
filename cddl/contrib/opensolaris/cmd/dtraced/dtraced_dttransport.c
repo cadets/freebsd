@@ -89,7 +89,7 @@ retry:
 	 */
 	if (fd == 0) {
 		LOCK(&s->inbounddir->dirmtx);
-		sprintf(template, "%s.XXXXXXXXXXXXXX.elf",
+		sprintf(template, "%s.elf.XXXXXXXXXXXXXX",
 		    s->inbounddir->dirpath);
 		UNLOCK(&s->inbounddir->dirmtx);
 
@@ -147,7 +147,7 @@ retry:
 		len = 0;
 
 		LOCK(&s->inbounddir->dirmtx);
-		sprintf(template, "%s.XXXXXXXXXXXXXX.elf",
+		sprintf(template, "%s.elf.XXXXXXXXXXXXXX",
 		    s->inbounddir->dirpath);
 		UNLOCK(&s->inbounddir->dirmtx);
 	}

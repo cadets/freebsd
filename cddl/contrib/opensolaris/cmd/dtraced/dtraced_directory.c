@@ -95,7 +95,7 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	}
 
 	LOCK(&dir->dirmtx);
-	sprintf(template, "%s.XXXXXXXXXXXXXX.elf", dir->dirpath);
+	sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
 	dirpathlen = strlen(dir->dirpath);
 	UNLOCK(&dir->dirmtx);
 
@@ -103,7 +103,7 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	if (fd == -1) {
 		ERR("%d: %s(): mkstemp() failed with: %m", __LINE__, __func__);
 		LOCK(&dir->dirmtx);
-		sprintf(template, "%s.XXXXXXXXXXXXXX.elf", dir->dirpath);
+		sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
 		UNLOCK(&dir->dirmtx);
 		return (-1);
 	}
@@ -111,7 +111,7 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	if (write(fd, data, nbytes) < 0) {
 		ERR("%d: %s(): write() failed with: %m", __LINE__, __func__);
 		LOCK(&dir->dirmtx);
-		sprintf(template, "%s.XXXXXXXXXXXXXX.elf", dir->dirpath);
+		sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
 		UNLOCK(&dir->dirmtx);
 		return (-1);
 	}
@@ -122,13 +122,13 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 		ERR("%d: %s(): rename() failed %s -> %s: %m", __LINE__,
 		    __func__, template, donename);
 		LOCK(&dir->dirmtx);
-		sprintf(template, "%s.XXXXXXXXXXXXXX.elf", dir->dirpath);
+		sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
 		UNLOCK(&dir->dirmtx);
 		return (-1);
 	}
 
 	LOCK(&dir->dirmtx);
-	sprintf(template, "%s.XXXXXXXXXXXXXX.elf", dir->dirpath);
+	sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
 	UNLOCK(&dir->dirmtx);
 	return (0);
 }
@@ -982,7 +982,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	strcpy(fullpath + strlen(fullpath), f->d_name);
 
 	LOCK(&s->outbounddir->dirmtx);
-	sprintf(template, "%s.XXXXXXXXXXXXXX.elf", s->outbounddir->dirpath);
+	sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", s->outbounddir->dirpath);
 	dirpathlen = strlen(s->outbounddir->dirpath);
 	UNLOCK(&s->outbounddir->dirmtx);
 	fd = mkstemp(template);
@@ -1004,7 +1004,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		    __func__, template, donename);
 
 	LOCK(&s->outbounddir->dirmtx);
-	sprintf(template, "%s.XXXXXXXXXXXXXX.elf", s->outbounddir->dirpath);
+	sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", s->outbounddir->dirpath);
 	UNLOCK(&s->outbounddir->dirmtx);
 
 
