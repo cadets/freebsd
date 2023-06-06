@@ -75,12 +75,10 @@ dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 	static size_t len = 0;
 	static size_t offs = 0;
 	char donepath[MAXPATHLEN] = { 0 };
-	char msg[128] = { 0 };
 
 	if (fd == -1)
 		return;
 
-retry:
 	/*
 	 * At this point we have the /var/ddtrace/inbound
 	 * open and created, so we can just create new files in
@@ -166,21 +164,18 @@ dtt_kill(struct dtraced_state *s, dtt_entry_t *e)
 	}
 
 	kill_entry->pid = e->u.kill.pid;
+
 	LOCK(&s->kill_listmtx);
 	dt_list_append(&s->kill_list, kill_entry);
-	UNLOCK(&s->kill_listmtx);
-
-	LOCK(&s->killcvmtx);
 	SIGNAL(&s->killcv);
-	UNLOCK(&s->killcvmtx);
+	UNLOCK(&s->kill_listmtx);
 }
 
 static void
-dtt_cleanup(struct dtraced_state *s, dtt_entry_t *e)
+dtt_cleanup(struct dtraced_state *s)
 {
 	struct dtraced_job *job;
 	pidlist_t *pe;
-	size_t i;
 
 	/* Clean up all of the dtraced state */
 	DEBUG("%d: %s(): Got cleanup message.", __LINE__, __func__);
@@ -188,31 +183,7 @@ dtt_cleanup(struct dtraced_state *s, dtt_entry_t *e)
 	LOCK(&s->joblistmtx);
 	while (job = dt_list_next(&s->joblist)) {
 		dt_list_delete(&s->joblist, job);
-		switch (job->job) {
-		case READ_DATA:
-			fd_release(job->connsockfd);
-			break;
-
-		case KILL:
-			fd_release(job->connsockfd);
-			break;
-
-		case NOTIFY_ELFWRITE:
-			fd_release(job->connsockfd);
-			break;
-
-		case CLEANUP:
-			fd_release(job->connsockfd);
-			for (i = 0; i < job->j.cleanup.n_entries; i++)
-				free(job->j.cleanup.entries[i]);
-			free(job->j.cleanup.entries);
-			break;
-
-		default:
-			ERR("%d: %s(): Unknown job: %d", __LINE__, __func__,
-			    job->job);
-		}
-		free(job);
+		dtraced_free_job(job);
 	}
 	UNLOCK(&s->joblistmtx);
 
@@ -302,12 +273,8 @@ setup_connection(struct dtraced_state *s)
 void *
 listen_dttransport(void *_s)
 {
-	int err;
 	struct dtraced_state *s = (struct dtraced_state *)_s;
 	dtt_entry_t e;
-	uintptr_t aux1, aux2;
-
-	err = 0;
 
 	LOCK(&s->inbounddir->dirmtx);
 	dirlen = strlen(s->inbounddir->dirpath);
@@ -315,8 +282,11 @@ listen_dttransport(void *_s)
 
 	while (atomic_load(&s->shutdown) == 0) {
 		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
-			if (errno == EINTR)
+			if (errno == EINTR) {
+				DEBUG("%d: %s(): got EINTR on read, exiting",
+				    __LINE__, __func__);
 				pthread_exit(s);
+			}
 
 			ERR("%d: %s(): Failed to read an entry: %m", __LINE__,
 			    __func__);
@@ -333,7 +303,7 @@ listen_dttransport(void *_s)
 			break;
 
 		case DTT_CLEANUP_DTRACED:
-			dtt_cleanup(s, &e);
+			dtt_cleanup(s);
 			break;
 
 		default:
@@ -349,7 +319,6 @@ listen_dttransport(void *_s)
 void *
 write_dttransport(void *_s)
 {
-	ssize_t rval;
 	__cleanup(closefd_generic) int sockfd = -1;
 	struct dtraced_state *s = (struct dtraced_state *)_s;
 	dtt_entry_t e;
@@ -360,7 +329,6 @@ write_dttransport(void *_s)
 	uintptr_t msg_ptr;
 	unsigned char *msg;
 
-	rval = 0;
 	lentoread = len = totallen = 0;
 
 	sockfd = setup_connection(s);
@@ -368,9 +336,12 @@ write_dttransport(void *_s)
 		pthread_exit(NULL);
 
 	while (atomic_load(&s->shutdown) == 0) {
-		if ((rval = recv(sockfd, &header, DTRACED_MSGHDRSIZE, 0)) < 0) {
-			if (errno == EINTR)
+		if (recv(sockfd, &header, DTRACED_MSGHDRSIZE, 0) < 0) {
+			if (errno == EINTR) {
+				DEBUG("%d: %s(): got EINTR on recv, exiting",
+				    __LINE__, __func__);
 				pthread_exit(s);
+			}
 
 			ERR("%d: %s(): Failed to recv from sub.sock: %m",
 			    __LINE__, __func__);
@@ -395,7 +366,8 @@ write_dttransport(void *_s)
 		totallen = len;
 		identifier = arc4random();
 		msg_ptr = (uintptr_t)msg;
-		while ((r = recv(sockfd, (void *)msg_ptr, len, 0)) != len) {
+		for (;;) {
+			r = recv(sockfd, (void *)msg_ptr, len, 0);
 			if (r < 0) {
 				if (errno == EINTR)
 					pthread_exit(s);
@@ -404,7 +376,8 @@ write_dttransport(void *_s)
 				    __LINE__, __func__);
 				atomic_store(&s->shutdown, 1);
 				pthread_exit(NULL);
-			}
+			} else if ((size_t)r == len)
+				break;
 
 			len -= r;
 			msg_ptr += r;

@@ -94,6 +94,7 @@ typedef struct dtraced_job {
 } dtraced_job_t;
 
 dtraced_job_t *dtraced_new_job(int, dtraced_fd_t *);
+void dtraced_free_job(dtraced_job_t *);
 int  dispatch_event(struct dtraced_state *, struct kevent *);
 void *process_joblist(void *);
 const char *dtraced_job_identifier(dtraced_job_t *);

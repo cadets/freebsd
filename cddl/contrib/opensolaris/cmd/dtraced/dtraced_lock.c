@@ -40,62 +40,32 @@
 
 #include <sys/param.h>
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "dtraced_errmsg.h"
 #include "dtraced_lock.h"
 
-#if defined(DTRACED_DEBUG) || defined(DTRACED_ROBUST)
+#ifdef DTRACED_ROBUST
 void
-LOCK(mutex_t *m)
+mutex_assert_owned(mutex_t *m)
 {
 	int err;
 
-	err = pthread_mutex_lock(&(m)->_m);
-	if (err != 0) {
-		ERR("%d: %s(): Failed to lock mutex: %s", __LINE__, __func__,
-		    strerror(err));
-		exit(EXIT_FAILURE);
+	errno = 0; /* Clear the errno to check the condition */
+	err = pthread_mutex_trylock(pmutex_of(m));
+	if (err == 0 || (err && errno != 0)) {
+		ERR("%d: %s(): mutex %s is not owned: %m", __LINE__, __func__,
+		    m->_name);
+		abort();
 	}
-
-	if (m->_checkowner != CHECKOWNER_NO)
-		atomic_store(&(m)->_owner, pthread_self());
-}
-
-void
-UNLOCK(mutex_t *m)
-{
-	int err;
-	pthread_t self;
-
-	if (m->_checkowner != CHECKOWNER_NO) {
-		self = pthread_self();
-		if (pthread_equal(atomic_load(&m->_owner), self) == 0) {
-			ERR("%d: %s(): Attempted unlock of %s by thread %p (!= %p)",
-			    __LINE__, __func__, m->_name, self,
-			    atomic_load(&m->_owner));
-			dump_backtrace();
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	if (m->_checkowner != CHECKOWNER_NO)
-		atomic_store(&m->_owner, NULL);
-
-	err = pthread_mutex_unlock(&(m)->_m);
-	if (err != 0) {
-		ERR("%d: %s(): Failed to unlock mutex: %s", __LINE__, __func__,
-		    strerror(err));
-		return;
-	}
-
 }
 #endif
 
 int
 mutex_init(mutex_t *m, const pthread_mutexattr_t *restrict attr,
-    const char *name, int checkowner)
+    const char *name)
 {
 	size_t l;
 
@@ -108,9 +78,6 @@ mutex_init(mutex_t *m, const pthread_mutexattr_t *restrict attr,
 	if (l >= MAXPATHLEN)
 		return (-1);
 
-	m->_checkowner = checkowner;
-
-	atomic_store(&m->_owner, NULL);
 	return (pthread_mutex_init(&m->_m, attr));
 }
 
@@ -118,7 +85,6 @@ int
 mutex_destroy(mutex_t *m)
 {
 
-	assert(atomic_load(&m->_owner) == NULL);
 	return (pthread_mutex_destroy(&m->_m));
 }
 
@@ -128,4 +94,3 @@ pmutex_of(mutex_t *m)
 
 	return (&m->_m);
 }
-

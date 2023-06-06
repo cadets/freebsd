@@ -62,10 +62,8 @@ handle_kill(struct dtraced_state *s, struct dtraced_job *curjob)
 	int fd;
 	pid_t pid;
 	uint16_t vmid;
-	ssize_t r;
 	dtraced_hdr_t header;
-	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;
-	__cleanup(freep) unsigned char *msg = NULL;
+	dtraced_fd_t *dfd = curjob->connsockfd;
 
 	fd = dfd->fd;
 	pid = curjob->j.kill.pid;
@@ -88,7 +86,7 @@ handle_kill(struct dtraced_state *s, struct dtraced_job *curjob)
 	DTRACED_MSG_KILLPID(header) = pid;
 	DTRACED_MSG_KILLVMID(header) = vmid;
 
-	if ((r = send(fd, &header, DTRACED_MSGHDRSIZE, 0)) < 0) {
+	if (send(fd, &header, DTRACED_MSGHDRSIZE, 0) < 0) {
 		if (errno == EPIPE)
 			ERR("%d: %s(): Failed to write to %d: %m", __LINE__,
 			    __func__, fd);

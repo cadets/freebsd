@@ -75,6 +75,7 @@ dtraced_new_job(int job_kind, dtraced_fd_t *dfd)
 
 	j->job = job_kind;
 	j->connsockfd = dfd;
+	fd_acquire(dfd);
 	dtraced_tag_job(dfd->id, j);
 
 	j->ident_str[sizeof(j->ident_str) - 1] = '\0';
@@ -85,6 +86,56 @@ dtraced_new_job(int job_kind, dtraced_fd_t *dfd)
 	return (j);
 }
 
+static void
+free_elfwrite(dtraced_job_t *j)
+{
+
+	free(j->j.notify_elfwrite.path);
+}
+
+static void
+free_cleanup(dtraced_job_t *j)
+{
+	size_t i;
+
+	for (i = 0; i < j->j.cleanup.n_entries; i++) {
+		free(j->j.cleanup.entries[i]);
+	}
+
+	free(j->j.cleanup.entries);
+}
+
+void
+dtraced_free_job(dtraced_job_t *j)
+{
+	switch (j->job) {
+	case NOTIFY_ELFWRITE:
+		free_elfwrite(j);
+		fd_release(j->connsockfd);
+		break;
+
+	case KILL:
+	case READ_DATA:
+		fd_release(j->connsockfd);
+		break;
+
+	case CLEANUP:
+		free_cleanup(j);
+		fd_release(j->connsockfd);
+		break;
+
+	case SEND_INFO:
+		break;
+
+	default:
+		ERR("%d: %s(): free of unknown job kind: %d", __LINE__,
+		    __func__, j->job);
+		break;
+	}
+
+	free(j);
+}
+
 /*
  * NOTE: dispatch_event assumes that event has already been handled correctly in
  * the main loop.
@@ -92,12 +143,16 @@ dtraced_new_job(int job_kind, dtraced_fd_t *dfd)
 int
 dispatch_event(struct dtraced_state *s, struct kevent *ev)
 {
-	struct dtraced_job *job = NULL; /* in case we free */
+	struct dtraced_job *job, *next; /* in case we free */
 	dtraced_fd_t *dfd;
+	int efd;
+
+	job = NULL;
+	next = NULL;
+	efd = (int)ev->ident;
 
 	if (ev->filter == EVFILT_READ) {
 		dfd = ev->udata;
-		fd_acquire(dfd);
 
 		/*
 		 * Read is a little bit more complicated than write, because we
@@ -114,13 +169,12 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 
 		LOCK(&s->dispatched_jobsmtx);
 		dt_list_prepend(&s->dispatched_jobs, job);
-		UNLOCK(&s->dispatched_jobsmtx);
 
-		EVENT("%d: %s(): job %s: dispatch EVFILT_READ on %d", __LINE__,
-		    __func__, dtraced_job_identifier(job), dfd->fd);
-		LOCK(&s->joblistcvmtx);
-		SIGNAL(&s->joblistcv);
-		UNLOCK(&s->joblistcvmtx);
+		DEBUG("%d: %s(): job %p: dispatch EVFILT_READ on %d", __LINE__,
+		    __func__, job, dfd->fd);
+
+		SIGNAL(&s->dispatched_jobscv);
+		UNLOCK(&s->dispatched_jobsmtx);
 
 	} else if (ev->filter == EVFILT_WRITE) {
 		/*
@@ -128,33 +182,32 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		 * file descriptor as the destination, we put it in the dispatch
 		 * list.
 		 */
-		EVENT("%d: %s(): EVFILT_WRITE: notified", __LINE__, __func__);
-		LOCK(&s->joblistmtx);
-		for (job = dt_list_next(&s->joblist); job;
-		     job = dt_list_next(job)) {
+
+		/*
+		 * Assert that the mutex is actually owned. For EVFILT_WRITE, we
+		 * expect to be called with the lock held because the caller
+		 * will be modifying the joblist regardless.
+		 */
+		mutex_assert_owned(&s->joblistmtx);
+		for (job = dt_list_next(&s->joblist); job; job = next) {
+			next = dt_list_next(job);
 			dfd = job->connsockfd;
-			EVENT("%d: %s(): EVFILT_WRITE: compare %d and %d",
-			    __LINE__, __func__, dfd->fd, ev->ident);
-			if (dfd->fd == ev->ident) {
-				EVENT(
-				    "%d: %s(): job %s: dispatch EVFILT_WRITE on %d",
-				    __LINE__, __func__,
-				    dtraced_job_identifier(job), dfd->fd);
+			if (dfd->fd == efd) {
 				dt_list_delete(&s->joblist, job);
+
+				/*
+				 * Zero the list to avoid stale pointers in the
+				 * new list.
+				 */
+				memset(job, 0, sizeof(dt_list_t));
 
 				LOCK(&s->dispatched_jobsmtx);
 				dt_list_append(&s->dispatched_jobs, job);
+				SIGNAL(&s->dispatched_jobscv);
 				UNLOCK(&s->dispatched_jobsmtx);
 			}
 		}
-		UNLOCK(&s->joblistmtx);
 
-		/*
-		 * Signal the workers to pick up our dispatched jobs.
-		 */
-		LOCK(&s->joblistcvmtx);
-		SIGNAL(&s->joblistcv);
-		UNLOCK(&s->joblistcvmtx);
 	} else {
 		ERR("%d: %s(): Unexpected event flags: %d", __LINE__, __func__,
 		    ev->flags);
@@ -167,10 +220,9 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 void *
 process_joblist(void *_s)
 {
-	int i;
 	struct dtraced_job *curjob;
 	struct dtraced_state *s = (struct dtraced_state *)_s;
-	struct dtraced_job *job;
+#ifdef DTRACED_DEBUG
 	const char *jobname[] = {
 		[0]               = "NONE",
 		[NOTIFY_ELFWRITE] = "NOTIFY_ELFWRITE",
@@ -179,39 +231,35 @@ process_joblist(void *_s)
 		[CLEANUP]         = "CLEANUP",
 		[SEND_INFO]       = "SEND_INFO"
 	};
+#endif /* DTRACED_DEBUG */
+	int _shutdown = 0;
 
-	while (atomic_load(&s->shutdown) == 0) {
-		LOCK(&s->joblistcvmtx);
-		while (dt_list_next(&s->dispatched_jobs) == NULL &&
-		    atomic_load(&s->shutdown) == 0) {
-			WAIT(&s->joblistcv, pmutex_of(&s->joblistcvmtx));
-		}
-		UNLOCK(&s->joblistcvmtx);
-		if (atomic_load(&s->shutdown) == 1)
-			break;
-
+	while (1) {
 		LOCK(&s->dispatched_jobsmtx);
-		curjob = dt_list_next(&s->dispatched_jobs);
-		if (curjob == NULL) {
-			/*
-			 * It is possible that another thread already picked
-			 * this job up, in which case we simply loop again.
-			 */
+		while (((curjob = dt_list_next(&s->dispatched_jobs)) == NULL) &&
+		    ((_shutdown = atomic_load(&s->shutdown)) == 0)) {
+			WAIT(&s->dispatched_jobscv,
+			    pmutex_of(&s->dispatched_jobsmtx));
+		}
+
+		if (unlikely(_shutdown == 1)) {
 			UNLOCK(&s->dispatched_jobsmtx);
-			continue;
+			break;
 		}
 
 		dt_list_delete(&s->dispatched_jobs, curjob);
 		UNLOCK(&s->dispatched_jobsmtx);
 
 		if (curjob->job >= 0 && curjob->job <= JOB_LAST)
-			DEBUG("%d: %s(): Job: %s", __LINE__, __func__,
-			    jobname[curjob->job]);
+			DEBUG("%d: %s(): processing %s[%s]", __LINE__, __func__,
+			    jobname[curjob->job],
+			    dtraced_job_identifier(curjob));
 		else
-			ERR("%d: %s(): Job %u out of bounds", __LINE__,
-			    __func__, curjob->job);
+			ERR("%d: %s(): job %u[%s] out of bounds", __LINE__,
+			    __func__, curjob->job,
+			    dtraced_job_identifier(curjob));
 
-		EVENT("%d: %s: job %s: processing (kind=%d)\n", __LINE__,
+		DEBUG("%d: %s: job %s: processing (kind=%d)\n", __LINE__,
 		    __func__, dtraced_job_identifier(curjob), curjob->job);
 		switch (curjob->job) {
 		case READ_DATA:
@@ -240,7 +288,7 @@ process_joblist(void *_s)
 			abort();
 		}
 
-		free(curjob);
+		dtraced_free_job(curjob);
 	}
 
 	pthread_exit(s);
@@ -259,28 +307,30 @@ clean_jobs(void *_s)
 	struct dtraced_state *s = (struct dtraced_state *)_s;
 	dtraced_job_t *j, *next;
 	dtraced_fd_t *dfd;
+	int _shutdown = 0;
+	int woken;
 
-	while (atomic_load(&s->shutdown) == 0) {
-		LOCK(&s->jobcleancvmtx);
+	while (1) {
+		woken = 0;
 		LOCK(&s->deadfdsmtx);
-		while (dt_list_next(&s->deadfds) == NULL &&
-		    atomic_load(&s->shutdown) == 0) {
-			UNLOCK(&s->deadfdsmtx);
-			WAIT(&s->jobcleancv, pmutex_of(&s->jobcleancvmtx));
-			LOCK(&s->deadfdsmtx);
+		while (woken == 0 || (dt_list_next(&s->deadfds) == NULL &&
+		    ((_shutdown = atomic_load(&s->shutdown)) == 0))) {
+			WAIT(&s->jobcleancv, pmutex_of(&s->deadfdsmtx));
+			woken = 1;
 		}
-		UNLOCK(&s->deadfdsmtx);
-		UNLOCK(&s->jobcleancvmtx);
 
-		if (atomic_load(&s->shutdown) == 1)
+		DEBUG("%d: %s(): shutdown = %d, dt_list_next(&s->deadfds) = %p",
+		    __LINE__, __func__, _shutdown, dt_list_next(&s->deadfds));
+		if (unlikely(_shutdown == 1)) {
+			UNLOCK(&s->deadfdsmtx);
 			pthread_exit(_s);
+		}
 
 		/*
 		 * Delete any jobs that our dead file descriptors have started.
 		 * We don't need to do anything with them, as the initiating
 		 * process is gone.
 		 */
-		LOCK(&s->deadfdsmtx);
 		for (dfd = dt_list_next(&s->deadfds); dfd;
 		     dfd = dt_list_next(dfd)) {
 			LOCK(&s->joblistmtx);
@@ -288,12 +338,12 @@ clean_jobs(void *_s)
 				next = dt_list_next(j);
 				if (j->identifier.job_initiator_id == dfd->id) {
 					dt_list_delete(&s->joblist, j);
+					dtraced_free_job(j);
 				}
 			}
 			UNLOCK(&s->joblistmtx);
 
-			/* Release the filedesc to allow for cleanup */
-			fd_release(dfd);
+			dfd->cleaned_up = 1;
 		}
 		UNLOCK(&s->deadfdsmtx);
 	}

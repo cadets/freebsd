@@ -39,7 +39,6 @@
  */
 
 #include <err.h>
-#include <execinfo.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -51,7 +50,6 @@
 #include "dtraced_errmsg.h"
 #include "dtraced_misc.h"
 
-#define DTRACED_BACKTRACELEN    128
 #define DTRACED_SYSLOG
 
 static int quiet;
@@ -108,25 +106,6 @@ dump_warnmsg(const char *msg, ...)
 	}
 }
 
-void
-EVENT(const char *msg, ...)
-{
-	va_list ap;
-
-	if (quiet)
-		return;
-
-	if (msg) {
-		pthread_mutex_lock(&printmtx);
-		va_start(ap, msg);
-		vfprintf(stdout, msg, ap);
-		va_end(ap);
-		fprintf(stdout, "\n");
-		fsync(STDOUT_FILENO);
-		pthread_mutex_unlock(&printmtx);
-	}
-}
-
 #ifdef DTRACED_DEBUG
 void
 dump_debugmsg(const char *msg, ...)
@@ -154,26 +133,21 @@ dump_debugmsg(const char *msg, ...)
 #endif /* DTRACED_DEBUG */
 
 void
-dump_backtrace(void)
+dump_logmsg(const char *msg, ...)
 {
-	int nptrs;
-	void *buffer[DTRACED_BACKTRACELEN];
-	__cleanup(freep) char **strings = NULL;
-
-	nptrs = backtrace(buffer, DTRACED_BACKTRACELEN);
-	strings = backtrace_symbols(buffer, nptrs);
-
-	if (strings == NULL) {
-		dump_errmsg("%s@%d(): Failed to get backtrace symbols: %m",
-		    __func__, __LINE__);
-		exit(EXIT_FAILURE);
+	va_list ap;
+	if (msg) {
+		pthread_mutex_lock(&printmtx);
+		fprintf(stdout, "LOG: ");
+		va_start(ap, msg);
+		vfprintf(stdout, msg, ap);
+		va_end(ap);
+		fprintf(stdout, "\n");
+		pthread_mutex_unlock(&printmtx);
+#ifdef DTRACED_SYSLOG
+		va_start(ap, msg);
+		vsyslog(LOG_INFO, msg, ap);
+		va_end(ap);
+#endif /* DTRACED_SYSLOG */
 	}
-
-	pthread_mutex_lock(&printmtx);
-	for (int j = 0; j < nptrs; j++)
-		dump_errmsg("%s", strings[j]);
-	pthread_mutex_unlock(&printmtx);
-
-	free(strings);
 }
-

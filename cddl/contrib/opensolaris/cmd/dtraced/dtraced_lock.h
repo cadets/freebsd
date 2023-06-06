@@ -52,12 +52,8 @@
 #include "dtraced_errmsg.h"
 
 typedef struct mutex {
-	pthread_mutex_t _m;       /* pthread mutex */
-	_Atomic pthread_t _owner; /* owner thread of _m */
-	char _name[MAXPATHLEN];   /* name of the mutex */
-	int _checkowner;          /* do we want to check who owns the mutex? */
-#define CHECKOWNER_NO     0
-#define CHECKOWNER_YES    1
+	pthread_mutex_t _m;	/* pthread mutex */
+	char _name[MAXPATHLEN]; /* name of the mutex */
 } mutex_t;
 
 #define SIGNAL(c)                                                          \
@@ -110,10 +106,12 @@ typedef struct mutex {
 		}                                                              \
 	}
 
-#if defined(DTRACED_DEBUG) || defined(DTRACED_ROBUST)
-void            LOCK(mutex_t *);
-void            UNLOCK(mutex_t *);
+#ifdef DTRACED_ROBUST
+void mutex_assert_owned(mutex_t *);
 #else
+#define mutex_assert_owned(...)
+#endif
+
 #define LOCK(m)                                                             \
 	{                                                                   \
 		int err;                                                    \
@@ -133,11 +131,9 @@ void            UNLOCK(mutex_t *);
 			    __func__, strerror(err));                       \
 		}                                                           \
 	}
-#endif /* DTRACED_DEBUG || DTRACED_ROBUST */
 
-int             mutex_destroy(mutex_t *);
+int mutex_destroy(mutex_t *);
 pthread_mutex_t *pmutex_of(mutex_t *);
-int             mutex_init(mutex_t *, const pthread_mutexattr_t *restrict,
-    const char *, int);
+int mutex_init(mutex_t *, const pthread_mutexattr_t *restrict, const char *);
 
 #endif // _DTRACED_LOCK_H_

@@ -60,38 +60,30 @@ manage_children(void *_s)
 {
 	struct dtraced_state *s = (struct dtraced_state *)_s;
 	pidlist_t *kill_entry, *pe;
-	int status;
+	int shutdown = 0;
 
-	while (atomic_load(&s->shutdown) == 0) {
+	while (1) {
 		/*
 		 * Wait for a notification that we need to kill a process
 		 */
-		LOCK(&s->killcvmtx);
 		LOCK(&s->kill_listmtx);
 		while (dt_list_next(&s->kill_list) == NULL &&
-		    atomic_load(&s->shutdown) == 0) {
-			UNLOCK(&s->kill_listmtx);
-			WAIT(&s->killcv, pmutex_of(&s->killcvmtx));
-			LOCK(&s->kill_listmtx);
+		    ((shutdown = atomic_load(&s->shutdown)) == 0)) {
+			WAIT(&s->killcv, pmutex_of(&s->kill_listmtx));
 		}
-		UNLOCK(&s->kill_listmtx);
-		UNLOCK(&s->killcvmtx);
 
-		if (atomic_load(&s->shutdown) == 1)
+		if (unlikely(shutdown == 1)) {
+			UNLOCK(&s->kill_listmtx);
 			pthread_exit(_s);
-
-		LOCK(&s->pidlistmtx);
-		LOCK(&s->kill_listmtx);
-		kill_entry = dt_list_next(&s->kill_list);
-		if (kill_entry == NULL) {
-			fprintf(stderr, "kill message pulled from under us");
-			UNLOCK(&s->kill_listmtx);
-			continue;
 		}
+
+		kill_entry = dt_list_next(&s->kill_list);
+		assert(kill_entry && "kill entry should not be NULL");
 
 		dt_list_delete(&s->kill_list, kill_entry);
 		UNLOCK(&s->kill_listmtx);
 
+		LOCK(&s->pidlistmtx);
 		for (pe = dt_list_next(&s->pidlist); pe; pe = dt_list_next(pe))
 			if (pe->pid == kill_entry->pid)
 				break;

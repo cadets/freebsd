@@ -62,15 +62,14 @@ void
 handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
 {
 	int fd, _nosha;
-	ssize_t r;
 	__cleanup(closefd_generic) int elffd = -1;
-	__cleanup(freep) char *path = NULL;
+	char *path = NULL;
 	__cleanup(freep) unsigned char *msg = NULL;
 	unsigned char *contents;
 	size_t pathlen, elflen, msglen;
 	dtraced_hdr_t header;
 	dtd_dir_t *dir;
-	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;
+	dtraced_fd_t *dfd = curjob->connsockfd;
 	struct stat stat;
 
 	fd = dfd->fd;
@@ -117,7 +116,7 @@ handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
 	memset(msg, 0, msglen);
 	contents = _nosha ? msg : msg + SHA256_DIGEST_LENGTH;
 
-	if ((r = read(elffd, contents, elflen)) < 0) {
+	if (read(elffd, contents, elflen) < 0) {
 		ERR("%d: %s(): Failed to read ELF contents: %m", __LINE__,
 		    __func__);
 		return;
@@ -135,7 +134,7 @@ handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
 		return;
 	}
 
-	if ((r = send(fd, msg, msglen, 0)) < 0) {
+	if (send(fd, msg, msglen, 0) < 0) {
 		ERR("%d: %s(): Failed to write to %d (%s, %zu): %m", __LINE__,
 		    __func__, fd, path, pathlen);
 		return;

@@ -38,7 +38,10 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
 		-I${SRCTOP}/sys/dev/dttransport
 
-LIBADD=	dtrace ctf elf proc pthread crypto execinfo util
+CFLAGS+=	-Wall -Wextra
+CSTD:=c11
+
+LIBADD=	dtrace ctf elf proc pthread crypto util
 
 .if ${MK_DTRACE_OPTIMIZED} != "no" && ${MACHINE_ARCH} != mips && \
     ${MACHINE_ARCH} != mips64 && ${MACHINE_ARCH} != powerpc64 && \
@@ -57,6 +60,7 @@ LDFLAGS+=	-fsanitize=thread
 
 .if ${MK_DTRACED_ROBUST} != "no"
 CFLAGS+=	-DDTRACED_ROBUST
+CFLAGS+=	-Wall -Wextra -ggdb3 -Werror -Wpedantic -Wno-gnu-include-next -Wno-nullability-extension -Wno-gnu-empty-struct
 .endif
 
 .if ${MK_DTRACED_DEBUG} != "no"

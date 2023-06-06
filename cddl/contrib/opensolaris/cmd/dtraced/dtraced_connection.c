@@ -61,7 +61,7 @@
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
-#define DTRACED_BACKLOG_SIZE    10000
+#define DTRACED_BACKLOG_SIZE 10000
 
 int
 send_ack(int fd)
@@ -114,6 +114,7 @@ close_filedescs(void *_s)
 {
 	struct dtraced_state *s = _s;
 	dtraced_fd_t *dfd, *next;
+	int count;
 
 	while (atomic_load(&s->shutdown) == 0) {
 		sleep(5);
@@ -124,15 +125,28 @@ close_filedescs(void *_s)
 			 * If it's still referenced somewhere, we don't close
 			 * it. We'll pick it up on the next run.
 			 */
-			if (atomic_load(&dfd->__count) != 0) {
+			count = atomic_load(&dfd->__count);
+			if (count != 0) {
+				DEBUG("%d: %s(): fd %d (ident=%s, count=%d)\n",
+				    __LINE__, __func__, dfd->fd, dfd->ident,
+				    count);
+				next = dt_list_next(dfd);
+				continue;
+			}
+
+			if (dfd->cleaned_up == 0) {
+				/*
+				 * We haven't cleaned our jobs up yet. Delay the
+				 * closing of this file descriptor until we do.
+				 */
 				next = dt_list_next(dfd);
 				continue;
 			}
 
 			dt_list_delete(&s->deadfds, dfd);
 			assert(atomic_load(&dfd->__count) == 0);
-			EVENT("%d: %s(): close(%p, %d)", __LINE__,
-			    __func__, dfd, dfd->fd);
+			LOG("%d: %s(): close(%p, %d)\n", __LINE__, __func__,
+			    dfd, dfd->fd);
 			close(dfd->fd);
 			next = dt_list_next(dfd);
 			free(dfd);
@@ -148,14 +162,10 @@ enqueue_info_message(struct dtraced_state *s, dtraced_fd_t *dfd)
 {
 	struct dtraced_job *job;
 
-	fd_acquire(dfd);
-
 	job = dtraced_new_job(SEND_INFO, dfd);
 	if (job == NULL)
 		abort();
 
-	EVENT("%d: %s: job %s: dispatch SEND_INFO on %d", __LINE__, __func__,
-	    dtraced_job_identifier(job), dfd->fd);
 	LOCK(&s->joblistmtx);
 	dt_list_append(&s->joblist, job);
 	UNLOCK(&s->joblistmtx);
@@ -168,7 +178,6 @@ accept_new_connection(struct dtraced_state *s)
 	int on = 1;
 	dtraced_fd_t *dfd;
 	dtd_initmsg_t initmsg;
-	struct kevent change_event[4];
 
 	memset(&initmsg, 0, sizeof(initmsg));
 
@@ -229,8 +238,8 @@ accept_new_connection(struct dtraced_state *s)
 		return (-1);
 	}
 
-	EVENT("%d: %s(): accept(%d, %x, 0x%x, %s)", __LINE__, __func__,
-	    dfd->fd, dfd->kind, dfd->subs, dfd->ident);
+	LOG("%d: %s(): accept(%d, %x, 0x%x, %s)", __LINE__, __func__, dfd->fd,
+	    dfd->kind, dfd->subs, dfd->ident);
 	LOCK(&s->socklistmtx);
 	dt_list_append(&s->sockfds, dfd);
 	UNLOCK(&s->socklistmtx);
@@ -242,21 +251,58 @@ accept_new_connection(struct dtraced_state *s)
 	return (0);
 }
 
+static void
+kill_socket(struct dtraced_state *s, dtraced_fd_t *dfd)
+{
+	dtraced_fd_t *_dfd;
+
+	/* Remove it from the socket list and shutdown */
+	LOCK(&s->socklistmtx);
+	dt_list_delete(&s->sockfds, dfd);
+	UNLOCK(&s->socklistmtx);
+
+	shutdown(dfd->fd, SHUT_RDWR);
+
+	memset(dfd, 0, sizeof(dt_list_t));
+
+	/*
+	 * Add it to the deadfds list and let it get cleaned up by other
+	 * threads.
+	 */
+	LOCK(&s->deadfdsmtx);
+	for (_dfd = dt_list_next(&s->deadfds); _dfd; _dfd = dt_list_next(_dfd))
+		if (_dfd == dfd)
+			break;
+
+	if (_dfd == NULL)
+		dt_list_append(&s->deadfds, dfd);
+
+	SIGNAL(&s->jobcleancv);
+	UNLOCK(&s->deadfdsmtx);
+}
+
+static int
+disable_rw(int kq, int fd)
+{
+
+	return (disable_fd(kq, fd, EVFILT_READ) ||
+	    disable_fd(kq, fd, EVFILT_WRITE));
+}
+
 void *
 process_consumers(void *_s)
 {
 	int err;
-	int on = 1;
 	int new_events;
 	__cleanup(closefd_generic) int kq = -1;
-	dtraced_fd_t *dfd, *_dfd;
+	dtraced_fd_t *dfd;
 	int efd;
 	int dispatch;
-	size_t i;
+	int i;
 	struct dtraced_state *s = (struct dtraced_state *)_s;
 	struct dtraced_job *jle;
 
-	struct kevent change_event[4], event[4];
+	struct kevent event[4];
 
 	/*
 	 * Sanity checks on the state.
@@ -302,131 +348,61 @@ process_consumers(void *_s)
 			 * to accept any new connections, therefore the daemon
 			 * must exit and report an error.
 			 */
-			ERR("%d: %s(): kevent() failed with %m", __LINE__,
-			    __func__);
+			if (errno != EINTR)
+				ERR("%d: %s(): kevent() failed with %m",
+				    __LINE__, __func__);
 			atomic_store(&s->shutdown, 1);
 			pthread_exit(NULL);
 		}
 
 		for (i = 0; i < new_events; i++) {
 			dfd = event[i].udata;
-			if (dfd)
-				fd_acquire(dfd);
-
 			efd = event[i].ident;
 
-			if (event[i].flags & EV_ERROR) {
-				assert(dfd != NULL && "dfd should not be NULL");
-				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
-					ERR("%d: %s(): disable_fd() failed with: %m",
-					    __LINE__, __func__);
-					fd_release(dfd);
-					pthread_exit(NULL);
-				}
-
-				if (disable_fd(s->kq_hdl, efd, EVFILT_WRITE)) {
-					ERR("%d: %s(): disable_fd() failed with: %m",
-					    __LINE__, __func__);
-					fd_release(dfd);
-					pthread_exit(NULL);
-				}
-
-				LOCK(&s->socklistmtx);
-				DEBUG("%d: %s(): Deleting fd (%p, %d)", __LINE__,
-				    __func__, dfd, dfd->fd);
-				dt_list_delete(&s->sockfds, dfd);
-				UNLOCK(&s->socklistmtx);
-				shutdown(efd, SHUT_RDWR);
-
-				memset(dfd, 0, sizeof(dt_list_t));
-
-				LOCK(&s->deadfdsmtx);
-				for (_dfd = dt_list_next(&s->deadfds); _dfd;
-				     _dfd = dt_list_next(_dfd))
-					if (_dfd == dfd)
-						break;
-
-				if (_dfd == NULL)
-					dt_list_append(&s->deadfds, dfd);
-				UNLOCK(&s->deadfdsmtx);
-
-				LOCK(&s->jobcleancvmtx);
-				SIGNAL(&s->jobcleancv);
-				UNLOCK(&s->jobcleancvmtx);
-
-				/*
-				 * NOTE: We aren't forgetting to fd_release()
-				 * here because by signaling a jobcleancv, a
-				 * thread will wake up which will clean up all
-				 * the jobs with the id of the current dfd and
-				 * then release the filedesc, allowing the
-				 * garbage collection thread to do its job.
-				 */
-				ERR("%d: %s(): event error: %m", __LINE__,
-				    __func__);
-				continue;
+			if (efd == s->sockfd && event[i].flags & EV_ERROR) {
+				ERR("%d: %s(): error on %s: %m", __LINE__,
+				    __func__, DTRACED_SOCKPATH);
+				pthread_exit(NULL);
 			}
 
-			if (event[i].flags & EV_EOF) {
-				assert(dfd != NULL && "dfd should not be NULL");
-				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
-					ERR("%d: %s(): disable_fd() failed with: %m",
-					    __LINE__, __func__);
-					pthread_exit(NULL);
-				}
-
-				if (disable_fd(s->kq_hdl, efd, EVFILT_WRITE)) {
-					ERR("%d: %s(): disable_fd() failed with: %m",
-					    __LINE__, __func__);
-					pthread_exit(NULL);
-				}
-
-				DEBUG("%d: %s(): Deleting fd (%p, %d)", __LINE__,
-				    __func__, dfd, dfd->fd);
-				LOCK(&s->socklistmtx);
-				dt_list_delete(&s->sockfds, dfd);
-				UNLOCK(&s->socklistmtx);
-				shutdown(efd, SHUT_RDWR);
-
-				memset(dfd, 0, sizeof(dt_list_t));
-
-				LOCK(&s->deadfdsmtx);
-				for (_dfd = dt_list_next(&s->deadfds); _dfd;
-				     _dfd = dt_list_next(_dfd))
-					if (_dfd == dfd)
-						break;
-
-				if (_dfd == NULL)
-					dt_list_append(&s->deadfds, dfd);
-				UNLOCK(&s->deadfdsmtx);
-
-				LOCK(&s->jobcleancvmtx);
-				SIGNAL(&s->jobcleancv);
-				UNLOCK(&s->jobcleancvmtx);
-
-				/*
-				 * NOTE: We aren't forgetting to fd_release()
-				 * here because by signaling a jobcleancv, a
-				 * thread will wake up which will clean up all
-				 * the jobs with the id of the current dfd and
-				 * then release the filedesc, allowing the
-				 * garbage collection thread to do its job.
-				 */
-				continue;
+			if (efd == s->sockfd && event[i].flags & EV_EOF) {
+				ERR("%d: %s(): EOF on %s: %m", __LINE__,
+				    __func__, DTRACED_SOCKPATH);
+				pthread_exit(NULL);
 			}
 
-			if (efd == s->sockfd) {
+			if (event[i].flags & EV_ERROR ||
+			    event[i].flags & EV_EOF) {
+				assert(dfd != NULL && "dfd should not be NULL");
+				assert(efd != s->sockfd &&
+				    "EOF || ERROR on sockfd");
+				assert(efd == dfd->fd);
+
+				if (disable_rw(s->kq_hdl, efd)) {
+					ERR("%d: %s(): disable_rw() failed: %m",
+					    __LINE__, __func__);
+					pthread_exit(NULL);
+				}
+
+				kill_socket(s, dfd);
+				if (event[i].flags & EV_ERROR)
+					ERR("%d: %s(): event error: %m",
+					    __LINE__, __func__);
+			} else if (efd == s->sockfd) {
 				/*
 				 * New connection incoming. dfd is NULL so we
 				 * don't have to release it.
 				 */
 				assert(dfd == NULL && "dfd must NULL");
-				if (accept_new_connection(s))
-					pthread_exit(NULL);
-				continue;
-			}
+				assert(event[i].filter == EVFILT_READ);
 
-			if (event[i].filter == EVFILT_READ) {
+				if (accept_new_connection(s))
+					continue;
+			} else if (event[i].filter == EVFILT_READ) {
+				assert(dfd != NULL && "dfd should not be NULL");
+				assert(efd != s->sockfd && "read on sockfd");
+				assert(efd == dfd->fd);
+
 				/*
 				 * Disable the EVFILT_READ event so we don't get
 				 * spammed by it.
@@ -434,7 +410,6 @@ process_consumers(void *_s)
 				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
 					ERR("%d: %s(): disable_fd() failed with: %m",
 					    __LINE__, __func__);
-					fd_release(dfd);
 					pthread_exit(NULL);
 				}
 
@@ -448,26 +423,22 @@ process_consumers(void *_s)
 					     "READDATA, but "
 					     "is not subscribed (%lx)",
 					    __LINE__, __func__, efd, dfd->subs);
-					fd_release(dfd);
 					continue;
 				}
 
 				if (dispatch_event(s, &event[i])) {
 					ERR("%d: %s(): dispatch_event() failed",
 					    __LINE__, __func__);
-					fd_release(dfd);
 					pthread_exit(NULL);
 				}
+			} else if (event[i].filter == EVFILT_WRITE) {
+				assert(dfd != NULL && "dfd should not be NULL");
+				assert(efd != s->sockfd && "write on sockfd");
+				assert(efd == dfd->fd);
 
-				fd_release(dfd);
-				continue;
-			}
-
-			if (event[i].filter == EVFILT_WRITE) {
 				if (disable_fd(kq, efd, EVFILT_WRITE)) {
 					ERR("%d: %s(): disable_fd() failed with: %m",
 					    __LINE__, __func__);
-					fd_release(dfd);
 					pthread_exit(NULL);
 				}
 
@@ -479,31 +450,22 @@ process_consumers(void *_s)
 					if (jle->connsockfd == dfd)
 						dispatch = 1;
 				}
-				UNLOCK(&s->joblistmtx);
 
 				/*
 				 * If we have a job to dispatch to the socket,
 				 * we tell a worker thread to actually do the
 				 * action.
 				 */
-				if (dispatch != 0) {
-					if (dispatch_event(s, &event[i])) {
-						ERR("%d: %s(): dispatch_event() failed",
-						    __LINE__, __func__);
-						fd_release(dfd);
-						pthread_exit(NULL);
-					}
-
-					fd_release(dfd);
-					continue;
+				if (dispatch != 0 &&
+				    dispatch_event(s, &event[i])) {
+					ERR("%d: %s(): dispatch_event() failed",
+					    __LINE__, __func__);
+					UNLOCK(&s->joblistmtx);
+					pthread_exit(NULL);
 				}
-			}
 
-			/*
-			 * Release dfd as we are ending the loop here.
-			 */
-			if (dfd)
-				fd_release(dfd);
+				UNLOCK(&s->joblistmtx);
+			}
 		}
 	}
 
@@ -516,7 +478,7 @@ setup_sockfd(struct dtraced_state *s)
 	int err;
 	struct sockaddr_un addr;
 	size_t l;
-	
+
 	s->sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
 	if (s->sockfd == -1) {
 		ERR("%d: %s(): Failed to create unix: %m", __LINE__, __func__);
@@ -568,8 +530,6 @@ setup_sockfd(struct dtraced_state *s)
 int
 destroy_sockfd(struct dtraced_state *s)
 {
-	int err;
-
 	if (close(s->sockfd) != 0) {
 		ERR("%d: %s(): Failed to close %d: %m", __LINE__, __func__,
 		    s->sockfd);
@@ -584,4 +544,3 @@ destroy_sockfd(struct dtraced_state *s)
 
 	return (0);
 }
-

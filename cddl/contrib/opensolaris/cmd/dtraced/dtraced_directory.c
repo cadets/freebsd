@@ -72,7 +72,6 @@ int
 write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 {
 	struct dtraced_state *s;
-	__cleanup(freep) char *dirpath = NULL;
 	char donename[MAXPATHLEN];
 	size_t dirpathlen;
 	char template[MAXPATHLEN];
@@ -86,15 +85,15 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 
 	LOCK(&dir->dirmtx);
 	s = dir->state;
-	UNLOCK(&dir->dirmtx);
 
 	if (s == NULL) {
+		UNLOCK(&dir->dirmtx);
+
 		ERR("%d: %s(): state is NULL in write_data()", __LINE__,
 		    __func__);
 		return (-1);
 	}
 
-	LOCK(&dir->dirmtx);
 	sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
 	dirpathlen = strlen(dir->dirpath);
 	UNLOCK(&dir->dirmtx);
@@ -102,17 +101,11 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	fd = mkstemp(template);
 	if (fd == -1) {
 		ERR("%d: %s(): mkstemp() failed with: %m", __LINE__, __func__);
-		LOCK(&dir->dirmtx);
-		sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
-		UNLOCK(&dir->dirmtx);
 		return (-1);
 	}
 
 	if (write(fd, data, nbytes) < 0) {
 		ERR("%d: %s(): write() failed with: %m", __LINE__, __func__);
-		LOCK(&dir->dirmtx);
-		sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
-		UNLOCK(&dir->dirmtx);
 		return (-1);
 	}
 
@@ -121,15 +114,9 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	if (rename(template, donename)) {
 		ERR("%d: %s(): rename() failed %s -> %s: %m", __LINE__,
 		    __func__, template, donename);
-		LOCK(&dir->dirmtx);
-		sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
-		UNLOCK(&dir->dirmtx);
 		return (-1);
 	}
 
-	LOCK(&dir->dirmtx);
-	sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
-	UNLOCK(&dir->dirmtx);
 	return (0);
 }
 
@@ -159,8 +146,9 @@ listen_dir(void *_dir)
 		assert(rval != 0);
 
 		if (rval < 0) {
-			ERR("%d: %s(): kevent() failed on %s: %m", __LINE__,
-			    __func__, dir->dirpath);
+			if (errno != EINTR)
+				ERR("%d: %s(): kevent() failed on %s: %m",
+				    __LINE__, __func__, dir->dirpath);
 			if (errno == EINTR)
 				return (s);
 
@@ -189,7 +177,7 @@ listen_dir(void *_dir)
 static int
 findpath(const char *p, dtd_dir_t *dir)
 {
-	int i;
+	size_t i;
 
 	for (i = 0; i < dir->efile_len; i++) {
 		if (strcmp(p, dir->existing_files[i]) == 0)
@@ -202,7 +190,7 @@ findpath(const char *p, dtd_dir_t *dir)
 static int
 rmpath(const char *p, dtd_dir_t *dir)
 {
-	int i;
+	size_t i;
 
 	for (i = 0; i < dir->efile_len; i++) {
 		if (strcmp(p, dir->existing_files[i]) == 0) {
@@ -338,7 +326,6 @@ dtd_mkdir(const char *path, foreach_fn_t fn)
 {
 	dtd_dir_t *dir;
 	int retry;
-	int err;
 
 	dir = malloc(sizeof(dtd_dir_t));
 	if (dir == NULL) {
@@ -356,8 +343,7 @@ dtd_mkdir(const char *path, foreach_fn_t fn)
 		abort();
 	}
 
-	if ((err = mutex_init(
-	    &dir->dirmtx, NULL, dir->dirpath, CHECKOWNER_YES)) != 0) {
+	if (mutex_init(&dir->dirmtx, NULL, dir->dirpath) != 0) {
 		ERR("%d: %s(): Failed to create dir mutex: %m", __LINE__,
 		    __func__);
 		return (NULL);
@@ -514,6 +500,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		return (-1);
 	}
 
+	DEBUG("%d: %s(): processing %s", __LINE__, __func__, fullpath);
+
 	assert(s->ctrlmachine == 1 || s->ctrlmachine == 0);
 	if (s->ctrlmachine == 1) {
 		/*
@@ -531,16 +519,11 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		LOCK(&s->socklistmtx);
 		for (dfd = dt_list_next(&s->sockfds); dfd;
 		    dfd = dt_list_next(dfd)) {
-			fd_acquire(dfd);
-			if (dfd->kind != DTRACED_KIND_CONSUMER) {
-				fd_release(dfd);
+			if (dfd->kind != DTRACED_KIND_CONSUMER) 
 				continue;
-			}
 
-			if ((dfd->subs & DTD_SUB_ELFWRITE) == 0) {
-				fd_release(dfd);
+			if ((dfd->subs & DTD_SUB_ELFWRITE) == 0)
 				continue;
-			}
 
 			jfd = dfd->fd;
 			job = dtraced_new_job(NOTIFY_ELFWRITE, dfd);
@@ -561,7 +544,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 				abort();
 			}
 
-			EVENT("%d: %s: job %s: dispatch EVFILT_WRITE on %d",
+			DEBUG("%d: %s: job %s: dispatch EVFILT_WRITE on %d",
 			    __LINE__, __func__, dtraced_job_identifier(job),
 			    dfd->fd);
 			LOCK(&s->joblistmtx);
@@ -611,7 +594,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		if (pid == -1) {
 			ERR("%d: %s(): Failed to fork: %m", __LINE__, __func__);
 			return (-1);
-		} else if (pid > 0) {
+		} else if (num_idents > 0 && pid > 0) {
 			size_t current;
 			int wait_for_pid = 0;
 			struct timespec timeout = { 0 };
@@ -628,6 +611,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			close(stdin_rdr[0]);
 			close(stdout_rdr[1]);
 
+			LOG("%d: %s(): write num_idents = %d\n", __LINE__,
+			    __func__, num_idents);
 			if (write(stdin_rdr[1], &num_idents,
 			    sizeof(num_idents)) == -1) {
 				ERR("%d: %s(): write(%zu) failed: %m", __LINE__,
@@ -646,10 +631,14 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			 */
 			LOCK(&s->identlistmtx);
 			for (ident_entry = dt_list_next(&s->identlist),
-			     current = 0;
-			     ident_entry && current < num_idents;
-			     ident_entry = dt_list_next(ident_entry),
-			     current++) {
+			    current = 0;
+			    ident_entry && current < num_idents;
+			    ident_entry = dt_list_next(ident_entry),
+			    current++) {
+				LOG("%d: %s(): write ident %hhx%hhx%hhx\n",
+				    __LINE__, __func__, ident_entry->ident[0],
+				    ident_entry->ident[1],
+				    ident_entry->ident[2]);
 				if (write(stdin_rdr[1], ident_entry->ident,
 				    DTRACED_PROGIDENTLEN) == -1) {
 					ERR("%d: %s(): write(stdin) failed: %m",
@@ -658,21 +647,20 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 				}
 			}
 			UNLOCK(&s->identlistmtx);
-			close(stdin_rdr[1]);
 
 			/*
 			 * This will give us the identifier that matched and
-			 * needs to be deleted. We give the child 5 seconds to
+			 * needs to be deleted. We give the child 10 seconds to
 			 * give us the identifier, otherwise we simply kill it.
 			 * This avoids a deadlock in dtraced in the case of a
 			 * bug in dtrace(1).
 			 */
-			timeout.tv_sec = 5;
+			timeout.tv_sec = 10;
 			timeout.tv_nsec = 0;
 
 			EV_SET(&ev, stdout_rdr[0], EVFILT_READ,
 			    EV_ADD | EV_CLEAR | EV_ENABLE, 0, 0, 0);
-			DEBUG("%d: %s(): waiting for %d", __LINE__, __func__, pid);
+			LOG("%d: %s(): waiting for %d", __LINE__, __func__, pid);
 			rv = kevent(kq, &ev, 1, &ev_data, 1, &timeout);
 
 			if (rv < 0) {
@@ -745,6 +733,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 failmsg:
 			close(stdout_rdr[0]);
+			close(stdin_rdr[1]);
 
 			/*
 			 * Remove the entry that the child tells us from the
@@ -767,10 +756,15 @@ failmsg:
 				UNLOCK(&s->identlistmtx);
 			}
 
-			if (num_idents == 0 || wait_for_pid != 0) {
-				DEBUG("%d: %s(): waitpid(%d)", __LINE__, __func__, pid);
+			/*
+			 * There's no need to waitpid_timeout() here because
+			 * we've already run through the kevent above and sent
+			 * SIGKILL if we timed out.
+			 */
+			if (wait_for_pid != 0) {
+				LOG("%d: %s(): waitpid(%d)", __LINE__, __func__, pid);
 				waitpid(pid, &status, 0);
-				DEBUG("%d: %s(): joined %d, status %d", __LINE__, __func__, pid, status);
+				LOG("%d: %s(): joined %d, status %d", __LINE__, __func__, pid, status);
 			} else {
 				pe = malloc(sizeof(pidlist_t));
 				if (pe == NULL)
@@ -781,9 +775,22 @@ failmsg:
 				dt_list_append(&s->pidlist, pe);
 				UNLOCK(&s->pidlistmtx);
 			}
+		} else if (num_idents == 0 && pid > 0) {
+			struct timespec timeout;
+			int status;
+
+			__maybe_unused(status);
+
+			timeout.tv_sec = 10;
+			timeout.tv_nsec = 0;
+			LOG("%d: %s(): waitpid_timeout(%d) (timeout=10s)",
+			    __LINE__, __func__, pid);
+			status = waitpid_timeout(pid, &timeout);
+			__maybe_unused(status);
+			LOG("%d: %s(): joined %d, status %d", __LINE__,
+			    __func__, pid, status);
 		} else if (pid == 0) {
-			char *curptr;
-			char *ident;
+			int last = 0;
 
 			close(stdout_rdr[0]);
 			if (dup2(stdout_rdr[1], STDOUT_FILENO) == -1) {
@@ -803,42 +810,43 @@ failmsg:
 			 * We want dtrace to be as quiet as possible, so we pass
 			 * the '-q' flag.
 			 */
-			argv[0] = strdup("/usr/sbin/dtrace");
-			if (argv[0] == NULL)
+			argv[last] = strdup("/usr/sbin/dtrace");
+			if (argv[last++] == NULL)
 				abort();
 
-			argv[1] = strdup("-Y");
-			if (argv[1] == NULL)
+			argv[last] = strdup("-Y");
+			if (argv[last++] == NULL)
 				abort();
 
-			argv[2] = strdup(fullpath);
-			if (argv[2] == NULL)
+			argv[last] = strdup(fullpath);
+			if (argv[last++] == NULL)
 				abort();
 
-			argv[3] = strdup("-v");
-			if (argv[3] == NULL)
+#if 0
+			argv[last] = strdup("-v");
+			if (argv[last++] == NULL)
 				abort();
 
-			argv[4] = strdup("-v");
-			if (argv[4] == NULL)
+			argv[last] = strdup("-v");
+			if (argv[last++] == NULL)
 				abort();
+#endif
 
 			if (num_idents > 0) {
-				argv[5] = strdup("-N");
-				if (argv[5] == NULL)
+				argv[last] = strdup("-N");
+				if (argv[last++] == NULL)
 					abort();
 
 			} else
-				argv[5] = NULL;
+				argv[last++] = NULL;
 
-			argv[6] = NULL;
+			argv[last] = NULL;
 
 			execve("/usr/sbin/dtrace", argv, NULL);
 			exit(EXIT_FAILURE);
 		}
 	}
 
-cleanup:
 	LOCK(&dir->dirmtx);
 	err = expand_paths(dir);
 	if (err != 0) {
@@ -850,14 +858,15 @@ cleanup:
 
 	assert(dir->efile_size > dir->efile_len);
 	dir->existing_files[dir->efile_len] = strdup(f->d_name);
-	UNLOCK(&dir->dirmtx);
 
 	if (dir->existing_files[dir->efile_len++] == NULL) {
+		UNLOCK(&dir->dirmtx);
 		ERR("%d: %s(): failed to strdup f->d_name: %m", __LINE__,
 		    __func__);
 		abort();
 	}
 
+	UNLOCK(&dir->dirmtx);
 	return (0);
 }
 
@@ -913,10 +922,11 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	char *argv[5];
 	char fullarg[MAXPATHLEN*2 + 1] = { 0 };
 	size_t offset;
-	__cleanup(freep) char *dirpath = NULL;
 	char donename[MAXPATHLEN] = { 0 };
 	char template[MAXPATHLEN];
 	size_t dirpathlen = 0;
+
+	__maybe_unused(status);
 
 	if (dir == NULL) {
 		ERR("%d: %s(): dir is NULL in base directory monitoring thread",
@@ -926,27 +936,30 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 
 	LOCK(&dir->dirmtx);
 	s = dir->state;
-	UNLOCK(&dir->dirmtx);
 
 	if (s == NULL) {
+		UNLOCK(&dir->dirmtx);
 		ERR("%d: %s(): state is NULL in base directory monitoring thread",
 		    __LINE__, __func__);
 		return (-1);
 	}
 
 	if (f == NULL) {
+		UNLOCK(&dir->dirmtx);
 		ERR("%d: %s(): dirent is NULL in base directory monitoring thread",
 		    __LINE__, __func__);
 		return (-1);
 	}
 
-	if (strcmp(f->d_name, SOCKFD_NAME) == 0)
+	if (strcmp(f->d_name, SOCKFD_NAME) == 0) {
+		UNLOCK(&dir->dirmtx);
 		return (0);
+	}
 
-	if (f->d_name[0] == '.')
+	if (f->d_name[0] == '.') {
+		UNLOCK(&dir->dirmtx);
 		return (0);
-
-	LOCK(&dir->dirmtx);
+	}
 
 	/*
 	 * Exit early if the file doesn't exist. There is definitely multiple
@@ -967,46 +980,34 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 	}
 
-	EVENT("%d: %s(): processing %s", __LINE__, __func__, f->d_name);
+	DEBUG("%d: %s(): processing %s", __LINE__, __func__, f->d_name);
 
-	dirpath = strdup(dir->dirpath);
+	strcpy(fullpath, dir->dirpath);
 	UNLOCK(&dir->dirmtx);
 
-	if (dirpath == NULL) {
-		ERR("%d: %s(): failed to strdup() dirpath: %m", __LINE__,
-		    __func__);
-		abort();
-	}
-
-	strcpy(fullpath, dirpath);
 	strcpy(fullpath + strlen(fullpath), f->d_name);
 
 	LOCK(&s->outbounddir->dirmtx);
 	sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", s->outbounddir->dirpath);
 	dirpathlen = strlen(s->outbounddir->dirpath);
-	UNLOCK(&s->outbounddir->dirmtx);
+
 	fd = mkstemp(template);
 	if (fd == -1) {
+		UNLOCK(&s->outbounddir->dirmtx);
 		ERR("%d: %s(): mkstemp(%s) failed: %m", __LINE__, __func__,
 		    template);
 		abort();
 	}
 
-	dtraced_copyfile(fullpath, fd, template);
-
-	LOCK(&s->outbounddir->dirmtx);
 	strncpy(donename, template, dirpathlen);
 	strcpy(donename + dirpathlen, template + dirpathlen + 1);
 	UNLOCK(&s->outbounddir->dirmtx);
-	EVENT("%d: %s(): create final file: %s", __LINE__, __func__, donename);
+
+	dtraced_copyfile(fullpath, fd, template);
+
 	if (rename(template, donename))
 		ERR("%d: %s(): failed to rename %s to %s: %m", __LINE__,
 		    __func__, template, donename);
-
-	LOCK(&s->outbounddir->dirmtx);
-	sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", s->outbounddir->dirpath);
-	UNLOCK(&s->outbounddir->dirmtx);
-
 
 	pid = fork();
 
@@ -1014,7 +1015,11 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		ERR("%d: %s(): Failed to fork: %m", __LINE__, __func__);
 		return (-1);
 	} else if (pid > 0) {
-		waitpid(pid, &status, 0);
+		struct timespec ts;
+
+		ts.tv_nsec = 0;
+		ts.tv_sec = 10;
+		status = waitpid_timeout(pid, &ts);
 	} else {
 		argv[0] = strdup("/usr/sbin/dtrace");
 		if (argv[0] == NULL)
@@ -1036,7 +1041,6 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 			abort();
 
 		argv[4] = NULL;
-		EVENT("%d: %s(): execve(dtrace, -qY %s)", __LINE__, __func__, fullarg);
 		execve("/usr/sbin/dtrace", argv, NULL);
 		exit(EXIT_FAILURE);
 	}
@@ -1052,14 +1056,15 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 
 	assert(dir->efile_size > dir->efile_len);
 	dir->existing_files[dir->efile_len] = strdup(f->d_name);
-	UNLOCK(&dir->dirmtx);
 
 	if (dir->existing_files[dir->efile_len++] == NULL) {
+		UNLOCK(&dir->dirmtx);
 		ERR("%d: %s(): Failed to strdup f->d_name: %m", __LINE__,
 		    __func__);
 		abort();
 	}
 
+	UNLOCK(&dir->dirmtx);
 	return (0);
 }
 
@@ -1070,7 +1075,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	dtraced_fd_t *dfd;
 	struct dtraced_job *job;
 	struct dtraced_state *s;
-	int idx, ch;
+	int idx;
 
 	if (dir == NULL) {
 		ERR("%d: %s(): dir is NULL", __LINE__, __func__);
@@ -1118,16 +1123,11 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 
 	LOCK(&s->socklistmtx);
 	for (dfd = dt_list_next(&s->sockfds); dfd; dfd = dt_list_next(dfd)) {
-		fd_acquire(dfd);
-		if (dfd->kind != DTRACED_KIND_FORWARDER) {
-			fd_release(dfd);
+		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
-		}
 
-		if ((dfd->subs & DTD_SUB_ELFWRITE) == 0) {
-			fd_release(dfd);
+		if ((dfd->subs & DTD_SUB_ELFWRITE) == 0)
 			continue;
-		}
 
 		jfd = dfd->fd;
 		job = dtraced_new_job(NOTIFY_ELFWRITE, dfd);
@@ -1148,7 +1148,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 			abort();
 		}
 
-		EVENT("%d: %s: job %s: dispatch EVFILT_WRITE on %d",
+		DEBUG("%d: %s: job %s: dispatch EVFILT_WRITE on %d",
 		    __LINE__, __func__, dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
@@ -1171,14 +1171,15 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 
 	assert(dir->efile_size > dir->efile_len);
 	dir->existing_files[dir->efile_len] = strdup(f->d_name);
-	UNLOCK(&dir->dirmtx);
 
 	if (dir->existing_files[dir->efile_len++] == NULL) {
+		UNLOCK(&dir->dirmtx);
 		ERR("%d: %s(): Failed to strdup f->d_name: %m", __LINE__,
 		    __func__);
 		abort();
 	}
 
+	UNLOCK(&dir->dirmtx);
 	return (0);
 }
 

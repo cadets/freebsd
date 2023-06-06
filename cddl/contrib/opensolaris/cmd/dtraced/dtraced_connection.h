@@ -57,8 +57,9 @@ fd_acquire(dtraced_fd_t *dfd)
 static __inline void
 fd_release(dtraced_fd_t *dfd)
 {
-
-	atomic_fetch_sub(&dfd->__count, 1);
+	int count = atomic_fetch_sub(&dfd->__count, 1);
+	if (count < 0)
+		abort();
 }
 
 void *close_filedescs(void *);

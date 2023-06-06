@@ -40,8 +40,10 @@
 
 #include <sys/types.h>
 #include <sys/param.h>
+#include <sys/event.h>
 
 #include <assert.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -98,10 +100,41 @@ cleanup_pidfile(struct pidfh **pfh)
 			    __func__);
 }
 
-void
-releasefd(dtraced_fd_t **dfd)
+int
+waitpid_timeout(pid_t pid, struct timespec *timeout)
 {
 
-	if (*dfd)
-		fd_release(*dfd);
+	struct kevent change, event;
+	int kq, ret, status;
+
+	EV_SET(&change, pid, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, NULL);
+
+	kq = kqueue();
+	if (kq == -1) {
+		ERR("%d: %s(): kqueue() failed: %s", __LINE__, __func__,
+		    strerror(errno));
+		abort();
+	}
+
+	ret = kevent(kq, &change, 1, &event, 1, timeout);
+	status = 0xdeadbeef;
+
+	switch (ret) {
+	case -1:
+		ERR("%d: %s(): kevent() error %s (pid=%d)", __LINE__, __func__,
+		    strerror(errno), pid);
+		break;
+	case 0:
+		status = -1;
+		WARN("%d: %s(): dtrace timed out (pid=%d)", __LINE__, __func__,
+		    pid);
+		break;
+	case 1:
+		status = event.data;
+		break;
+	default:
+		break;
+	}
+
+	return (status);
 }

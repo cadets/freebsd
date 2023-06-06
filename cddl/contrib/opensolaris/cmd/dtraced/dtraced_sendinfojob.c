@@ -55,11 +55,11 @@ void
 handle_sendinfo(struct dtraced_state *s, struct dtraced_job *curjob)
 {
 	dtraced_hdr_t hdr = { 0 };
-	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;
+	dtraced_fd_t *dfd = curjob->connsockfd;
 	dtraced_fd_t *client;
 	int fd = dfd->fd;
 	size_t info_count = 0;
-	dtraced_infomsg_t *imsgs;
+	__cleanup(freep) dtraced_infomsg_t *imsgs = NULL;
 	size_t i;
 
 	for (client = dt_list_next(&s->sockfds); client;

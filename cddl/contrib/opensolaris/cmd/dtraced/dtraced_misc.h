@@ -41,8 +41,11 @@
 #ifndef _DTRACED_MISC_H_
 #define _DTRACED_MISC_H_
 
+#include <sys/types.h>
+
 #include <dirent.h>
 #include <libutil.h>
+#include <time.h>
 
 #include "_dtraced_connection.h"
 
@@ -57,12 +60,13 @@
 #endif /* defined(__has_feature) */
 
 #define __cleanup(fn) __attribute__((__cleanup__(fn)))
+#define __maybe_unused(x) ((void)x)
 
 void get_randname(char *, size_t);
 void freep(void *);
 void closefd_generic(int *);
 void closedir_generic(DIR **);
 void cleanup_pidfile(struct pidfh **);
-void releasefd(dtraced_fd_t **);
+int  waitpid_timeout(pid_t, struct timespec *);
 
 #endif // _DTRACED_MISC_H_

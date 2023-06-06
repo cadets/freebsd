@@ -83,20 +83,21 @@ __FBSDID("$FreeBSD$");
 #include <machine/vmm_dev.h>
 #endif
 #include <machine/vmm_instruction_emul.h>
+
 #include <vmmapi.h>
 
-#include "bhyverun.h"
 #include "acpi.h"
-#include "dthyve.h"
 #include "atkbdc.h"
+#include "bhyverun.h"
 #include "bootrom.h"
 #include "config.h"
-#include "inout.h"
 #include "debug.h"
 #include "e820.h"
 #include "fwctl.h"
 #include "gdb.h"
 #include "globals.h"
+#include "hypertrace.h"
+#include "inout.h"
 #include "ioapic.h"
 #include "kernemu_dev.h"
 #include "mem.h"
@@ -1261,7 +1262,7 @@ main(int argc, char *argv[])
 	uint64_t rip;
 	size_t memsize;
 	const char *optstr, *value, *vmname;
-	int enable_dthyve = 0;
+	int enable_hypertrace = 0;
 #ifdef BHYVE_SNAPSHOT
 	char *restore_file;
 	struct restore_state rstate;
@@ -1302,7 +1303,7 @@ main(int argc, char *argv[])
 			}
 			break;
 		case 'd':
-			enable_dthyve = 1;
+			enable_hypertrace = 1;
 			break;
 		case 'C':
 			set_config_bool("memory.guest_in_core", true);
@@ -1436,17 +1437,10 @@ main(int argc, char *argv[])
 		errx(EX_USAGE, "invalid memsize '%s'", value);
 
 	ctx = do_open(vmname);
-	/*
-	 * XXX(dstolfa): We only really want to open dthyve when we are running
-	 * virtio-dtrace, however we can't really open dthyve when initializing
-	 * virtio-dtrace backend because of capsicum. As a result, we need to
-	 * open it ahead of time, but because we can't really see that
-	 * virtio-dtrace is passed in as a PCI device, we need to deal with this
-	 * extra flag for now. We can either hack it up in the '-s' flag or we
-	 * can let the PCI parsing code specify a flag somewhere, somehow.
-	 */
-	if (enable_dthyve != 0 && dthyve_init(ctx))
-		fprintf(stderr, "Failed to init dthyve: %s\n", strerror(errno));
+
+	if (enable_hypertrace != 0 && hypertrace_init(ctx))
+		fprintf(stderr, "hypertrace_init() failed: %s\n",
+		    strerror(errno));
 
 #ifdef BHYVE_SNAPSHOT
 	if (restore_file != NULL) {

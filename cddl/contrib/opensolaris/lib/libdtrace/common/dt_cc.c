@@ -2682,11 +2682,10 @@ dtrace_compile_idents_set(dtrace_hdl_t *dtp, char *idents, size_t num_idents)
 	dt_identlist_t *ident_entry;
 	size_t i;
 
-	if (idents == NULL)
+	if (idents == NULL) {
+		fprintf(stderr, "dtrace: compile_idents called with NULL idents\n");
 		return (-1);
-
-	if (idents[0] == '\0')
-		return (-1);
+	}
 
 	ident = idents;
 	for (i = 0; i < num_idents; i++) {

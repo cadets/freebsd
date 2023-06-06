@@ -77,26 +77,41 @@ static const char *program_name;
 static unsigned long threadpool_size = 1;
 
 static void
-sig_term(int __unused signo)
+broadcast_condvar(void)
 {
+	LOCK(&state.dispatched_jobsmtx);
+	SIGNAL(&state.dispatched_jobscv);
+	UNLOCK(&state.dispatched_jobsmtx);
 
-	atomic_store(&state.shutdown, 1);
-	SIGNAL(&state.joblistcv);
+	LOCK(&state.kill_listmtx);
 	SIGNAL(&state.killcv);
+	UNLOCK(&state.kill_listmtx);
+
+	LOCK(&state.deadfdsmtx);
+	SIGNAL(&state.jobcleancv);
+	UNLOCK(&state.deadfdsmtx);
 }
 
 static void
-sig_int(int __unused signo)
+sig_term(int signo)
 {
-
+	__maybe_unused(signo);
 	atomic_store(&state.shutdown, 1);
-	SIGNAL(&state.joblistcv);
-	SIGNAL(&state.killcv);
+	broadcast_condvar();
 }
 
 static void
-sig_pipe(int __unused signo)
+sig_int(int signo)
 {
+	__maybe_unused(signo);
+	atomic_store(&state.shutdown, 1);
+	broadcast_condvar();
+}
+
+static void
+sig_pipe(int signo)
+{
+	__maybe_unused(signo);
 }
 
 static void
@@ -138,7 +153,6 @@ main(int argc, const char **argv)
 	char elfpath[MAXPATHLEN] = "/var/ddtrace";
 	__cleanup(closefd_generic) int efd = -1;
 	int errval, retry, nosha = 0;
-	size_t i;
 	char ch;
 	char pidstr[256];
 	char hypervisor[128];
@@ -240,7 +254,6 @@ main(int argc, const char **argv)
 			break;
 
 		case 't':
-			optlen = strlen(optarg);
 			threadpool_size = strtoul(optarg, &end, 10);
 			if (errno != 0) {
 				ERR("%d: %s(): Invalid argument (-t): "

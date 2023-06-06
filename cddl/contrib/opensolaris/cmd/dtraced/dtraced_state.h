@@ -48,6 +48,8 @@
 #include "dtraced_directory.h"
 #include "dtraced_lock.h"
 
+#define unlikely(x) __predict_false(x)
+
 /*
  * dtraced state structure. This contains everything relevant to dtraced's
  * state management, such as files that exist, connected sockets, etc.
@@ -55,7 +57,7 @@
 struct dtraced_state {
 	const char **argv;      /* Needed in case we need to re-exec. */
 	int ctrlmachine;        /* is this a control machine? */
-	int threadpool_size;    /* size of the thread pool (workers) */
+	size_t threadpool_size; /* size of the thread pool (workers) */
 
 	dtd_dir_t *inbounddir;  /* /var/ddtrace/inbound */
 	dtd_dir_t *outbounddir; /* /var/ddtrace/outbound */
@@ -90,19 +92,17 @@ struct dtraced_state {
 	 * Thread pool management.
 	 */
 	pthread_t *workers;         /* thread pool for the joblist */
-	mutex_t joblistcvmtx;       /* joblist condvar mutex */
-	pthread_cond_t joblistcv;   /* joblist condvar */
 	mutex_t joblistmtx;         /* joblist mutex */
 	dt_list_t joblist;          /* the joblist itself */
 	mutex_t dispatched_jobsmtx; /* dispatched joblist mutex */
 	dt_list_t dispatched_jobs;  /* the dispatched joblist itself */
+	pthread_cond_t dispatched_jobscv;   /* dispatched joblist condvar */
 
 	/*
 	 * Children management.
 	 */
 	pthread_t killtd;      /* handle sending kill(SIGTERM) to the guest */
 	mutex_t kill_listmtx;  /* mutex of the kill list */
-	mutex_t killcvmtx;     /* kill list condvar mutex */
 	dt_list_t kill_list;   /* a list of pids to kill */
 	pthread_cond_t killcv; /* kill list condvar */
 	pthread_t reaptd;      /* handle reaping children */
@@ -117,7 +117,6 @@ struct dtraced_state {
 	mutex_t deadfdsmtx; /* mutex for deadfds */
 	pthread_t closetd;  /* file descriptor closing thread */
 
-	mutex_t jobcleancvmtx;      /* job cleaning thread condvar mutex */
 	pthread_cond_t jobcleancv;  /* job cleaning thread condvar */
 	pthread_t jobcleantd;       /* job cleaning thread */
 

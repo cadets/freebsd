@@ -26,8 +26,8 @@
  * $FreeBSD$
  */
 
-#ifndef _DTHYVE_H_
-#define _DTHYVE_H_
+#ifndef _BHYVE_HYPERTRACE_H_
+#define _BHYVE_HYPERTRACE_H_
 
 #include <sys/types.h>
 
@@ -35,13 +35,13 @@
 
 struct vmctx;
 
-int dthyve_init(struct vmctx *);
-int dthyve_configured(void);
-int dthyve_read(void **, dtraced_hdr_t *);
-int dthyve_write(void *, size_t);
-void dthyve_destroy(void);
-int dthyve_newelf(char *);
-int dthyve_rename(char *, char *);
-int dthyve_access(char *);
+int hypertrace_init(struct vmctx *);
+int hypertrace_configured(void);
+int hypertrace_read(void **, dtraced_hdr_t *);
+int hypertrace_write(void *, size_t);
+void hypertrace_destroy(void);
+int hypertrace_newelf(char *);
+int hypertrace_rename(char *, char *);
+int hypertrace_access(char *);
 
-#endif /* _DTHYVE_H_ */
+#endif /* _BHYVE_HYPERTRACE_H_ */

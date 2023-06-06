@@ -41,7 +41,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
-#include <pthread_np.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -172,96 +171,67 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 	s->nosha = nosha;
 	s->threadpool_size = n_threads;
 
-	if ((err = mutex_init(
-	    &s->socklistmtx, NULL, "socklist", CHECKOWNER_YES)) != 0) {
+	if (mutex_init(&s->socklistmtx, NULL, "socklist") != 0) {
 		ERR("%d: %s(): Failed to create sock list mutex: %m", __LINE__,
 		    __func__);
 		return (-1);
 	}
 
-	if ((err = mutex_init(
-	    &s->sockmtx, NULL, "socket", CHECKOWNER_YES)) != 0) {
+	if (mutex_init(&s->sockmtx, NULL, "socket") != 0) {
 		ERR("%d: %s(): Failed to create socket mutex: %m", __LINE__,
 		    __func__);
 		return (-1);
 	}
 
-	if ((err = mutex_init(
-	    &s->joblistcvmtx, NULL, "joblist condvar", CHECKOWNER_NO)) != 0) {
-		ERR("%d: %s(): Failed to create joblist condvar mutex: %m",
-		    __LINE__, __func__);
-		return (-1);
-	}
-
-	if ((err = mutex_init(
-	    &s->joblistmtx, NULL, "joblist", CHECKOWNER_YES)) != 0) {
+	if (mutex_init(&s->joblistmtx, NULL, "joblist") != 0) {
 		ERR("%d: %s(): Failed to create joblist mutex: %m", __LINE__,
 		    __func__);
 		return (-1);
 	}
 
-	if ((err = mutex_init(
-	    &s->dispatched_jobsmtx, NULL, "joblist", CHECKOWNER_YES)) != 0) {
+	if (mutex_init(&s->dispatched_jobsmtx, NULL, "joblist") != 0) {
 		ERR("%d: %s(): Failed to create joblist mutex: %m", __LINE__,
 		    __func__);
 		return (-1);
 	}
 
-	if ((err = mutex_init(
-	    &s->jobcleancvmtx, NULL, "jobcleancvmtx", CHECKOWNER_YES)) != 0) {
-		ERR("%d: %s(): Failed to create jobcleancv mutex: %m", __LINE__,
-		    __func__);
-		return (-1);
-	}
-
-	if ((err = mutex_init(
-	    &s->kill_listmtx, NULL, "kill list", CHECKOWNER_YES)) != 0) {
+	if (mutex_init(&s->kill_listmtx, NULL, "kill list") != 0) {
 		ERR("%d: %s(): Failed to create kill list mutex: %m", __LINE__,
 		    __func__);
 		return (-1);
 	}
 
-	if ((err = mutex_init(
-	    &s->pidlistmtx, NULL, "pidlist", CHECKOWNER_YES)) != 0) {
+	if (mutex_init(&s->pidlistmtx, NULL, "pidlist") != 0) {
 		ERR("%d: %s(): Failed to create pidlist mutex: %m", __LINE__,
 		    __func__);
 		return (-1);
 	}
 
-	if ((err = mutex_init(
-	    &s->killcvmtx, NULL, "", CHECKOWNER_NO)) != 0) {
-		ERR("%d: %s(): Failed to create kill condvar mutex: %m",
-		    __LINE__, __func__);
-		return (-1);
-	}
-
-	if ((err = mutex_init(
-	    &s->identlistmtx, NULL, "", CHECKOWNER_YES)) != 0) {
+	if (mutex_init(&s->identlistmtx, NULL, "identlistmtx") != 0) {
 		ERR("%d: %s(): Failed to create identlist mutex: %m", __LINE__,
 		    __func__);
 		return (-1);
 	}
 
-	if ((err = mutex_init(
-	    &s->deadfdsmtx, NULL, "", CHECKOWNER_YES)) != 0) {
+	if (mutex_init(&s->deadfdsmtx, NULL, "deadfdsmtx") != 0) {
 		ERR("%d: %s(): Failed to create deadfds mutex: %m", __LINE__,
 		    __func__);
 		return (-1);
 	}
 
-	if ((err = pthread_cond_init(&s->killcv, NULL)) != 0) {
+	if (pthread_cond_init(&s->killcv, NULL) != 0) {
 		ERR("%d: %s(): Failed to create kill list condvar: %m",
 		    __LINE__, __func__);
 		return (-1);
 	}
 
-	if ((err = pthread_cond_init(&s->joblistcv, NULL)) != 0) {
+	if (pthread_cond_init(&s->dispatched_jobscv, NULL) != 0) {
 		ERR("%d: %s(): Failed to create joblist condvar: %m", __LINE__,
 		    __func__);
 		return (-1);
 	}
 
-	if ((err = pthread_cond_init(&s->jobcleancv, NULL)) != 0) {
+	if (pthread_cond_init(&s->jobcleancv, NULL) != 0) {
 		ERR("%d: %s(): Failed to create jobclean condvar: %m", __LINE__,
 		    __func__);
 		return (-1);
@@ -302,7 +272,7 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 	s->inbounddir->state = s;
 	s->basedir->state = s;
 
-	if ((err = setup_sockfd(s)) != 0) {
+	if (setup_sockfd(s) != 0) {
 		ERR("%d: %s(): Failed to set up the socket", __LINE__,
 		    __func__);
 		return (-1);
@@ -343,17 +313,9 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 int
 destroy_state(struct dtraced_state *s)
 {
-	int err;
 	size_t i;
+	int err;
 	struct dtraced_job *j, *next;
-	struct dtraced_state *retval;
-	struct timespec ts;
-
-	/*
-	 * Timespec for join timeout.
-	 */
-	memset(&ts, 0, sizeof(ts));
-	ts.tv_sec = 5;
 
 	/*
 	 * Give all the threads a chance to stop, but we don't really care if
@@ -368,106 +330,93 @@ destroy_state(struct dtraced_state *s)
 	 * it already has.
 	 */
 	(void) pthread_kill(s->socktd, SIGTERM);
-	if (pthread_timedjoin_np(s->socktd,
-	    (void **)&retval, &ts) == ETIMEDOUT) {
-		ERR("%d: %s(): socktd join timed out", __LINE__, __func__);
-		abort();
-	}
+	err = pthread_join(s->socktd, NULL);
+	if (err)
+		ERR("%d: %s(): socktd join failed: %s", __LINE__, __func__,
+		    strerror(err));
 
 	(void) pthread_kill(s->dtt_listentd, SIGTERM);
-	if (pthread_timedjoin_np(s->dtt_listentd,
-	    (void **)&retval, &ts) == ETIMEDOUT) {
-		ERR("%d: %s(): dtt_listentd join timed out", __LINE__,
-		    __func__);
-		abort();
-	}
+	err = pthread_join(s->dtt_listentd, NULL);
+	if (err)
+		ERR("%d: %s(): dtt_listentd join failed: %s", __LINE__,
+		    __func__, strerror(err));
 
 	(void) pthread_kill(s->dtt_writetd, SIGTERM);
-	if (pthread_timedjoin_np(s->dtt_writetd,
-	    (void **)&retval, &ts) == ETIMEDOUT) {
-		ERR("%d: %s(): dtt_writetd join timed out", __LINE__,
-		    __func__);
-		abort();
-	}
+	err = pthread_join(s->dtt_writetd, NULL);
+	if (err)
+		ERR("%d: %s(): dtt_writetd join failed: %s", __LINE__, __func__,
+		    strerror(err));
 
 	(void) pthread_kill(s->inboundtd, SIGTERM);
-	if (pthread_timedjoin_np(s->inboundtd,
-	    (void **)&retval, &ts) == ETIMEDOUT) {
-		ERR("%d: %s(): inboundtd join timed out", __LINE__,
-		    __func__);
-		abort();
-	}
+	err = pthread_join(s->inboundtd, NULL);
+	if (err)
+		ERR("%d: %s(): inboundtd join failed: %s", __LINE__, __func__,
+		    strerror(err));
 
 	(void) pthread_kill(s->basetd, SIGTERM);
-	if (pthread_timedjoin_np(s->basetd,
-	    (void **)&retval, &ts) == ETIMEDOUT) {
-		ERR("%d: %s(): basetd join timed out", __LINE__,
-		    __func__);
-		abort();
-	}
+	err = pthread_join(s->basetd, NULL);
+	if (err)
+		ERR("%d: %s(): basetd join failed: %s", __LINE__, __func__,
+		    strerror(err));
 
-	LOCK(&s->joblistcvmtx);
-	BROADCAST(&s->joblistcv);
-	UNLOCK(&s->joblistcvmtx);
+	LOCK(&s->dispatched_jobsmtx);
+	BROADCAST(&s->dispatched_jobscv);
+	UNLOCK(&s->dispatched_jobsmtx);
 
 	for (i = 0; i < s->threadpool_size; i++) {
-		if (pthread_timedjoin_np(s->workers[i],
-		    (void **)&retval, &ts) == ETIMEDOUT) {
-			ERR("%d: %s(): worker %ju join timed out", __LINE__,
-			    __func__, (uintmax_t)i);
-			abort();
-		}
+		(void) pthread_kill(s->workers[i], SIGTERM);
+		err = pthread_join(s->workers[i], NULL);
+		if (err)
+			ERR("%d: %s(): worker %ju join failed: %s", __LINE__,
+			    __func__, (uintmax_t)i, strerror(err));
 	}
 
 	(void) pthread_kill(s->killtd, SIGTERM);
-	if (pthread_timedjoin_np(s->killtd,
-	    (void **)&retval, &ts) == ETIMEDOUT) {
-		ERR("%d: %s(): killtd join timed out", __LINE__,
-		    __func__);
-		abort();
-	}
+	err = pthread_join(s->killtd, NULL);
+	if (err)
+		ERR("%d: %s(): killtd join failed: %s", __LINE__, __func__,
+		    strerror(err));
 
 	(void) pthread_kill(s->reaptd, SIGTERM);
-	if (pthread_timedjoin_np(s->reaptd,
-	    (void **)&retval, &ts) == ETIMEDOUT) {
-		ERR("%d: %s(): reaptd join timed out", __LINE__,
-		    __func__);
-		abort();
-	}
+	err = pthread_join(s->reaptd, NULL);
+	if (err)
+		ERR("%d: %s(): reaptd join timed out: %s", __LINE__, __func__,
+		    strerror(err));
 
 	(void) pthread_kill(s->closetd, SIGTERM);
-	if (pthread_timedjoin_np(s->closetd,
-	    (void **)&retval, &ts) == ETIMEDOUT) {
-		ERR("%d: %s(): closetd join timed out", __LINE__,
-		    __func__);
-		abort();
-	}
+	err = pthread_join(s->closetd, NULL);
+	if (err)
+		ERR("%d: %s(): closetd join failed: %s", __LINE__, __func__,
+		    strerror(err));
 
 	(void) pthread_kill(s->jobcleantd, SIGTERM);
-	if (pthread_timedjoin_np(s->jobcleantd,
-	    (void **)&retval, &ts) == ETIMEDOUT) {
-		ERR("%d: %s(): jobcleantd join timed out", __LINE__,
-		    __func__);
-		abort();
-	}
+	err = pthread_join(s->jobcleantd, NULL);
+	if (err)
+		ERR("%d: %s(): jobcleantd join failed: %s", __LINE__, __func__,
+		    strerror(err));
 
 	LOCK(&s->joblistmtx);
 	for (j = dt_list_next(&s->joblist); j; j = next) {
 		next = dt_list_next(j);
-		free(j);
+		dtraced_free_job(j);
 	}
 	UNLOCK(&s->joblistmtx);
 
+	LOCK(&s->dispatched_jobsmtx);
+	for (j = dt_list_next(&s->dispatched_jobs); j; j = next) {
+		next = dt_list_next(j);
+		dtraced_free_job(j);
+	}
+	UNLOCK(&s->dispatched_jobsmtx);
+
 	(void) mutex_destroy(&s->socklistmtx);
 	(void) mutex_destroy(&s->sockmtx);
-	(void) mutex_destroy(&s->joblistcvmtx);
 	(void) mutex_destroy(&s->joblistmtx);
 	(void) mutex_destroy(&s->kill_listmtx);
-	(void) mutex_destroy(&s->killcvmtx);
 	(void) mutex_destroy(&s->deadfdsmtx);
-	(void) mutex_destroy(&s->jobcleancvmtx);
+	(void) mutex_destroy(&s->dispatched_jobsmtx);
 	(void) pthread_cond_destroy(&s->killcv);
-	(void) pthread_cond_destroy(&s->joblistcv);
+	(void) pthread_cond_destroy(&s->dispatched_jobscv);
 	(void) pthread_cond_destroy(&s->jobcleancv);
 
 	dtd_closedir(s->outbounddir);

@@ -72,7 +72,7 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 	else
 		dir = NULL;
 
-	EVENT("%d: %s(): elfmsg on directory: %s", __LINE__, __func__,
+	DEBUG("%d: %s(): elfmsg on directory: %s", __LINE__, __func__,
 	    dir ? dir->dirpath : "(null)");
 	if (dir == NULL) {
 		ERR("%d: %s(): unrecognized location: %s", __LINE__, __func__,
@@ -93,7 +93,7 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 			    DTRACED_PROGIDENTLEN);
 
 			LOCK(&s->identlistmtx);
-			EVENT("%d: %s(): identifier: insert %hhx%hhx%hhx\n",
+			DEBUG("%d: %s(): identifier: insert %hhx%hhx%hhx\n",
 			    __LINE__, __func__, newident->ident[0],
 			    newident->ident[1], newident->ident[2]);
 			dt_list_append(&s->identlist, newident);
@@ -101,7 +101,7 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 		}
 	}
 
-	EVENT("%d: %s(): write_data(%s, [buf], %zu)", __LINE__, __func__,
+	DEBUG("%d: %s(): write_data(%s, [buf], %zu)", __LINE__, __func__,
 	    dir ? dir->dirpath : "(null)", bsize);
 	if (write_data(dir, buf, bsize))
 		ERR("%d: %s(): write_data() failed", __LINE__, __func__);
@@ -125,16 +125,11 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 	 */
 	LOCK(&s->socklistmtx);
 	for (dfd = dt_list_next(&s->sockfds); dfd; dfd = dt_list_next(dfd)) {
-		fd_acquire(dfd);
-		if (dfd->kind != DTRACED_KIND_FORWARDER) {
-			fd_release(dfd);
+		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
-		}
 
-		if ((dfd->subs & DTD_SUB_KILL) == 0) {
-			fd_release(dfd);
+		if ((dfd->subs & DTD_SUB_KILL) == 0)
 			continue;
-		}
 
 		job = dtraced_new_job(KILL, dfd);
 		if (job == NULL) {
@@ -146,7 +141,7 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 		job->j.kill.pid = DTRACED_MSG_KILLPID(*h);
 		job->j.kill.vmid = DTRACED_MSG_KILLVMID(*h);
 
-		EVENT("%d: %s: job %s: dispatch KILL on %d", __LINE__,
+		DEBUG("%d: %s: job %s: dispatch KILL on %d", __LINE__,
 		    __func__, dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
@@ -180,16 +175,11 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 
 	LOCK(&s->socklistmtx);
 	for (dfd = dt_list_next(&s->sockfds); dfd; dfd = dt_list_next(dfd)) {
-		fd_acquire(dfd);
-		if (dfd->kind != DTRACED_KIND_FORWARDER) {
-			fd_release(dfd);
+		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
-		}
 
-		if ((dfd->subs & DTD_SUB_CLEANUP) == 0) {
-			fd_release(dfd);
+		if ((dfd->subs & DTD_SUB_CLEANUP) == 0)
 			continue;
-		}
 
 		for (i = 0; i < n_entries; i++) {
 			if (recv(dfd->fd, &len, sizeof(len), 0) < 0) {
@@ -206,7 +196,8 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 
 			_buf = buf;
 			nbytes = len;
-			while ((r = recv(dfd->fd, _buf, nbytes, 0)) != nbytes) {
+			for (;;) {
+				r = recv(dfd->fd, _buf, nbytes, 0);
 				if (r < 0) {
 					ERR("%d: %s(): recv() failed with: %m",
 					    __LINE__, __func__);
@@ -214,7 +205,8 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 						free(entries[j]);
 					free(buf);
 					return (-1);
-				}
+				} else if ((size_t)r == nbytes)
+					break;
 
 				assert(r != 0);
 
@@ -247,7 +239,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 				abort();
 		}
 
-		EVENT("%d: %s: job %s: dispatch CLEANUP on %d", __LINE__,
+		DEBUG("%d: %s: job %s: dispatch CLEANUP on %d", __LINE__,
 		    __func__, dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
@@ -265,7 +257,7 @@ void
 handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 {
 	int fd, err;
-	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;
+	dtraced_fd_t *dfd = curjob->connsockfd;
 	size_t nbytes, totalbytes;
 	ssize_t r;
 	char *_buf;
@@ -275,12 +267,10 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	fd = dfd->fd;
 	totalbytes = 0;
 
-	EVENT("%d: %s(): READ_DATA: entry", __LINE__, __func__);
 	if ((r = recv(fd, &totalbytes, sizeof(totalbytes), 0)) < 0) {
 		ERR("%d: %s(): recv() failed with: %m", __LINE__, __func__);
 		return;
 	}
-	EVENT("%d: %s(): READ_DATA: %zu bytes", __LINE__, __func__, totalbytes);
 
 	assert(r == sizeof(totalbytes));
 	nbytes = totalbytes;
@@ -292,25 +282,20 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	}
 
 	_buf = buf;
-	EVENT("%d: %s(): READ_DATA: get all the data", __LINE__, __func__);
-	while ((r = recv(fd, _buf, nbytes, 0)) != nbytes) {
+	for (;;) {
+		r = recv(fd, _buf, nbytes, 0);
 		if (r < 0) {
 			ERR("%d: %s(): recv() failed with: %m", __LINE__,
 			    __func__);
 			buf = NULL;
 			return;
-		}
+		} else if ((size_t)r == nbytes || r == 0)
+			break;
 
-		if (r == 0) {
-			ERR("%d: %s(): recv() returned 0 for %s", __LINE__,
-			    __func__, dfd->ident);
-			exit(1); // FIXME(dstolfa): Shouldn't do this.
-		}
-
+		assert(r != 0);
 		_buf += r;
 		nbytes -= r;
 	}
-	EVENT("%d: %s(): READ_DATA: got data", __LINE__, __func__);
 
 	if (r < 0) {
 		if (send_nak(fd) < 0) {
@@ -340,7 +325,7 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	 */
 
 	memcpy(&header, buf, DTRACED_MSGHDRSIZE);
-	EVENT("%d: %s(): READ_DATA: handle %d", __LINE__, __func__,
+	DEBUG("%d: %s(): READ_DATA: handle %d", __LINE__, __func__,
 	    DTRACED_MSG_TYPE(header));
 	switch (DTRACED_MSG_TYPE(header)) {
 	case DTRACED_MSG_ELF:
@@ -378,10 +363,9 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	}
 
 	/*
-	 * We are done receiving the data and nothing
-	 * failed, re-enable the event and keep going.
+	 * We are done receiving the data and nothing failed, re-enable the
+	 * event and keep going.
 	 */
-	EVENT("%d: %s(): READ_DATA: reenable_fd(%d)", __LINE__, __func__, fd);
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_READ))
 		ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
 		    __func__);

@@ -65,7 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <vmmapi.h>
 
 #include "bhyverun.h"
-#include "dthyve.h"
+#include "hypertrace.h"
 #include "pci_emul.h"
 #include "virtio.h"
 
@@ -159,8 +159,6 @@ struct pci_vtdtr_softc {
  */
 
 static void pci_vtdtr_reset(void *);
-static void pci_vtdtr_control_tx(struct pci_vtdtr_softc *,
-    struct iovec *, int);
 static int pci_vtdtr_control_rx(struct pci_vtdtr_softc *,
     struct iovec *, int);
 static void pci_vtdtr_notify_tx(void *, struct vqueue_info *);
@@ -210,17 +208,6 @@ pci_vtdtr_reset(void *xsc)
 	vi_reset_dev(&sc->vsd_vs);
 	pthread_mutex_unlock(&sc->vsd_mtx);
 }
-
-#if 0
-static void
-pci_vtdtr_control_tx(struct pci_vtdtr_softc *sc __unused,
-    struct iovec *iov __unused, int niov __unused)
-{
-	/*
-	 * TODO
-	 */
-}
-#endif
 
 static void
 pci_vtdtr_node_id(struct pci_vtdtr_softc *sc)
@@ -298,7 +285,12 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			inprogress = 1;
 		}
 
-		assert(offs < len);
+		if (len == 0)
+			return (retval);
+
+		if (offs >= len) {
+			return (retval);
+		}
 		assert(ctrl->pvc_elflen <= len);
 
 		if (elf == NULL)
@@ -376,8 +368,10 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 			memcpy(_buf, elf, len);
 
-			if (dthyve_write(buf, buflen) == -1) {
-				fprintf(stderr, "dthyve_write() failed\n");
+			if (hypertrace_write(buf, buflen) == -1) {
+				fprintf(stderr,
+				    "hypertrace_write() failed: %s\n",
+				    strerror(errno));
 				return (retval);
 			}
 
@@ -429,17 +423,19 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	struct iovec iov[1];
 	struct vi_req req;
 	int n;
-	int retval;
+	int retval, process = 1;
 
 	sc = xsc;
 
 	while (vq_has_descs(vq)) {
 		n = vq_getchain(vq, iov, 1, &req);
 		assert(n == 1);
-		retval = pci_vtdtr_control_rx(sc, iov, 1);
+		if (__predict_true(process))
+			retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, req.idx, sizeof(struct pci_vtdtr_control));
-		if (retval == 1)
-			break;
+		if (retval == 1) {
+			process = 0;
+		}
 	}
 
 	pthread_mutex_lock(&sc->vsd_mtx);
@@ -463,7 +459,7 @@ pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
 }
 
-static __inline void
+static __inline void __unused
 pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *cq,
     struct pci_vtdtr_ctrl_entry *ctrl_entry)
 {
@@ -756,6 +752,7 @@ pci_vtdtr_events(void *xsc)
 	size_t len;
 	dtraced_hdr_t header;
 	uint16_t curvmid;
+	int configured;
 
 	buf = NULL;
 	sc = xsc;
@@ -764,16 +761,16 @@ pci_vtdtr_events(void *xsc)
 	memset(&header, 0, sizeof(header));
 
 	for (;;) {
-		error = dthyve_read((void **)&buf, &header);
+		error = hypertrace_read((void **)&buf, &header);
 		if (error) {
-			if (dthyve_configured()) {
-				fprintf(stderr, "Error in dthyve_read(): %s\n",
+			configured = hypertrace_configured();
+			if (configured)
+				fprintf(stderr,
+				    "hypertrace_read() failed: %s "
+				    "(did you restart dtraced?)\n",
 				    strerror(errno));
-				if (errno == EINTR)
-					exit(1);
-			}
 
-			if (errno == EAGAIN)
+			if (!configured || errno == EAGAIN)
 				sleep(PCI_VTDTR_EVENTSLEEPTIME);
 
 			continue;
@@ -919,7 +916,7 @@ pci_vtdtr_init(struct pci_devinst *pci_inst, nvlist_t *nvl __unused)
 	assert(error == 0);
 	error = pthread_create(&communicator, NULL, pci_vtdtr_run, sc);
 	assert(error == 0);
-	if (dthyve_configured()) {
+	if (hypertrace_configured()) {
 		error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
 		assert(error == 0);
 	}

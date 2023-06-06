@@ -44,18 +44,17 @@
 #define ERR(...) dump_errmsg(__VA_ARGS__)
 #define WARN(...) dump_warnmsg(__VA_ARGS__)
 #define DEBUG(...) dump_debugmsg(__VA_ARGS__)
+#define LOG(...) dump_logmsg(__VA_ARGS__)
 
 void be_quiet(void);
 void dump_errmsg(const char *, ...);
 void dump_warnmsg(const char *, ...);
-void EVENT(const char *, ...);
+void dump_logmsg(const char *, ...);
 
 #ifdef DTRACED_DEBUG
 void dump_debugmsg(const char *, ...);
 #else
 #define dump_debugmsg(...)
 #endif /* DTRACED_DEBUG */
-
-void dump_backtrace(void);
 
 #endif // _DTRACED_ERRMSG_H_

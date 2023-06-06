@@ -153,7 +153,6 @@ static dt_list_t g_kill_list;
 static dt_list_t g_benchlist;
 static pthread_mutex_t g_pgplistmtx;
 static pthread_cond_t g_pgpcond;
-static pthread_mutex_t g_pgpcondmtx;
 static pthread_mutex_t g_benchlistmtx;
 
 #ifdef __FreeBSD__
@@ -256,7 +255,7 @@ usage(FILE *fp)
 	    "\t-L  add library directory to library search path\n"
 	    "\t-m  enable or list probes matching the specified module name\n"
 	    "\t-n  enable or list probes matching the specified probe name\n"
-	    "\t-N  accept only programs with given identefiers (HyperTrace)\n"
+	    "\t-N  accept only programs with given identifiers (HyperTrace)\n"
 	    "\t-o  set output file\n"
 	    "\t-p  grab specified process-ID and cache its symbol tables\n"
 	    "\t-P  enable or list probes matching the specified provider name\n"
@@ -1370,17 +1369,15 @@ process_prog:
 		if (newpgpl->pgp == newprog) {
 			dt_list_append(&g_pgplist, newpgpl);
 		}
-		pthread_mutex_unlock(&g_pgplistmtx);
 
 		/*
 		 * For vmid == 0, we allow signalling because there will never
 		 * be a guest program that will be run.
 		 */
-		if (pgpl_valid(newpgpl)) {
-			pthread_mutex_lock(&g_pgpcondmtx);
+		if (pgpl_valid(newpgpl))
 			pthread_cond_signal(&g_pgpcond);
-			pthread_mutex_unlock(&g_pgpcondmtx);
-		}
+
+		pthread_mutex_unlock(&g_pgplistmtx);
 	} while (!done);
 
 	dt_verictx_teardown(verictx);
@@ -1518,6 +1515,7 @@ static void *
 dtc_work(void *arg)
 {
 	int done = 0;
+	int intr = 0;
 	dtrace_consumer_t con;
 
 	con.dc_consume_probe = chew;
@@ -1526,8 +1524,9 @@ dtc_work(void *arg)
 	con.dc_put_buf = NULL;
 
 	do {
-		if (!atomic_load(&g_intr) && !done)
+		if (!atomic_load(&g_intr) && !done) {
 			dtrace_sleep(g_dtp);
+		}
 
 #ifdef __FreeBSD__
 		if (atomic_load(&g_siginfo)) {
@@ -1581,9 +1580,9 @@ dtc_work(void *arg)
 			dfatal("failed to print aggregations");
 	}
 
-	pthread_mutex_lock(&g_pgpcondmtx);
+	pthread_mutex_lock(&g_pgplistmtx);
 	pthread_cond_signal(&g_pgpcond);
-	pthread_mutex_unlock(&g_pgpcondmtx);
+	pthread_mutex_unlock(&g_pgplistmtx);
 
 	return (NULL);
 }
@@ -1657,10 +1656,10 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 			fprintf(stderr, "failed to enable program: %s",
 			    strerror(errno));
 		} else {
-			notice("matched %u probe%s (%hhx%hhx%hhx)\n",
+			notice("matched %u probe%s (%hhx%hhx%hhx) from %u\n",
 			    dpi.dpi_matches, dpi.dpi_matches == 1 ? "" : "s",
 			    pgp->dp_ident[0], pgp->dp_ident[1],
-			    pgp->dp_ident[2]);
+			    pgp->dp_ident[2], pgp->dp_vmid);
 		}
 
 		setup_tracing();
@@ -1758,9 +1757,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if ((err = pthread_mutex_init(&g_pgplistmtx, NULL)) != 0)
 			fatal("failed to init pgplistmtx");
 
-		if ((err = pthread_mutex_init(&g_pgpcondmtx, NULL)) != 0)
-			fatal("failed to init pgpcondmtx");
-
 		if ((err = pthread_cond_init(&g_pgpcond, NULL)) != 0)
 			fatal("failed to init pgpcond");
 
@@ -1834,18 +1830,14 @@ exec_prog(const dtrace_cmd_t *dcp)
 			 * Wait for us to actually have a program in the list
 			 */
 again:
-			pthread_mutex_lock(&g_pgpcondmtx);
 			pthread_mutex_lock(&g_pgplistmtx);
 			while (!atomic_load(&g_intr) && !atomic_load(&g_stop) &&
 			    ((pgpl = dt_list_next(&g_pgplist)) == NULL ||
 			    again == 1)) {
-				pthread_mutex_unlock(&g_pgplistmtx);
-				pthread_cond_wait(&g_pgpcond, &g_pgpcondmtx);
+				pthread_cond_wait(&g_pgpcond, &g_pgplistmtx);
 				again = 0;
-				pthread_mutex_lock(&g_pgplistmtx);
 			}
 			pthread_mutex_unlock(&g_pgplistmtx);
-			pthread_mutex_unlock(&g_pgpcondmtx);
 
 			assert(pgpl != NULL || atomic_load(&g_intr) ||
 			    atomic_load(&g_stop));
@@ -1935,7 +1927,6 @@ again:
 			fprintf(stderr, "failed to join g_worktd\n");
 
 		pthread_mutex_destroy(&g_pgplistmtx);
-		pthread_mutex_destroy(&g_pgpcondmtx);
 		pthread_cond_destroy(&g_pgpcond);
 		pthread_mutex_destroy(&g_benchlistmtx);
 		dtrace_close(g_dtp);
@@ -2283,7 +2274,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	close(tmpfd);
 	close(dtraced_sock);
 
-	if (prog_exec == DT_PROG_EXEC)
+	if (g_worktd && prog_exec == DT_PROG_EXEC)
 		(void)pthread_join(g_worktd, NULL);
 
 	pthread_mutex_lock(&g_dtpmtx);
@@ -2367,9 +2358,9 @@ prochandler(struct ps_prochandle *P, const char *msg, void *arg)
 		}
 
 		atomic_store(&g_stop, 1);
-		pthread_mutex_lock(&g_pgpcondmtx);
+		pthread_mutex_lock(&g_pgplistmtx);
 		pthread_cond_signal(&g_pgpcond);
-		pthread_mutex_unlock(&g_pgpcondmtx);
+		pthread_mutex_unlock(&g_pgplistmtx);
 		g_pslive--;
 		break;
 
@@ -3129,20 +3120,23 @@ main(int argc, char *argv[])
 					fatal(
 					    "failed to read number of identifiers");
 
+				if (idents_to_read == 0)
+					fatal("expected at least 1 identifier");
+
 				idents =
 				    malloc(idents_to_read * DT_PROG_IDENTLEN);
 				if (idents == NULL)
 					fatal("failed to allocate idents");
 
 				if ((rv = read(STDIN_FILENO, idents,
-				    idents_to_read * DT_PROG_IDENTLEN)) == -1)
+				    idents_to_read * DT_PROG_IDENTLEN)) <= 0)
 					fatal("failed to read identifiers");
 
-				if (rv == 0)
-					fatal("expected identifiers, got 0 bytes");
+				if (dtrace_compile_idents_set(g_dtp, idents,
+				    idents_to_read) != 0) {
+					fatal("failed to compile identifiers");
+				}
 
-				dtrace_compile_idents_set(
-				    g_dtp, idents, idents_to_read);
 				free(idents);
 				g_has_idents = 1;
 				break;

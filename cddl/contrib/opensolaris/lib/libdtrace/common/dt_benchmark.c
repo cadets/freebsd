@@ -39,10 +39,12 @@
 
 #include <sys/dtrace.h>
 
+#include <libxo/xo.h>
+#undef NORETURN
+
 #include <assert.h>
 #include <dt_impl.h>
 #include <dtrace.h>
-#include <libxo/xo.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

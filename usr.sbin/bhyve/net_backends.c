@@ -465,7 +465,7 @@ tap_set_cap(struct net_backend *be __unused, uint64_t features,
 }
 
 static int
-tap_tagging_supported(struct net_backend *be)
+tap_tagging_supported(struct net_backend *be __unused)
 {
 #ifdef TAPSTAGGING
 	return (1);
@@ -997,14 +997,14 @@ netmap_recv_disable(struct net_backend *be)
 }
 
 static int
-netmap_tagging_supported(struct net_backend *be)
+netmap_tagging_supported(struct net_backend *be __unused)
 {
 
 	return (0);
 }
 
 static int
-netmap_tagging_enable(struct net_backend *be)
+netmap_tagging_enable(struct net_backend *be __unused)
 {
 
 	return (-1);

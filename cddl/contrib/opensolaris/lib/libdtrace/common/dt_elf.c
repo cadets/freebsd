@@ -2729,6 +2729,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 			unlink(filename);
 			close(fd);
 		}
+
 		return (NULL);
 	}
 
@@ -2743,7 +2744,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 			close(fd);
 		}
 
-		fprintf(stderr, "Failed to get options\n");
+		fprintf(stderr, "failed to get options\n");
 		return (NULL);
 	}
 

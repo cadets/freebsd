@@ -56,11 +56,9 @@ handle_cleanup(struct dtraced_state *s, struct dtraced_job *curjob)
 {
 	int fd, _send;
 	dtraced_hdr_t header;
-	size_t hdrlen, buflen, i;
-	ssize_t r;
-	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;
-	__cleanup(freep) unsigned char *msg = NULL;
-	__cleanup(freep) char **entries = curjob->j.cleanup.entries;
+	size_t buflen, i;
+	dtraced_fd_t *dfd = curjob->connsockfd;
+	char **entries = curjob->j.cleanup.entries;
 	size_t n_entries = curjob->j.cleanup.n_entries;
 	
 	fd = dfd->fd;
@@ -70,7 +68,7 @@ handle_cleanup(struct dtraced_state *s, struct dtraced_job *curjob)
 	DTRACED_MSG_TYPE(header) = DTRACED_MSG_CLEANUP;
 	DTRACED_MSG_NUMENTRIES(header) = curjob->j.cleanup.n_entries;
 
-	if ((r = send(fd, &header, DTRACED_MSGHDRSIZE, 0)) < 0) {
+	if (send(fd, &header, DTRACED_MSGHDRSIZE, 0) < 0) {
 		if (errno != EPIPE)
 			ERR("%d: %s(): Failed to write to %d: %m", __LINE__,
 			    __func__, fd);
@@ -81,28 +79,19 @@ handle_cleanup(struct dtraced_state *s, struct dtraced_job *curjob)
 	for (i = 0; i < n_entries; i++) {
 		buflen = _send ? strlen(entries[i]) + 1 : 0;
 
-		/*
-		 * We don't want to exit here because we actually want to free
-		 * up all the entries and process the job. If we returned from
-		 * the function here, we would have a memory leak. So instead,
-		 * we simply don't send anything if we fail once, and free up
-		 * all the entries.
-		 */
-		if (_send && send(fd, &buflen, sizeof(buflen), 0) < 0) {
+		if (send(fd, &buflen, sizeof(buflen), 0) < 0) {
 			if (errno != EPIPE)
 				ERR("%d: %s(): Failed to write to %d: %m",
 				    __LINE__, __func__, fd);
-			_send = 0;
+			return;
 		}
 
-		if (_send && send(fd, entries[i], buflen, 0) < 0) {
+		if (send(fd, entries[i], buflen, 0) < 0) {
 			if (errno != EPIPE)
 				ERR("%d: %s(): Failed to write to %d: %m",
 				    __LINE__, __func__, fd);
-			_send = 0;
+			return;
 		}
-
-		free(entries[i]);
 	}
 
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))

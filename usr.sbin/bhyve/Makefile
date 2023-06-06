@@ -30,11 +30,11 @@ SRCS=	\
 	crc16.c			\
 	ctl_util.c		\
 	ctl_scsi_all.c		\
-	dthyve.c		\
 	e820.c			\
 	fwctl.c			\
 	gdb.c			\
 	hda_codec.c		\
+	hypertrace.c		\
 	inout.c			\
 	ioapic.c		\
 	kernemu_dev.c		\

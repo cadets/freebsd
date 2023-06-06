@@ -55,6 +55,7 @@ typedef struct dtraced_fd {
 	_Atomic int __count;            /* reference count */
 	char ident[DTRACED_FDIDENTLEN]; /* human-readable identifier */
 	uint64_t id;                    /* initiator id */
+	int cleaned_up;                 /* has this fd been cleaned up */
 } dtraced_fd_t;
 
 #endif // __DTRACED_CONNECTION_H_
