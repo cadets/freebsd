@@ -83,7 +83,8 @@ SRCS=	\
 	vmgenc.c		\
 	xmsr.c			\
 	spinup_ap.c		\
-	iov.c
+	iov.c			\
+	bhyve_provider.d
 
 LDFLAGS+= -l proc -l ctf -l elf -l z -l rtld_db -l pthread -l util
 
@@ -141,11 +142,5 @@ NO_WTHREAD_SAFETY=
 NO_WCAST_ALIGN=
 
 SUBDIR=	kbdlayout
-
-OBJS:=bhyve_provider.o ${OBJS}
-DTRACE_OBJS=${SRCS:C/\.c/.o/}
-
-beforelinking:
-	dtrace -G -s ${BHYVE_SRCDIR}/bhyve_provider.d ${DTRACE_OBJS}
 
 .include <bsd.prog.mk>
