@@ -1515,7 +1515,6 @@ static void *
 dtc_work(void *arg)
 {
 	int done = 0;
-	int intr = 0;
 	dtrace_consumer_t con;
 
 	con.dc_consume_probe = chew;
@@ -1573,6 +1572,7 @@ dtc_work(void *arg)
 	} while (!done);
 
 	oprintf("\n");
+	fprintf(stderr, "dtrace: exiting dtc_work\n");
 
 	if (!atomic_load(&g_impatient)) {
 		if (dtrace_aggregate_print(g_dtp, g_ofp, NULL) == -1 &&
@@ -1754,15 +1754,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 		 *  (5) dtraced writes out the ELF file to this DTrace
 		 *      instance for further processing.
 		 */
-		if ((err = pthread_mutex_init(&g_pgplistmtx, NULL)) != 0)
-			fatal("failed to init pgplistmtx");
-
-		if ((err = pthread_cond_init(&g_pgpcond, NULL)) != 0)
-			fatal("failed to init pgpcond");
-
-		if ((err = pthread_mutex_init(&g_benchlistmtx, NULL)) != 0)
-			fatal("failed to init benchlistmtx");
-
 		rx_sock = open_dtraced(DTD_SUB_ELFWRITE);
 		if (rx_sock == -1)
 			fatal("failed to open rx_sock");
@@ -2157,8 +2148,19 @@ link_elf(dtrace_cmd_t *dcp, char *progpath)
 static void
 process_elf(dtrace_cmd_t *dcp)
 {
+	int prog_exec;
 
-	(void) link_elf(dcp, dcp->dc_arg);
+	prog_exec = link_elf(dcp, dcp->dc_arg);
+	if (prog_exec != DT_PROG_EXEC) {
+		if (g_verbose >= 1)
+			fprintf(stderr, "not executing %s\n", dcp->dc_arg);
+
+		return;
+	}
+
+	setup_tracing();
+	pthread_create(&g_worktd, NULL, dtc_work, NULL);
+	pthread_join(g_worktd, NULL);
 }
 
 static void
@@ -2971,6 +2973,15 @@ main(int argc, char *argv[])
 	if (pthread_mutex_init(&g_dtpmtx, NULL))
 		fatal("failed to create the dtp mutex");
 
+	if (pthread_mutex_init(&g_pgplistmtx, NULL))
+		fatal("failed to init pgplistmtx");
+
+	if (pthread_cond_init(&g_pgpcond, NULL))
+		fatal("failed to init pgpcond");
+
+	if (pthread_mutex_init(&g_benchlistmtx, NULL))
+		fatal("failed to init benchlistmtx");
+
 	while ((g_dtp = dtrace_open(DTRACE_VERSION, g_oflags, &err)) == NULL) {
 		if (!(g_oflags & DTRACE_O_NODEV) && !g_exec && !g_grabanon) {
 			g_oflags |= DTRACE_O_NODEV;
@@ -3115,6 +3126,8 @@ main(int argc, char *argv[])
 				break;
 
 			case 'N':
+				idents_to_read = 0;
+
 				if (read(STDIN_FILENO, &idents_to_read,
 				    sizeof(idents_to_read)) == -1)
 					fatal(
