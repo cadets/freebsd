@@ -174,6 +174,7 @@ dtt_kill(struct dtraced_state *s, dtt_entry_t *e)
 static void
 dtt_cleanup(struct dtraced_state *s)
 {
+#ifdef notyet /* XXX(dstolfa): Maybe? */
 	struct dtraced_job *job;
 	pidlist_t *pe;
 
@@ -194,11 +195,10 @@ dtt_cleanup(struct dtraced_state *s)
 		free(pe);
 	}
 	UNLOCK(&s->pidlistmtx);
+#endif
 
-#ifdef notyet /* XXX(dstolfa): We probably want this later on. */
 	/* Re-exec ourselves to ensure full cleanup. */
 	execve(s->argv[0], (char *const *)s->argv, NULL);
-#endif
 }
 
 static int
