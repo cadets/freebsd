@@ -146,6 +146,12 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);
+
+		if (reenable_fd(s->kq_hdl, dfd->fd, EVFILT_WRITE)) {
+			ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
+			    __func__);
+			return (-1);
+		}
 	}
 	UNLOCK(&s->socklistmtx);
 
@@ -244,6 +250,12 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);
+
+		if (reenable_fd(s->kq_hdl, dfd->fd, EVFILT_WRITE)) {
+			ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
+			    __func__);
+			return (-1);
+		}
 	}
 	UNLOCK(&s->socklistmtx);
 

@@ -174,30 +174,19 @@ dtt_kill(struct dtraced_state *s, dtt_entry_t *e)
 static void
 dtt_cleanup(struct dtraced_state *s)
 {
-#ifdef notyet /* XXX(dstolfa): Maybe? */
-	struct dtraced_job *job;
-	pidlist_t *pe;
-
-	/* Clean up all of the dtraced state */
-	DEBUG("%d: %s(): Got cleanup message.", __LINE__, __func__);
-
-	LOCK(&s->joblistmtx);
-	while (job = dt_list_next(&s->joblist)) {
-		dt_list_delete(&s->joblist, job);
-		dtraced_free_job(job);
-	}
-	UNLOCK(&s->joblistmtx);
+	pidlist_t *pe = NULL;
 
 	LOCK(&s->pidlistmtx);
 	while (pe = dt_list_next(&s->pidlist)) {
 		dt_list_delete(&s->pidlist, pe);
+		WARN("%d: %s(): SIGKILL %d", __LINE__, __func__, pe->pid);
 		(void)kill(pe->pid, SIGKILL);
 		free(pe);
 	}
 	UNLOCK(&s->pidlistmtx);
-#endif
 
 	/* Re-exec ourselves to ensure full cleanup. */
+	WARN("%d: %s(): re-execing", __LINE__, __func__);
 	execve(s->argv[0], (char *const *)s->argv, NULL);
 }
 
@@ -283,7 +272,7 @@ listen_dttransport(void *_s)
 	while (atomic_load(&s->shutdown) == 0) {
 		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
 			if (errno == EINTR) {
-				DEBUG("%d: %s(): got EINTR on read, exiting",
+				WARN("%d: %s(): got EINTR on read, exiting",
 				    __LINE__, __func__);
 				pthread_exit(s);
 			}

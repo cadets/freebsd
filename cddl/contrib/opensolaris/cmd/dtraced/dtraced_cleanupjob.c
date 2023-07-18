@@ -54,15 +54,15 @@
 void
 handle_cleanup(struct dtraced_state *s, struct dtraced_job *curjob)
 {
-	int fd, _send;
+	int fd;
 	dtraced_hdr_t header;
 	size_t buflen, i;
 	dtraced_fd_t *dfd = curjob->connsockfd;
 	char **entries = curjob->j.cleanup.entries;
 	size_t n_entries = curjob->j.cleanup.n_entries;
-	
+
 	fd = dfd->fd;
-	DEBUG("%d: %s(): CLEANUP to %d", __LINE__, __func__, fd);
+	DEBUG("%d: %s(): CLEANUP to %s", __LINE__, __func__, dfd->ident);
 	assert(fd != -1);
 
 	DTRACED_MSG_TYPE(header) = DTRACED_MSG_CLEANUP;
@@ -75,9 +75,8 @@ handle_cleanup(struct dtraced_state *s, struct dtraced_job *curjob)
 		return;
 	}
 
-	_send = 0;
 	for (i = 0; i < n_entries; i++) {
-		buflen = _send ? strlen(entries[i]) + 1 : 0;
+		buflen = strlen(entries[i]) + 1;
 
 		if (send(fd, &buflen, sizeof(buflen), 0) < 0) {
 			if (errno != EPIPE)
