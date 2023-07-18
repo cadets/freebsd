@@ -58,9 +58,7 @@ typedef struct dtt_qentry {
 struct dtt_softc {
 	struct cdev			*cdev;
 	struct mtx			mtx;
-	
 	struct cv			cv;
-	struct mtx			cvmtx;
 
 	TAILQ_HEAD(, dtt_qentry)	dataq;
 	struct mtx			qmtx;
@@ -121,7 +119,6 @@ dtt_handler(module_t mod, int what, void *arg)
 
 		mtx_init(&sc->mtx, "dttscmtx", NULL, MTX_DEF);
 		mtx_init(&sc->qmtx, "dttqmtx", NULL, MTX_DEF);
-		mtx_init(&sc->cvmtx, "dttcvmtx", NULL, MTX_DEF);
 
 		cv_init(&sc->cv, "dttransport CV");
 
@@ -139,12 +136,7 @@ dtt_handler(module_t mod, int what, void *arg)
 
 		mtx_destroy(&sc->mtx);
 		mtx_destroy(&sc->qmtx);
-
-		mtx_lock(&sc->cvmtx);
 		cv_destroy(&sc->cv);
-		mtx_unlock(&sc->cvmtx);
-		
-		mtx_destroy(&sc->cvmtx);
 
 		free(sc, M_DTTRANSPORT);
 		gsc = NULL;
@@ -170,10 +162,10 @@ dtt_open(struct cdev *dev, int flags, int fmt, struct thread *td)
 		mtx_unlock(&sc->mtx);
 		return (EBUSY);
 	}
-	
+
 	sc->proc = td->td_proc;
 	mtx_unlock(&sc->mtx);
-	
+
 	return (0);
 }
 
@@ -187,7 +179,7 @@ dtt_close(struct cdev *dev, int flags, int fmt, struct thread *td)
 	mtx_lock(&sc->mtx);
 	sc->proc = NULL;
 	mtx_unlock(&sc->mtx);
-	
+
 	return (0);
 }
 
@@ -208,7 +200,7 @@ dtt_read(struct cdev *dev, struct uio *uio, int flags)
 	KASSERT(uio->uio_resid >= 0, ("%s: bogus negative resid", __func__));
 
 	err = 0;
-	
+
 	if (uio->uio_resid != DTT_ENTRYLEN) {
 		mtx_unlock(&sc->mtx);
 		return (EINVAL);
@@ -221,24 +213,20 @@ dtt_read(struct cdev *dev, struct uio *uio, int flags)
 
 	mtx_unlock(&sc->mtx);
 
-	mtx_lock(&sc->cvmtx);
+	mtx_lock(&sc->qmtx);
 	while (err == 0 && dtt_queue_empty(sc))
-		err = cv_wait_sig(&sc->cv, &sc->cvmtx);
-	mtx_unlock(&sc->cvmtx);
+		err = cv_wait_sig(&sc->cv, &sc->qmtx);
 
-	if (err)
+	if (err) {
+		mtx_unlock(&sc->qmtx);
 		return (err);
+	}
 
-	mtx_lock(&sc->qmtx);
 	entry = dtt_queue_fst(sc);
-	mtx_unlock(&sc->qmtx);
-
-	err = uiomove(entry->ent, DTT_ENTRYLEN, uio);
-
-	mtx_lock(&sc->qmtx);
 	dtt_queue_remove(sc, entry);
 	mtx_unlock(&sc->qmtx);
 
+	err = uiomove(entry->ent, DTT_ENTRYLEN, uio);
 	free(entry->ent, M_DEVBUF);
 	free(entry, M_DEVBUF);
 	return (err);
@@ -271,7 +259,7 @@ dtt_write(struct cdev *dev, struct uio *uio, int flags)
 		mtx_unlock(&sc->mtx);
 		return (EBUSY);
 	}
-	
+
 	mtx_unlock(&sc->mtx);
 
 	err = uiomove(&entry, DTT_ENTRYLEN, uio);
@@ -294,7 +282,7 @@ dtt_queue_enqueue(dtt_entry_t *e)
 
 	qe = NULL;
 	ent = NULL;
-	
+
 	sc = gsc;
 
 	qe = malloc(sizeof(dtt_qentry_t), M_DTTRANSPORT, M_NOWAIT | M_ZERO);
@@ -312,11 +300,8 @@ dtt_queue_enqueue(dtt_entry_t *e)
 
 	mtx_lock(&sc->qmtx);
 	TAILQ_INSERT_TAIL(&sc->dataq, qe, next);
-	mtx_unlock(&sc->qmtx);
-
-	mtx_lock(&sc->cvmtx);
 	cv_signal(&sc->cv);
-	mtx_unlock(&sc->cvmtx);
+	mtx_unlock(&sc->qmtx);
 
 	return (0);
 }
