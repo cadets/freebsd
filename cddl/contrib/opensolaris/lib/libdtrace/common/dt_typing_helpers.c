@@ -1043,3 +1043,40 @@ dt_mip_by_offset(dtrace_hdl_t *dtp, dt_typefile_t *tf, ctf_id_t ctfid,
 
 	return (mh.mip);
 }
+
+ctf_id_t
+dt_autoresolve_ctfid(const char *mod, const char *resolved_type,
+    dt_typefile_t **tfp)
+{
+	dt_typefile_t *tf;
+	ctf_id_t ctfid;
+
+	tf = NULL;
+	ctfid = CTF_ERR;
+
+	/*
+	 * Try by module first.
+	 */
+	if (strcmp(mod, "freebsd") == 0)
+		tf = dt_typefile_kernel();
+	else
+		tf = dt_typefile_mod(mod);
+
+	if (tf != NULL)
+		ctfid = dt_typefile_ctfid(tf, resolved_type);
+
+	if (tf == NULL || ctfid == CTF_ERR) {
+		/*
+		 * FIXME: This probably doesn't match what libdtrace currently
+		 * does with modules.
+		 */
+		for (tf = dt_typefile_first(); tf; tf = dt_list_next(tf)) {
+			ctfid = dt_typefile_ctfid(tf, resolved_type);
+			if (ctfid != CTF_ERR)
+				break;
+		}
+	}
+
+	*tfp = tf;
+	return (ctfid);
+}

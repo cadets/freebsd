@@ -136,7 +136,11 @@ dt_typefile_openall(dtrace_hdl_t *dtp)
 	typef->modhdl = mod;
 	typef->dtp = dtp;
 	strcpy(typef->modname, "D");
-	dt_list_append(&typefiles, typef);
+
+	/*
+	 * It is intentional that the list starts with the D container.
+	 */
+	dt_list_prepend(&typefiles, typef);
 }
 
 ctf_id_t
@@ -282,6 +286,13 @@ dt_typefile_typekind(dt_typefile_t *typef, ctf_id_t type)
 		return (CTF_ERR);
 
 	return (ctf_type_kind(ctfp, type));
+}
+
+dt_typefile_t *
+dt_typefile_first(void)
+{
+
+	return (dt_list_next(&typefiles));
 }
 
 dt_typefile_t *

@@ -409,36 +409,14 @@ dt_infer_type(dt_ifg_node_t *n)
 			return (n->din_type);
 		}
 
-		if (strcmp(n->din_edp->dted_probe.dtpd_mod, "freebsd") == 0)
-			n->din_tf = dt_typefile_kernel();
-		else
-			n->din_tf = dt_typefile_mod(n->din_edp->dted_probe.dtpd_mod);
-
-		if (n->din_tf != NULL)
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
-		if (n->din_tf == NULL || n->din_ctfid == CTF_ERR) {
-			/*
-			 * XXX: Do we want to do this from the guest, or do we
-			 * want the host data model here? Not 100% sure.
-			 */
-			n->din_tf = dt_typefile_mod("D");
-			assert(n->din_tf != NULL);
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
-
-			if (n->din_ctfid == CTF_ERR) {
-				n->din_tf = dt_typefile_kernel();
-				assert(n->din_tf != NULL);
-				n->din_ctfid = dt_typefile_ctfid(n->din_tf,
-				    symname);
-				if (n->din_ctfid == CTF_ERR)
-					dt_set_progerr(g_dtp, g_pgp,
-					    "dt_infer_type(%s, %zu@%p): failed to get "
-					    "type %s: %s",
-					    insname[opcode], n->din_uidx,
-					    n->din_difo, symname,
-					    dt_typefile_error(n->din_tf));
-			}
-		}
+		n->din_ctfid = dt_autoresolve_ctfid(
+		    n->din_edp->dted_probe.dtpd_mod, symname, &n->din_tf);
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "dt_infer_type(%s, %zu@%p): failed to get "
+			    "type %s: %s",
+			    insname[opcode], n->din_uidx, n->din_difo, symname,
+			    dt_typefile_error(n->din_tf));
 
 		n->din_mip = mip;
 		n->din_type = DIF_TYPE_CTF;

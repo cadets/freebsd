@@ -479,29 +479,11 @@ dt_infer_type_arg(
 	else
 		strcpy(resolved_type, "uint64_t");
 
-	/*
-	 * Try by module first.
-	 */
-	if (strcmp(mod, "freebsd") == 0)
-		tf = dt_typefile_kernel();
-	else
-		tf = dt_typefile_mod(mod);
-
-	if (tf != NULL)
-		ctfid = dt_typefile_ctfid(tf, resolved_type);
-	if (tf == NULL || ctfid == CTF_ERR) {
-		/*
-		 * If we can't find it in the module, try in the kernel
-		 * itself.
-		 */
-		tf = dt_typefile_kernel();
-		assert(tf != NULL);
-		ctfid = dt_typefile_ctfid(tf, resolved_type);
-		if (ctfid == CTF_ERR) {
-			fprintf(stderr, "could not find type %s in %s\n",
-			    resolved_type, dt_typefile_stringof(tf));
-			return (1);
-		}
+	ctfid = dt_autoresolve_ctfid(mod, resolved_type, &tf);
+	if (ctfid == CTF_ERR) {
+		fprintf(stderr, "could not find type %s in %s\n", resolved_type,
+		    dt_typefile_stringof(tf));
+		return (1);
 	}
 
 	type = DIF_TYPE_CTF;
