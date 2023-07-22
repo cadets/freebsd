@@ -890,13 +890,13 @@ dt_infer_type(dt_ifg_node_t *n)
 
 	case DIF_OP_LDGA:
 		/*
-		 *   var : t          %r2 : int
+		 *   var : t[]          %r2 : int
 		 * --------------------------------
 		 *  ldga var, %r2,  %r1 => %r1 : t
 		 */
 
 		var = DIF_INSTR_R1(instr);
-		idx = DIF_INSTR_R2(instr);
+		assert(dn2 != NULL);
 
 		if (!dt_var_is_builtin(var)) {
 			dt_set_progerr(g_dtp, g_pgp,
@@ -905,6 +905,15 @@ dt_infer_type(dt_ifg_node_t *n)
 			    insname[opcode], n->din_uidx, n->din_difo, var);
 		}
 
+		if (DIF_INSTR_OP(dn2->din_buf[dn2->din_uidx]) != DIF_OP_SETX) {
+			dt_set_progerr(g_dtp, g_pgp,
+			    "dt_infer_type(%s, %zu@%p): %%r%u "
+			    "is not assigned by a SETX instruction @ %zu",
+			    insname[opcode], n->din_uidx, n->din_difo,
+			    DIF_INSTR_R2(instr), dn2->din_uidx);
+		}
+
+		idx = dn2->din_int;
 		dt_builtin_type(n, var, idx);
 		return (n->din_type);
 
@@ -1620,7 +1629,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		return (n->din_type);
 
 	case DIF_OP_RET:
-		/* 
+		/*
 		 * Only do this if it's a CTF type. We might be coming from a
 		 * typecast.
 		 */
@@ -1632,7 +1641,6 @@ dt_infer_type(dt_ifg_node_t *n)
 			tf = dn1->din_tf;
 			type = dn1->din_type;
 			ctfid = dn1->din_ctfid;
-			fprintf(stderr, "ret: in the != NULL\n");
 
 			/*
 			 * We only need one type here (the first one).
