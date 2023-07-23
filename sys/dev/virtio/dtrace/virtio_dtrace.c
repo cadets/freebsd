@@ -124,7 +124,6 @@ struct vtdtr_ctrl_entry {
 
 struct vtdtr_ctrlq {
 	STAILQ_HEAD(, vtdtr_ctrl_entry)	head;
-	struct mtx			mtx;
 	size_t				n_entries;
 };
 
@@ -139,8 +138,7 @@ struct vtdtr_softc {
 	int                        vtdtr_rx_nseg;
 
 	struct cv                  vtdtr_condvar;
-	struct mtx                 vtdtr_condmtx;
-
+	struct mtx                 vtdtr_ctrlqmtx;
 	struct vtdtr_ctrlq        *vtdtr_ctrlq;
 
 	struct thread             *vtdtr_commtd;
@@ -155,7 +153,7 @@ struct vtdtr_softc {
 	 */
 	struct vtdtr_probelist    *vtdtr_probelist;
 
-	int                        vtdtr_shutdown;
+	_Atomic int                vtdtr_shutdown;
 	int                        vtdtr_ready;
 	_Atomic int                vtdtr_host_ready;
 };
@@ -339,13 +337,13 @@ vtdtr_attach(device_t dev)
 	mtx_init(&sc->vtdtr_mtx, "vtdtrmtx", NULL, MTX_DEF);
 	sc->vtdtr_rx_nseg = 1;
 	sc->vtdtr_tx_nseg = 1;
-	sc->vtdtr_shutdown = 0;
+	atomic_store_int(&sc->vtdtr_shutdown, 0);
 	atomic_store_int(&sc->vtdtr_host_ready, 1);
 
 	sc->vtdtr_ctrlq = malloc(sizeof(struct vtdtr_ctrlq),
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 
-	mtx_init(&sc->vtdtr_ctrlq->mtx, "vtdtrctrlqmtx", NULL, MTX_DEF);
+	mtx_init(&sc->vtdtr_ctrlqmtx, "vtdtrctrlqmtx", NULL, MTX_DEF);
 
 	vtdtr_cq_init(sc->vtdtr_ctrlq);
 
@@ -398,7 +396,6 @@ vtdtr_attach(device_t dev)
 	    M_WAITOK | M_ZERO);
 
 	cv_init(&sc->vtdtr_condvar, "Virtio DTrace CV");
-	mtx_init(&sc->vtdtr_condmtx, "vtdtrcondmtx", NULL, MTX_DEF);
 	sema_init(&sc->vtdtr_exit, 0, "vtdtrexitsema");
 
 	vtdtr_enable_interrupts(sc);
@@ -419,29 +416,21 @@ fail:
 }
 
 static void
-vtdtr_cq_destroy(struct vtdtr_ctrlq *cq)
+vtdtr_cq_destroy(struct vtdtr_softc *sc)
 {
 	struct vtdtr_ctrl_entry *n1, *n2;
-	mtx_lock(&cq->mtx);
-	n1 = STAILQ_FIRST(&cq->head);
+
+	mtx_lock(&sc->vtdtr_ctrlqmtx);
+	n1 = STAILQ_FIRST(&sc->vtdtr_ctrlq->head);
 	while (n1 != NULL) {
 		n2 = STAILQ_NEXT(n1, entries);
 		free(n1, M_DEVBUF);
 		n1 = n2;
 	}
 
-	STAILQ_INIT(&cq->head);
-	cq->n_entries = 0;
-	mtx_unlock(&cq->mtx);
-}
-
-static void
-vtdtr_condvar_destroy(struct vtdtr_softc *sc)
-{
-	mtx_lock(&sc->vtdtr_condmtx);
-	cv_destroy(&sc->vtdtr_condvar);
-	mtx_unlock(&sc->vtdtr_condmtx);
-	mtx_destroy(&sc->vtdtr_condmtx);
+	STAILQ_INIT(&sc->vtdtr_ctrlq->head);
+	sc->vtdtr_ctrlq->n_entries = 0;
+	mtx_unlock(&sc->vtdtr_ctrlqmtx);
 }
 
 /*
@@ -467,10 +456,10 @@ vtdtr_detach(device_t dev)
 	vtdtr_destroy_probelist(sc);
 	vtdtr_queue_destroy(&sc->vtdtr_rxq);
 	vtdtr_queue_destroy(&sc->vtdtr_txq);
-	vtdtr_cq_destroy(sc->vtdtr_ctrlq);
-	mtx_destroy(&sc->vtdtr_ctrlq->mtx);
+	vtdtr_cq_destroy(sc);
+	mtx_destroy(&sc->vtdtr_ctrlqmtx);
 	free(sc->vtdtr_ctrlq, M_DEVBUF);
-	vtdtr_condvar_destroy(sc);
+	cv_destroy(&sc->vtdtr_condvar);
 	mtx_destroy(&sc->vtdtr_mtx);
 
 	return (0);
@@ -546,10 +535,16 @@ vtdtr_stop(struct vtdtr_softc *sc)
 	vtdtr_disable_interrupts(sc);
 	virtio_stop(sc->vtdtr_dev);
 
-	sc->vtdtr_shutdown = 1;
-	mtx_lock(&sc->vtdtr_condmtx);
+	atomic_store_int(&sc->vtdtr_shutdown, 1);
+
+	/*
+	 * Annoyingly, we have to lock the ctrlq mutex here to signal the
+	 * condvar in order to prevent reordering with the cv_wait(),
+	 * potentially waiting indefinitely.
+	 */
+	mtx_lock(&sc->vtdtr_ctrlqmtx);
 	cv_signal(&sc->vtdtr_condvar);
-	mtx_unlock(&sc->vtdtr_condmtx);
+	mtx_unlock(&sc->vtdtr_ctrlqmtx);
 }
 
 /*
@@ -667,6 +662,17 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	case VIRTIO_DTRACE_DEVICE_READY:
 		debug_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
 		atomic_store_int(&sc->vtdtr_host_ready, 1);
+
+		/*
+		 * We have a similar situation to one in vtdtr_stop() here. We
+		 * have to lock the ctrlq mutex in order to signal the condition
+		 * variable correctly and prevent indefinite waits. We can
+		 * signal here because we're using two queues, so we won't have
+		 * any contention between them.
+		 */
+		mtx_lock(&sc->vtdtr_ctrlqmtx);
+		cv_signal(&sc->vtdtr_condvar);
+		mtx_unlock(&sc->vtdtr_ctrlqmtx);
 		break;
 
 	case VIRTIO_DTRACE_ELF:
@@ -948,9 +954,6 @@ vtdtr_rxq_tq_intr(void *xrxq, int pending)
 		vtdtr_notify_ready(sc);
 	mtx_unlock(&sc->vtdtr_mtx);
 
-	mtx_lock(&sc->vtdtr_condmtx);
-	cv_signal(&sc->vtdtr_condvar);
-	mtx_unlock(&sc->vtdtr_condmtx);
 }
 
 /*
@@ -1167,7 +1170,7 @@ vtdtr_run(void *xsc)
 	struct virtio_dtrace_control *ctrls;
 	struct virtqueue *vq;
 	size_t vq_size;
-	int nent;
+	int nent, shutdown;
 	int ready_flag;
 
 	sc = xsc;
@@ -1185,7 +1188,7 @@ vtdtr_run(void *xsc)
 		memset(ctrls, 0,
 		    vq_size * sizeof(struct virtio_dtrace_control));
 
-		mtx_lock(&sc->vtdtr_condmtx);
+		mtx_lock(&sc->vtdtr_ctrlqmtx);
 		/*
 		 * We are safe to proceed sending messages if the following
 		 * conditions are satisfied:
@@ -1196,16 +1199,14 @@ vtdtr_run(void *xsc)
 		 */
 		while ((vtdtr_cq_empty(sc->vtdtr_ctrlq) ||
 		    !atomic_load_int(&sc->vtdtr_host_ready)) &&
-		    (!sc->vtdtr_shutdown)) {
-			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_condmtx);
+		    ((shutdown = atomic_load_int(&sc->vtdtr_shutdown)) == 0)) {
+			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_ctrlqmtx);
 		}
-		mtx_unlock(&sc->vtdtr_condmtx);
 
 		kthread_suspend_check();
 
-		if (sc->vtdtr_shutdown == 1) {
+		if (shutdown == 1) {
 			free(ctrls, M_VTDTR);
-			sema_post(&sc->vtdtr_exit);
 			kthread_exit();
 		}
 
@@ -1222,11 +1223,10 @@ vtdtr_run(void *xsc)
 		 * virtqueue. Additionally, we keep a count of entries
 		 * processed.
 		 */
-		mtx_lock(&sc->vtdtr_ctrlq->mtx);
 		while (!virtqueue_full(vq) &&
 		    !vtdtr_cq_empty(sc->vtdtr_ctrlq)) {
 			ctrl_entry = vtdtr_cq_dequeue(sc->vtdtr_ctrlq);
-			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
+			mtx_unlock(&sc->vtdtr_ctrlqmtx);
 			memcpy(&ctrls[nent], ctrl_entry->ctrl,
 			    sizeof(struct virtio_dtrace_control));
 			if (ready_flag &&
@@ -1235,7 +1235,7 @@ vtdtr_run(void *xsc)
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
 			nent++;
-			mtx_lock(&sc->vtdtr_ctrlq->mtx);
+			mtx_lock(&sc->vtdtr_ctrlqmtx);
 		}
 
 		/*
@@ -1253,7 +1253,7 @@ vtdtr_run(void *xsc)
 		}
 
 		vtdtr_poll(txq);
-		mtx_unlock(&sc->vtdtr_ctrlq->mtx);
+		mtx_unlock(&sc->vtdtr_ctrlqmtx);
 	}
 }
 
@@ -1313,13 +1313,10 @@ virtio_dtrace_enqueue(dtt_entry_t *e)
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 	ctrl_entry->ctrl = ctrl;
 
-	mtx_lock(&sc->vtdtr_ctrlq->mtx);
+	mtx_lock(&sc->vtdtr_ctrlqmtx);
 	vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
-	mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-
-	mtx_lock(&sc->vtdtr_condmtx);
 	cv_signal(&sc->vtdtr_condvar);
-	mtx_unlock(&sc->vtdtr_condmtx);
+	mtx_unlock(&sc->vtdtr_ctrlqmtx);
 
 	return (0);
 }
