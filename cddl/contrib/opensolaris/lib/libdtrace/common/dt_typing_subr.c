@@ -134,7 +134,6 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 	dt_ifg_node_t *arg0, *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7,
 	    *arg8;
 	dt_stack_t *se;
-	dt_stacklist_t *sl;
 	char buf[4096] = { 0 };
 	ctf_id_t arg_ctfid;
 	ctf_id_t arg_kind;
@@ -442,7 +441,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		 * Check if the second (optional) argument is present
 		 */
 		se = dt_list_next(se);
-		if (sl != NULL) {
+		if (se != NULL) {
 			if (se->ds_ifgnode == NULL)
 				dt_set_progerr(g_dtp, g_pgp,
 				    "%s: ds_ifgnode is NULL", subr_name[subr]);
@@ -865,7 +864,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		 * Check if the second (optional) argument is present
 		 */
 		se = dt_list_next(se);
-		if (sl != NULL) {
+		if (se != NULL) {
 			if (se->ds_ifgnode == NULL)
 				dt_set_progerr(g_dtp, g_pgp,
 				    "%s: ds_ifgnode is NULL", subr_name[subr]);
@@ -992,7 +991,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		/*
 		 * Check if the third (optional) argument is present
 		 */
-		if (sl != NULL) {
+		if (se != NULL) {
 			if (se->ds_ifgnode == NULL)
 				dt_set_progerr(g_dtp, g_pgp,
 				    "%s: ds_ifgnode is NULL", subr_name[subr]);
@@ -1055,7 +1054,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		/*
 		 * Check if the third (optional) argument is present
 		 */
-		if (sl != NULL) {
+		if (se != NULL) {
 			if (se->ds_ifgnode == NULL)
 				dt_set_progerr(g_dtp, g_pgp,
 				    "%s: ds_ifgnode is NULL", subr_name[subr]);
@@ -1446,7 +1445,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		 * Check if the second (optional) argument is present
 		 */
 		se = dt_list_next(se);
-		if (sl != NULL) {
+		if (se != NULL) {
 			if (se->ds_ifgnode == NULL)
 				dt_set_progerr(g_dtp, g_pgp,
 				    "%s: ds_ifgnode is NULL", subr_name[subr]);
