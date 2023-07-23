@@ -1203,7 +1203,6 @@ typedef struct {
 } dtrace_elfqueue_t;
 
 static pthread_mutex_t _elf_async_mtx;
-static pthread_mutex_t _elf_async_cvmtx;
 static pthread_cond_t _elf_async_cv;
 static dt_list_t _elf_async_queue;
 static pthread_t _elf_async_tid;
@@ -1216,16 +1215,16 @@ _dtrace_send_elf_async(void *arg __unused)
 	dtrace_elfqueue_t *entry;
 
 	while (atomic_load(&_elf_async_shutdown) == 0) {
-		pthread_mutex_lock(&_elf_async_cvmtx);
+		pthread_mutex_lock(&_elf_async_mtx);
 		while (dt_list_next(&_elf_async_queue) == NULL &&
 		    atomic_load(&_elf_async_shutdown) == 0)
-			pthread_cond_wait(&_elf_async_cv, &_elf_async_cvmtx);
-		pthread_mutex_unlock(&_elf_async_cvmtx);
+			pthread_cond_wait(&_elf_async_cv, &_elf_async_mtx);
 
-		if (atomic_load(&_elf_async_shutdown))
+		if (atomic_load(&_elf_async_shutdown)) {
+			pthread_mutex_unlock(&_elf_async_mtx);
 			break;
+		}
 
-		pthread_mutex_lock(&_elf_async_mtx);
 		entry = dt_list_next(&_elf_async_queue);
 		dt_list_delete(&_elf_async_queue, entry);
 		pthread_mutex_unlock(&_elf_async_mtx);
@@ -1252,13 +1251,12 @@ dtrace_async_teardown()
 	 * Signal the thread to shut down.
 	 */
 	atomic_store(&_elf_async_shutdown, 1);
-	pthread_mutex_lock(&_elf_async_cvmtx);
+	pthread_mutex_lock(&_elf_async_mtx);
 	pthread_cond_signal(&_elf_async_cv);
-	pthread_mutex_unlock(&_elf_async_cvmtx);
+	pthread_mutex_unlock(&_elf_async_mtx);
 
 	pthread_join(_elf_async_tid, NULL);
 	pthread_mutex_destroy(&_elf_async_mtx);
-	pthread_mutex_destroy(&_elf_async_cvmtx);
 	pthread_cond_destroy(&_elf_async_cv);
 
 	_elf_async_initialized = 0;
@@ -1280,7 +1278,6 @@ dtrace_send_elf_async(dtrace_prog_t *pgp, int fromfd, int tofd,
 
 	if (__predict_false(_elf_async_initialized == 0)) {
 		pthread_mutex_init(&_elf_async_mtx, NULL);
-		pthread_mutex_init(&_elf_async_cvmtx, NULL);
 		pthread_cond_init(&_elf_async_cv, NULL);
 
 		if (pthread_create(&_elf_async_tid, NULL,
@@ -1304,11 +1301,8 @@ dtrace_send_elf_async(dtrace_prog_t *pgp, int fromfd, int tofd,
 
 	pthread_mutex_lock(&_elf_async_mtx);
 	dt_list_append(&_elf_async_queue, entry_to_send);
-	pthread_mutex_unlock(&_elf_async_mtx);
-
-	pthread_mutex_lock(&_elf_async_cvmtx);
 	pthread_cond_signal(&_elf_async_cv);
-	pthread_mutex_unlock(&_elf_async_cvmtx);
+	pthread_mutex_unlock(&_elf_async_mtx);
 
 	return (0);
 }
