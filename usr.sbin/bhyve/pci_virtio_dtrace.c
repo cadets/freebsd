@@ -136,7 +136,6 @@ struct pci_vtdtr_ctrl_entry {
 
 struct pci_vtdtr_ctrlq {
 	STAILQ_HEAD(, pci_vtdtr_ctrl_entry)	head;
-	pthread_mutex_t				mtx;
 };
 
 struct pci_vtdtr_softc {
@@ -144,7 +143,7 @@ struct pci_vtdtr_softc {
 	struct vqueue_info	vsd_queues[VTDTR_MAXQ];
 	struct vmctx		*vsd_vmctx;
 	struct pci_vtdtr_ctrlq	*vsd_ctrlq;
-	pthread_mutex_t		vsd_condmtx;
+	pthread_mutex_t		vsd_ctrlmtx;
 	pthread_cond_t		vsd_cond;
 	pthread_mutex_t		vsd_mtx;
 	uint64_t		vsd_cfg;
@@ -237,13 +236,10 @@ pci_vtdtr_node_id(struct pci_vtdtr_softc *sc)
 
 	ctrl_entry->ctrl = ctrl;
 
-	pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+	pthread_mutex_lock(&sc->vsd_ctrlmtx);
 	pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-
-	pthread_mutex_lock(&sc->vsd_condmtx);
 	pthread_cond_signal(&sc->vsd_cond);
-	pthread_mutex_unlock(&sc->vsd_condmtx);
+	pthread_mutex_unlock(&sc->vsd_ctrlmtx);
 }
 
 static int
@@ -274,8 +270,11 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	switch (ctrl->pvc_event) {
 	case VTDTR_DEVICE_READY:
 		atomic_store(&sc->vsd_guest_ready, 1);
+		pthread_mutex_lock(&sc->vsd_ctrlmtx);
+		pthread_cond_signal(&sc->vsd_cond);
+		pthread_mutex_unlock(&sc->vsd_ctrlmtx);
 		break;
-		
+
 	case VTDTR_DEVICE_ELF:
 		sc->vsd_ready = 0;
 		if (inprogress == 0) {
@@ -444,11 +443,6 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	pthread_mutex_unlock(&sc->vsd_mtx);
 
 	pci_vtdtr_poll(vq, 1);
-
-	pthread_mutex_lock(&sc->vsd_condmtx);
-	pthread_cond_signal(&sc->vsd_cond);
-	pthread_mutex_unlock(&sc->vsd_condmtx);
-
 }
 
 static __inline void
@@ -565,7 +559,7 @@ pci_vtdtr_run(void *xsc)
 		nent = 0;
 		ready_flag = 1;
 
-		error = pthread_mutex_lock(&sc->vsd_condmtx);
+		error = pthread_mutex_lock(&sc->vsd_ctrlmtx);
 		assert(error == 0);
 		/*
 		 * We are safe to proceed if the following conditions are
@@ -576,15 +570,11 @@ pci_vtdtr_run(void *xsc)
 		while (!atomic_load(&sc->vsd_guest_ready) ||
 		    pci_vtdtr_cq_empty(sc->vsd_ctrlq)) {
 			error = pthread_cond_wait(
-			    &sc->vsd_cond, &sc->vsd_condmtx);
+			    &sc->vsd_cond, &sc->vsd_ctrlmtx);
 			assert(error == 0);
 		}
-		error = pthread_mutex_unlock(&sc->vsd_condmtx);
-		assert(error == 0);
 
 		assert(vq_has_descs(vq) != 0);
-		error = pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-		assert(error == 0);
 		assert(!pci_vtdtr_cq_empty(sc->vsd_ctrlq));
 
 		/*
@@ -593,7 +583,7 @@ pci_vtdtr_run(void *xsc)
 		 */
 		while (vq_has_descs(vq) && !pci_vtdtr_cq_empty(sc->vsd_ctrlq)) {
 			ctrl_entry = pci_vtdtr_cq_dequeue(sc->vsd_ctrlq);
-			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+			error = pthread_mutex_unlock(&sc->vsd_ctrlmtx);
 			assert(error == 0);
 
 			if (ready_flag &&
@@ -604,7 +594,7 @@ pci_vtdtr_run(void *xsc)
 			free(ctrl_entry->ctrl);
 			free(ctrl_entry);
 			nent++;
-			error = pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+			error = pthread_mutex_lock(&sc->vsd_ctrlmtx);
 			assert(error == 0);
 		}
 
@@ -619,13 +609,13 @@ pci_vtdtr_run(void *xsc)
 			    vq_has_descs(vq)) {
 				pci_vtdtr_fill_eof_desc(vq);
 			}
-			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+			error = pthread_mutex_unlock(&sc->vsd_ctrlmtx);
 			assert(error == 0);
 			atomic_store(&sc->vsd_guest_ready, ready_flag);
 			pci_vtdtr_poll(vq, 1);
 		} else {
 			pci_vtdtr_poll(vq, 0);
-			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+			error = pthread_mutex_unlock(&sc->vsd_ctrlmtx);
 			assert(error == 0);
 		}
 	}
@@ -644,7 +634,7 @@ pci_vtdtr_reset_queue(struct pci_vtdtr_softc *sc)
 
 	q = sc->vsd_ctrlq;
 
-	pthread_mutex_lock(&q->mtx);
+	pthread_mutex_lock(&sc->vsd_ctrlmtx);
 	n1 = STAILQ_FIRST(&q->head);
 	while (n1 != NULL) {
 		n2 = STAILQ_NEXT(n1, entries);
@@ -653,7 +643,7 @@ pci_vtdtr_reset_queue(struct pci_vtdtr_softc *sc)
 	}
 
 	STAILQ_INIT(&q->head);
-	pthread_mutex_unlock(&q->mtx);
+	pthread_mutex_unlock(&sc->vsd_ctrlmtx);
 }
 
 static struct pci_vtdtr_control *
@@ -790,13 +780,10 @@ pci_vtdtr_events(void *xsc)
 			ctrl = vtdtr_kill_event(DTRACED_MSG_KILLPID(header));
 			ctrl_entry->ctrl = ctrl;
 
-			pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+			pthread_mutex_lock(&sc->vsd_ctrlmtx);
 			pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-			pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-
-			pthread_mutex_lock(&sc->vsd_condmtx);
 			pthread_cond_signal(&sc->vsd_cond);
-			pthread_mutex_unlock(&sc->vsd_condmtx);
+			pthread_mutex_unlock(&sc->vsd_ctrlmtx);
 
 			break;
 
@@ -814,9 +801,9 @@ pci_vtdtr_events(void *xsc)
 			while (ctrl->pvc_elfhasmore == 1) {
 				ctrl_entry->ctrl = ctrl;
 
-				pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+				pthread_mutex_lock(&sc->vsd_ctrlmtx);
 				pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-				pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+				pthread_mutex_unlock(&sc->vsd_ctrlmtx);
 
 				/*
 				 * Get the new control element
@@ -833,13 +820,10 @@ pci_vtdtr_events(void *xsc)
 			}
 			ctrl_entry->ctrl = ctrl;
 
-			pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+			pthread_mutex_lock(&sc->vsd_ctrlmtx);
 			pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-			pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-
-			pthread_mutex_lock(&sc->vsd_condmtx);
 			pthread_cond_signal(&sc->vsd_cond);
-			pthread_mutex_unlock(&sc->vsd_condmtx);
+			pthread_mutex_unlock(&sc->vsd_ctrlmtx);
 
 			offs = 0;
 			len = 0;
@@ -855,13 +839,10 @@ pci_vtdtr_events(void *xsc)
 			ctrl = vtdtr_cleanup_event();
 			ctrl_entry->ctrl = ctrl;
 
-			pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+			pthread_mutex_lock(&sc->vsd_ctrlmtx);
 			pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-			pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-
-			pthread_mutex_lock(&sc->vsd_condmtx);
 			pthread_cond_signal(&sc->vsd_cond);
-			pthread_mutex_unlock(&sc->vsd_condmtx);
+			pthread_mutex_unlock(&sc->vsd_ctrlmtx);
 			break;
 
 		default:
@@ -910,7 +891,7 @@ pci_vtdtr_init(struct pci_devinst *pci_inst, nvlist_t *nvl __unused)
 	pci_set_cfgdata16(pci_inst, PCIR_SUBDEV_0, VIRTIO_ID_DTRACE);
 	pci_set_cfgdata16(pci_inst, PCIR_SUBVEND_0, VIRTIO_VENDOR);
 
-	error = pthread_mutex_init(&sc->vsd_ctrlq->mtx, NULL);
+	error = pthread_mutex_init(&sc->vsd_ctrlmtx, NULL);
 	assert(error == 0);
 	error = pthread_cond_init(&sc->vsd_cond, NULL);
 	assert(error == 0);
