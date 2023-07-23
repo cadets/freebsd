@@ -103,7 +103,14 @@ dt_typefile_openall(dtrace_hdl_t *dtp)
 		typef->modhdl = mod;
 		typef->dtp = dtp;
 		memcpy(typef->modname, kldinfo.name, MAXPATHLEN);
-		dt_list_append(&typefiles, typef);
+		/*
+		 * We want the list to be D -> kernel -> rest, so have a special
+		 * case for the kernel module.
+		 */
+		if (strcmp("kernel", kldinfo.name) == 0)
+			dt_list_prepend(&typefiles, typef);
+		else
+			dt_list_append(&typefiles, typef);
 	}
 
 	mod = dt_module_lookup_by_name(dtp, "C");
