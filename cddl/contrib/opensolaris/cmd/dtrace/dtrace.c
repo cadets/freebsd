@@ -1572,8 +1572,6 @@ dtc_work(void *arg)
 	} while (!done);
 
 	oprintf("\n");
-	fprintf(stderr, "dtrace: exiting dtc_work\n");
-
 	if (!atomic_load(&g_impatient)) {
 		if (dtrace_aggregate_print(g_dtp, g_ofp, NULL) == -1 &&
 		    dtrace_errno(g_dtp) != EINTR)
