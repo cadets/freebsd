@@ -138,7 +138,7 @@ struct vtdtr_softc {
 	int                        vtdtr_rx_nseg;
 
 	struct cv                  vtdtr_condvar;
-	struct mtx                 vtdtr_ctrlqmtx;
+	struct mtx                 vtdtr_ctrlmtx;
 	struct vtdtr_ctrlq        *vtdtr_ctrlq;
 
 	struct thread             *vtdtr_commtd;
@@ -336,7 +336,7 @@ vtdtr_attach(device_t dev)
 	sc->vtdtr_ctrlq = malloc(sizeof(struct vtdtr_ctrlq),
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 
-	mtx_init(&sc->vtdtr_ctrlqmtx, "vtdtrctrlqmtx", NULL, MTX_DEF);
+	mtx_init(&sc->vtdtr_ctrlmtx, "vtdtrctrlmtx", NULL, MTX_DEF);
 
 	vtdtr_cq_init(sc->vtdtr_ctrlq);
 
@@ -413,7 +413,7 @@ vtdtr_cq_destroy(struct vtdtr_softc *sc)
 {
 	struct vtdtr_ctrl_entry *n1, *n2;
 
-	mtx_lock(&sc->vtdtr_ctrlqmtx);
+	mtx_lock(&sc->vtdtr_ctrlmtx);
 	n1 = STAILQ_FIRST(&sc->vtdtr_ctrlq->head);
 	while (n1 != NULL) {
 		n2 = STAILQ_NEXT(n1, entries);
@@ -423,7 +423,7 @@ vtdtr_cq_destroy(struct vtdtr_softc *sc)
 
 	STAILQ_INIT(&sc->vtdtr_ctrlq->head);
 	sc->vtdtr_ctrlq->n_entries = 0;
-	mtx_unlock(&sc->vtdtr_ctrlqmtx);
+	mtx_unlock(&sc->vtdtr_ctrlmtx);
 }
 
 /*
@@ -450,7 +450,7 @@ vtdtr_detach(device_t dev)
 	vtdtr_queue_destroy(&sc->vtdtr_rxq);
 	vtdtr_queue_destroy(&sc->vtdtr_txq);
 	vtdtr_cq_destroy(sc);
-	mtx_destroy(&sc->vtdtr_ctrlqmtx);
+	mtx_destroy(&sc->vtdtr_ctrlmtx);
 	free(sc->vtdtr_ctrlq, M_DEVBUF);
 	cv_destroy(&sc->vtdtr_condvar);
 	mtx_destroy(&sc->vtdtr_mtx);
@@ -535,9 +535,9 @@ vtdtr_stop(struct vtdtr_softc *sc)
 	 * condvar in order to prevent reordering with the cv_wait(),
 	 * potentially waiting indefinitely.
 	 */
-	mtx_lock(&sc->vtdtr_ctrlqmtx);
+	mtx_lock(&sc->vtdtr_ctrlmtx);
 	cv_signal(&sc->vtdtr_condvar);
-	mtx_unlock(&sc->vtdtr_ctrlqmtx);
+	mtx_unlock(&sc->vtdtr_ctrlmtx);
 }
 
 /*
@@ -663,9 +663,9 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		 * signal here because we're using two queues, so we won't have
 		 * any contention between them.
 		 */
-		mtx_lock(&sc->vtdtr_ctrlqmtx);
+		mtx_lock(&sc->vtdtr_ctrlmtx);
 		cv_signal(&sc->vtdtr_condvar);
-		mtx_unlock(&sc->vtdtr_ctrlqmtx);
+		mtx_unlock(&sc->vtdtr_ctrlmtx);
 		break;
 
 	case VIRTIO_DTRACE_ELF:
@@ -1181,7 +1181,7 @@ vtdtr_run(void *xsc)
 		memset(ctrls, 0,
 		    vq_size * sizeof(struct virtio_dtrace_control));
 
-		mtx_lock(&sc->vtdtr_ctrlqmtx);
+		mtx_lock(&sc->vtdtr_ctrlmtx);
 		/*
 		 * We are safe to proceed sending messages if the following
 		 * conditions are satisfied:
@@ -1193,7 +1193,7 @@ vtdtr_run(void *xsc)
 		while ((vtdtr_cq_empty(sc->vtdtr_ctrlq) ||
 		    !atomic_load_int(&sc->vtdtr_host_ready)) &&
 		    ((shutdown = atomic_load_int(&sc->vtdtr_shutdown)) == 0)) {
-			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_ctrlqmtx);
+			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_ctrlmtx);
 		}
 
 		kthread_suspend_check();
@@ -1219,7 +1219,7 @@ vtdtr_run(void *xsc)
 		while (!virtqueue_full(vq) &&
 		    !vtdtr_cq_empty(sc->vtdtr_ctrlq)) {
 			ctrl_entry = vtdtr_cq_dequeue(sc->vtdtr_ctrlq);
-			mtx_unlock(&sc->vtdtr_ctrlqmtx);
+			mtx_unlock(&sc->vtdtr_ctrlmtx);
 			memcpy(&ctrls[nent], ctrl_entry->ctrl,
 			    sizeof(struct virtio_dtrace_control));
 			if (ready_flag &&
@@ -1228,7 +1228,7 @@ vtdtr_run(void *xsc)
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
 			nent++;
-			mtx_lock(&sc->vtdtr_ctrlqmtx);
+			mtx_lock(&sc->vtdtr_ctrlmtx);
 		}
 
 		/*
@@ -1246,7 +1246,7 @@ vtdtr_run(void *xsc)
 		}
 
 		vtdtr_poll(txq);
-		mtx_unlock(&sc->vtdtr_ctrlqmtx);
+		mtx_unlock(&sc->vtdtr_ctrlmtx);
 	}
 }
 
@@ -1306,10 +1306,10 @@ virtio_dtrace_enqueue(dtt_entry_t *e)
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 	ctrl_entry->ctrl = ctrl;
 
-	mtx_lock(&sc->vtdtr_ctrlqmtx);
+	mtx_lock(&sc->vtdtr_ctrlmtx);
 	vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 	cv_signal(&sc->vtdtr_condvar);
-	mtx_unlock(&sc->vtdtr_ctrlqmtx);
+	mtx_unlock(&sc->vtdtr_ctrlmtx);
 
 	return (0);
 }
