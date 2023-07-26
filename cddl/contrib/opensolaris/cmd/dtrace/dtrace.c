@@ -172,6 +172,7 @@ static int g_grabanon = 0;
 
 static pthread_t g_dtracedtd;
 static pthread_t g_worktd;
+static pthread_t g_sighandlertd;
 
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
@@ -458,28 +459,68 @@ siginfo(int signo __unused)
 }
 #endif
 
+static void *
+handle_signals(void *arg __unused)
+{
+	sigset_t sigset;
+	int err, sig = 0, nsigs = 2;
+
+	(void) sigfillset(&sigset);
+	err = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+	if (err)
+		fatal("failed to apply sigmask to signal handler thread: %s\n",
+		    sigset, strerror(err));
+
+	(void) sigemptyset(&sigset);
+	sigaddset(&sigset, SIGINT);
+	sigaddset(&sigset, SIGTERM);
+#ifdef __FreeBSD__
+	sigaddset(&sigset, SIGPIPE);
+	sigaddset(&sigset, SIGUSR1);
+#endif
+
+	do {
+		err = sigwait(&sigset, &sig);
+		if (err)
+			fatal("failed to sigwait: %s\n", strerror(err));
+
+		if (!atomic_load(&g_intr))
+			atomic_store(&g_newline, 1);
+
+		if (atomic_fetch_add(&g_intr, 1))
+			atomic_store(&g_impatient, 1);
+
+		pthread_mutex_lock(&g_pgplistmtx);
+		pthread_cond_signal(&g_pgpcond);
+		pthread_mutex_unlock(&g_pgplistmtx);
+	} while (--nsigs > 0);
+
+	return (NULL);
+}
+
 static void
 installsighands(void)
 {
 	struct sigaction act, oact;
+	sigset_t sigset;
 
-	(void) sigemptyset(&act.sa_mask);
-	act.sa_flags = 0;
-	act.sa_handler = intr;
+	(void) sigemptyset(&sigset);
+	(void) sigaddset(&sigset, SIGINT);
+	(void) sigaddset(&sigset, SIGTERM);
+#ifdef __FreeBSD__
+	(void) sigaddset(&sigset, SIGPIPE);
+	(void) sigaddset(&sigset, SIGUSR1);
+#endif
 
-	if (sigaction(SIGINT, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGINT, &act, NULL);
+	(void) sigprocmask(SIG_BLOCK, &sigset, NULL);
+	(void) pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 
-	if (sigaction(SIGTERM, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGTERM, &act, NULL);
+	if (pthread_create(&g_sighandlertd, NULL, handle_signals, NULL) == -1)
+		abort();
 
 #ifdef __FreeBSD__
-	if (sigaction(SIGPIPE, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGPIPE, &act, NULL);
-
-	if (sigaction(SIGUSR1, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGUSR1, &act, NULL);
-
+	(void) sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
 	act.sa_handler = siginfo;
 	if (sigaction(SIGINFO, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
 		(void) sigaction(SIGINFO, &act, NULL);
@@ -1025,6 +1066,7 @@ listen_dtraced(void *arg)
 	void *verictx;
 	dt_snapshot_hdl_t cshdl;
 	dt_benchmark_t *bench;
+	struct timeval tv;
 	char buf[1024];
 
 	rx_sockfd = 0;
@@ -1048,6 +1090,14 @@ listen_dtraced(void *arg)
 	hostpgp = dtd_arg->hostpgp;
 	guestpgp = NULL;
 
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
+
+	err = setsockopt(rx_sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv,
+	    sizeof(tv));
+	if (err == -1)
+		fatal("failed to setsockopt");
+
 	verictx = dt_verictx_init(g_dtp);
 
 	do {
@@ -1059,20 +1109,29 @@ listen_dtraced(void *arg)
 		 * were applied are sensible, get the identifier of which VM
 		 * it actually is and fill in the necessary filters.
 		 */
-		if (!done && !atomic_load(&g_intr) &&
-		    ((r = recv(rx_sockfd, &header, DTRACED_MSGHDRSIZE, 0)) < 0) &&
-		    errno != EINTR) {
-			dabort("failed to read elf length");
+		r = 0;
+		while (!done && atomic_load(&g_intr) == 0 &&
+		    atomic_load(&g_stop) == 0 && r != DTRACED_MSGHDRSIZE) {
+			r = recv(rx_sockfd, &header, DTRACED_MSGHDRSIZE, 0);
+			if (r < 0) {
+				if (errno == EAGAIN)
+					r = 0;
+				else
+					fatal("failed to recv on rx_sockfd");
+			}
 		}
+
+		if (atomic_load(&g_intr) || atomic_load(&g_stop)) {
+			done = 1;
+			break;
+		}
+
+		assert(r > 0);
+
 		bench = __dt_bench_new_time(5);
 		if (dt_bench_start(bench) == -1)
 			fatal("failed to start bench: %s", __LINE__);
 
-		if (atomic_load(&g_intr)) {
-			dt_bench_destroy(bench);
-			done = 1;
-			break;
-		}
 
 		if (r != DTRACED_MSGHDRSIZE) {
 			dabort("received %zu bytes, expected %zu\n", r,
@@ -1106,18 +1165,23 @@ listen_dtraced(void *arg)
 		elf_ptr = (uintptr_t)elf;
 		len_to_recv = elflen;
 
-		while (!done && !atomic_load(&g_intr) && len_to_recv > 0 &&
-		    ((r = recv(rx_sockfd,
-		    (void *)elf_ptr, len_to_recv, 0)) != len_to_recv)) {
-			if (r < 0)
-				dabort("failed to read from dtraced: %s",
-				    strerror(errno));
-
+		r = 0;
+		while (!done && atomic_load(&g_intr) == 0 &&
+		    atomic_load(&g_stop) == 0 && len_to_recv > 0 &&
+		    r != len_to_recv) {
 			len_to_recv -= r;
 			elf_ptr += r;
+
+			r = recv(rx_sockfd, (void *)elf_ptr, len_to_recv, 0);
+			if (r < 0) {
+				if (errno == EAGAIN)
+					r = 0;
+				else
+					fatal("failed to read from dtraced");
+			}
 		}
 
-		if (atomic_load(&g_intr)) {
+		if (atomic_load(&g_intr) || atomic_load(&g_stop)) {
 			dt_bench_destroy(bench);
 			done = 1;
 			break;
@@ -1514,7 +1578,7 @@ setup_tracing(void)
 static void *
 dtc_work(void *arg)
 {
-	int done = 0;
+	int done = 0, status;
 	dtrace_consumer_t con;
 
 	con.dc_consume_probe = chew;
@@ -1525,6 +1589,15 @@ dtc_work(void *arg)
 	do {
 		if (!atomic_load(&g_intr) && !done) {
 			dtrace_sleep(g_dtp);
+		}
+
+		status = dtrace_status(g_dtp);
+		if (status == DTRACE_STATUS_STOPPED ||
+		    status == DTRACE_STATUS_EXITED) {
+			atomic_store(&g_stop, 1);
+			pthread_mutex_lock(&g_pgplistmtx);
+			pthread_cond_signal(&g_pgpcond);
+			pthread_mutex_unlock(&g_pgplistmtx);
 		}
 
 #ifdef __FreeBSD__
@@ -1820,19 +1893,28 @@ exec_prog(const dtrace_cmd_t *dcp)
 			 */
 again:
 			pthread_mutex_lock(&g_pgplistmtx);
-			while (!atomic_load(&g_intr) && !atomic_load(&g_stop) &&
-			    ((pgpl = dt_list_next(&g_pgplist)) == NULL ||
+			while (!atomic_load(&g_intr) &&
+			    !atomic_load(&g_stop) &&
+			    (dt_list_next(&g_pgplist) == NULL ||
 			    again == 1)) {
+				int status;
+
+				status = dtrace_status(g_dtp);
+				if (status == DTRACE_STATUS_EXITED ||
+				    status == DTRACE_STATUS_STOPPED) {
+					atomic_store(&g_stop, 1);
+					break;
+				}
+
 				pthread_cond_wait(&g_pgpcond, &g_pgplistmtx);
 				again = 0;
 			}
-			pthread_mutex_unlock(&g_pgplistmtx);
 
-			assert(pgpl != NULL || atomic_load(&g_intr) ||
-			    atomic_load(&g_stop));
-
-			if (atomic_load(&g_intr))
+			if (atomic_load(&g_intr) ||
+			    dtrace_status(g_dtp) == DTRACE_STATUS_STOPPED) {
+				pthread_mutex_unlock(&g_pgplistmtx);
 				break;
+			}
 
 			/*
 			 * We are in a situation where the condition variable
@@ -1841,28 +1923,13 @@ again:
 			 * specification that we need to create on the host and
 			 * the program that we need to run.
 			 */
-			pthread_mutex_lock(&g_pgplistmtx);
-			for (; pgpl; pgpl = dt_list_next(pgpl)) {
+			for (pgpl = dt_list_next(&g_pgplist); pgpl;
+			     pgpl = dt_list_next(pgpl)) {
 				if (pgpl_valid(pgpl))
 					break;
 			}
 
 			if (pgpl == NULL) {
-				again = 1;
-				pthread_mutex_unlock(&g_pgplistmtx);
-				goto again;
-			}
-
-			/*
-			 * Something's gone horribly wrong, report it and go to
-			 * sleep again.
-			 */
-			if (!pgpl_valid(pgpl)) {
-				fprintf(stderr, "%s",
-				    pgpl->pgp ? "probe specification is NULL"
-						", sleeping...\n" :
-						"program to run is NULL"
-						", sleeping...\n");
 				again = 1;
 				pthread_mutex_unlock(&g_pgplistmtx);
 				goto again;
@@ -1904,9 +1971,7 @@ again:
 		pthread_mutex_unlock(&g_benchlistmtx);
 
 		dt_merge_cleanup(merge);
-
-		(void)pthread_kill(g_dtracedtd, SIGTERM);
-		(void)pthread_kill(g_worktd, SIGTERM);
+		dtrace_async_teardown();
 
 		err = pthread_join(g_dtracedtd, &rval);
 		if (err != 0)
@@ -2115,7 +2180,7 @@ compile_file(dtrace_cmd_t *dcp)
 	dcp->dc_name = dcp->dc_arg;
 }
 
-static int 
+static int
 link_elf(dtrace_cmd_t *dcp, char *progpath)
 {
 	int fd;
@@ -3426,7 +3491,7 @@ main(int argc, char *argv[])
 		etcsystem_add();
 		error("run update_drv(1M) or reboot to enable changes\n");
 #endif
-		
+
 		dtrace_close(g_dtp);
 
 		return (g_status);
@@ -3493,7 +3558,7 @@ main(int argc, char *argv[])
 				    "output file if multiple scripts are "
 				    "specified\n", g_pname);
 				dtrace_close(g_dtp);
-				
+
 				return (E_USAGE);
 			}
 
@@ -3502,7 +3567,7 @@ main(int argc, char *argv[])
 				(void) fprintf(stderr, "%s: -h requires an "
 				    "output file if no scripts are "
 				    "specified\n", g_pname);
-				
+
 				dtrace_close(g_dtp);
 				return (E_USAGE);
 			}

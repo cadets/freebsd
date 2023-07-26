@@ -48,6 +48,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <libutil.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -73,6 +74,7 @@ char version_str[128];
  * Awful global variable, but is here because of the signal handler.
  */
 static struct dtraced_state state;
+static pthread_t sig_handletd;
 static const char *program_name;
 static unsigned long threadpool_size = 1;
 
@@ -92,20 +94,36 @@ broadcast_condvar(void)
 	UNLOCK(&state.deadfdsmtx);
 }
 
-static void
-sig_term(int signo)
+static void *
+handle_signals(void *arg)
 {
-	__maybe_unused(signo);
-	atomic_store(&state.shutdown, 1);
-	broadcast_condvar();
-}
+	sigset_t sigset;
+	int err, sig;
+	__maybe_unused(arg);
 
-static void
-sig_int(int signo)
-{
-	__maybe_unused(signo);
+	(void) sigfillset(&sigset);
+	err = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+	if (err) {
+		ERR("%d: %s(): failed to sigmask signal handler thread: %s",
+		    __LINE__, __func__, strerror(err));
+		abort();
+	}
+
+	(void) sigemptyset(&sigset);
+	sigaddset(&sigset, SIGINT);
+	sigaddset(&sigset, SIGTERM);
+
+	err = sigwait(&sigset, &sig);
+	if (err) {
+		ERR("%d: %s(): failed to sigwait: %s", __LINE__, __func__,
+		    strerror(err));
+		abort();
+	}
+
 	atomic_store(&state.shutdown, 1);
 	broadcast_condvar();
+
+	return (NULL);
 }
 
 static void
@@ -145,6 +163,27 @@ print_version(void)
 {
 
 	printf("dtraced: version %s", version());
+}
+
+static void
+setup_sighdlrs(void)
+{
+	sigset_t sigset;
+	int err;
+
+	(void) sigemptyset(&sigset);
+	(void) sigaddset(&sigset, SIGINT);
+	(void) sigaddset(&sigset, SIGTERM);
+
+	(void) sigprocmask(SIG_BLOCK, &sigset, NULL);
+	(void) pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+
+	err = pthread_create(&sig_handletd, NULL, handle_signals, NULL);
+	if (err) {
+		ERR("%d: %s(): failed to create sighandler thread: %s",
+		    __LINE__, __func__, strerror(err));
+		abort();
+	}
 }
 
 int
@@ -329,23 +368,7 @@ againefd:
 		return (EX_OSERR);
 	}
 
-	if (signal(SIGTERM, sig_term) == SIG_ERR) {
-		ERR("%d: %s(): Failed to install SIGTERM handler", __LINE__,
-		    __func__);
-		return (EX_OSERR);
-	}
-
-	if (signal(SIGINT, sig_int) == SIG_ERR) {
-		ERR("%d: %s(): Failed to install SIGINT handler", __LINE__,
-		    __func__);
-		return (EX_OSERR);
-	}
-
-	if (siginterrupt(SIGTERM, 1) != 0) {
-		ERR("%d: %s(): Failed to enable system call interrupts for SIGTERM",
-		    __LINE__, __func__);
-		return (EX_OSERR);
-	}
+	setup_sighdlrs();
 
 	errval = init_state(&state, ctrlmachine, nosha,
 	    threadpool_size, argv);

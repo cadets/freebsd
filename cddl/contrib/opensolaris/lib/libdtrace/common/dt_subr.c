@@ -1243,7 +1243,7 @@ _dtrace_send_elf_async(void *arg __unused)
 }
 
 void
-dtrace_async_teardown()
+dtrace_async_teardown(void)
 {
 	dtrace_elfqueue_t *entry;
 
