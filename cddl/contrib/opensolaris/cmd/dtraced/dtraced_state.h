@@ -136,5 +136,6 @@ struct dtraced_state {
 
 int init_state(struct dtraced_state *, int, int, int, const char **);
 int destroy_state(struct dtraced_state *);
+void broadcast_shutdown(struct dtraced_state *);
 
 #endif // _DTRACED_STATE_H_

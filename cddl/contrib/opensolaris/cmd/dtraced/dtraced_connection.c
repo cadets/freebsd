@@ -301,8 +301,9 @@ process_consumers(void *_s)
 	int i;
 	struct dtraced_state *s = (struct dtraced_state *)_s;
 	struct dtraced_job *jle;
+	struct timespec ts;
 
-	struct kevent event[4];
+	struct kevent event[1] = { 0 };
 
 	/*
 	 * Sanity checks on the state.
@@ -320,6 +321,7 @@ process_consumers(void *_s)
 	if (err != 0) {
 		ERR("%d: %s(): Failed to listen on %d: %m", __LINE__, __func__,
 		    s->sockfd);
+		broadcast_shutdown(s);
 		pthread_exit(NULL);
 	}
 
@@ -327,6 +329,7 @@ process_consumers(void *_s)
 	if (kq == -1) {
 		ERR("%d: %s(): Failed to create dtraced socket kqueue: %m",
 		    __LINE__, __func__);
+		broadcast_shutdown(s);
 		pthread_exit(NULL);
 	}
 
@@ -334,24 +337,24 @@ process_consumers(void *_s)
 		ERR("%d: %s(): Failed to register listening socket kevent: %m",
 		    __LINE__, __func__);
 		close(kq);
+		broadcast_shutdown(s);
 		pthread_exit(NULL);
 	}
 
 	s->kq_hdl = kq;
 	SEMPOST(&s->socksema);
 
-	while (atomic_load(&s->shutdown) == 0) {
-		new_events = kevent(kq, NULL, 0, event, 1, NULL);
+	ts.tv_sec = 1;
+	ts.tv_nsec = 0;
+	for (;;) {
+		new_events = dtraced_event(s, kq, NULL, 0, event, 1, &ts);
+
+		if (atomic_load(&s->shutdown))
+			break;
+
 		if (new_events == -1) {
-			/*
-			 * Because kevent failed, we are no longer reliably able
-			 * to accept any new connections, therefore the daemon
-			 * must exit and report an error.
-			 */
-			if (errno != EINTR)
-				ERR("%d: %s(): kevent() failed with %m",
-				    __LINE__, __func__);
-			atomic_store(&s->shutdown, 1);
+			ERR("%d: %s(): dtraced_event failed: %m");
+			broadcast_shutdown(s);
 			pthread_exit(NULL);
 		}
 
@@ -362,12 +365,14 @@ process_consumers(void *_s)
 			if (efd == s->sockfd && event[i].flags & EV_ERROR) {
 				ERR("%d: %s(): error on %s: %m", __LINE__,
 				    __func__, DTRACED_SOCKPATH);
+				broadcast_shutdown(s);
 				pthread_exit(NULL);
 			}
 
 			if (efd == s->sockfd && event[i].flags & EV_EOF) {
 				ERR("%d: %s(): EOF on %s: %m", __LINE__,
 				    __func__, DTRACED_SOCKPATH);
+				broadcast_shutdown(s);
 				pthread_exit(NULL);
 			}
 
@@ -381,6 +386,7 @@ process_consumers(void *_s)
 				if (disable_rw(s->kq_hdl, efd)) {
 					ERR("%d: %s(): disable_rw() failed: %m",
 					    __LINE__, __func__);
+					broadcast_shutdown(s);
 					pthread_exit(NULL);
 				}
 
@@ -390,8 +396,8 @@ process_consumers(void *_s)
 					    __LINE__, __func__);
 			} else if (efd == s->sockfd) {
 				/*
-				 * New connection incoming. dfd is NULL so we
-				 * don't have to release it.
+				 * New connection incoming. dfd is NULL
+				 * so we don't have to release it.
 				 */
 				assert(dfd == NULL && "dfd must NULL");
 				assert(event[i].filter == EVFILT_READ);
@@ -404,19 +410,21 @@ process_consumers(void *_s)
 				assert(efd == dfd->fd);
 
 				/*
-				 * Disable the EVFILT_READ event so we don't get
-				 * spammed by it.
+				 * Disable the EVFILT_READ event so we
+				 * don't get spammed by it.
 				 */
 				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
 					ERR("%d: %s(): disable_fd() failed with: %m",
 					    __LINE__, __func__);
+					broadcast_shutdown(s);
 					pthread_exit(NULL);
 				}
 
 				/*
-				 * If efd did not state it ever wants READDATA
-				 * to work on dtraced, we will simply ignore
-				 * it and report a warning.
+				 * If efd did not state it ever wants
+				 * READDATA to work on dtraced, we will
+				 * simply ignore it and report a
+				 * warning.
 				 */
 				if ((dfd->subs & DTD_SUB_READDATA) == 0) {
 					WARN("%d: %s(): socket %d tried to "
@@ -429,6 +437,7 @@ process_consumers(void *_s)
 				if (dispatch_event(s, &event[i])) {
 					ERR("%d: %s(): dispatch_event() failed",
 					    __LINE__, __func__);
+					broadcast_shutdown(s);
 					pthread_exit(NULL);
 				}
 			} else if (event[i].filter == EVFILT_WRITE) {
@@ -439,6 +448,7 @@ process_consumers(void *_s)
 				if (disable_fd(kq, efd, EVFILT_WRITE)) {
 					ERR("%d: %s(): disable_fd() failed with: %m",
 					    __LINE__, __func__);
+					broadcast_shutdown(s);
 					pthread_exit(NULL);
 				}
 
@@ -452,15 +462,16 @@ process_consumers(void *_s)
 				}
 
 				/*
-				 * If we have a job to dispatch to the socket,
-				 * we tell a worker thread to actually do the
-				 * action.
+				 * If we have a job to dispatch to the
+				 * socket, we tell a worker thread to
+				 * actually do the action.
 				 */
 				if (dispatch != 0 &&
 				    dispatch_event(s, &event[i])) {
 					ERR("%d: %s(): dispatch_event() failed",
 					    __LINE__, __func__);
 					UNLOCK(&s->joblistmtx);
+					broadcast_shutdown(s);
 					pthread_exit(NULL);
 				}
 

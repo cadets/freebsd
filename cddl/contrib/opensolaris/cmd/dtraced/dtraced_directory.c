@@ -125,9 +125,10 @@ listen_dir(void *_dir)
 {
 	int err, rval;
 	__cleanup(closefd_generic) int kq = -1;
-	struct kevent ev, ev_data;
+	struct kevent ev, ev_data = { 0 };
 	struct dtraced_state *s;
 	dtd_dir_t *dir;
+	struct timespec ts;
 
 	dir = (dtd_dir_t *)_dir;
 	s = dir->state;
@@ -141,22 +142,23 @@ listen_dir(void *_dir)
 	EV_SET(&ev, dir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR | EV_ENABLE,
 	    NOTE_WRITE, 0, (void *)dir);
 
-	while (atomic_load(&s->shutdown) == 0) {
-		rval = kevent(kq, &ev, 1, &ev_data, 1, NULL);
-		assert(rval != 0);
+	ts.tv_sec = 1;
+	ts.tv_nsec = 0;
+	for (;;) {
+		rval = dtraced_event(s, kq, &ev, 1, &ev_data, 1, &ts);
+
+		if (atomic_load(&s->shutdown))
+			break;
 
 		if (rval < 0) {
-			if (errno != EINTR)
-				ERR("%d: %s(): kevent() failed on %s: %m",
-				    __LINE__, __func__, dir->dirpath);
-			if (errno == EINTR)
-				return (s);
-
+			ERR("%d: %s(): dtraced_event failed on %s: %m",
+			    __LINE__, __func__, dir->dirpath);
+			broadcast_shutdown(s);
 			return (NULL);
 		}
 
 		if (ev_data.flags == EV_ERROR) {
-			ERR("%d: %s(): kevent() got EV_ERROR on %s: %m",
+			ERR("%d: %s(): dtraced_event got EV_ERROR on %s: %m",
 			    __LINE__, __func__, dir->dirpath);
 			continue;
 		}
@@ -166,6 +168,7 @@ listen_dir(void *_dir)
 			if (err) {
 				ERR("%d: %s(): Failed to process new files in %s",
 				    __LINE__, __func__, dir->dirpath);
+				broadcast_shutdown(s);
 				return (NULL);
 			}
 		}
@@ -393,7 +396,7 @@ dtd_closedir(dtd_dir_t *dir)
 {
 	size_t i;
 	int err;
-	
+
 	LOCK(&dir->dirmtx);
 	free(dir->dirpath);
 	close(dir->dirfd);
@@ -519,7 +522,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		LOCK(&s->socklistmtx);
 		for (dfd = dt_list_next(&s->sockfds); dfd;
 		    dfd = dt_list_next(dfd)) {
-			if (dfd->kind != DTRACED_KIND_CONSUMER) 
+			if (dfd->kind != DTRACED_KIND_CONSUMER)
 				continue;
 
 			if ((dfd->subs & DTD_SUB_ELFWRITE) == 0)

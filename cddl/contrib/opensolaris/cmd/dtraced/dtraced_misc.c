@@ -51,6 +51,7 @@
 #include "dtraced_connection.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_misc.h"
+#include "dtraced_state.h"
 
 /*
  * Used for generating a random name of the outbound ELF file.
@@ -137,4 +138,22 @@ waitpid_timeout(pid_t pid, struct timespec *timeout)
 	}
 
 	return (status);
+}
+
+int
+dtraced_event(struct dtraced_state *s, int kq, const struct kevent *changelist,
+    int nchanges, struct kevent *eventlist, int nevents,
+    const struct timespec *timeout)
+{
+	int new_events;
+
+	new_events = 0;
+	while (atomic_load(&s->shutdown) == 0 || new_events == 0) {
+		new_events = kevent(kq, changelist, nchanges, eventlist,
+		    nevents, timeout);
+		if (new_events == -1)
+			return (-1);
+	}
+
+	return (new_events);
 }

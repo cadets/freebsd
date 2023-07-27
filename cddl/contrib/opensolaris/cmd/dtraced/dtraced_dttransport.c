@@ -264,22 +264,47 @@ listen_dttransport(void *_s)
 {
 	struct dtraced_state *s = (struct dtraced_state *)_s;
 	dtt_entry_t e;
+	struct kevent ev = { 0 };
+	struct timespec ts;
+	int kq, rval;
 
 	LOCK(&s->inbounddir->dirmtx);
 	dirlen = strlen(s->inbounddir->dirpath);
 	UNLOCK(&s->inbounddir->dirmtx);
 
-	while (atomic_load(&s->shutdown) == 0) {
-		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
-			if (errno == EINTR) {
-				WARN("%d: %s(): got EINTR on read, exiting",
-				    __LINE__, __func__);
-				pthread_exit(s);
-			}
+	kq = kqueue();
+	if (kq == -1) {
+		ERR("%d: %s(): failed to create kqueue: %m");
+		broadcast_shutdown(s);
+		pthread_exit(NULL);
+	}
 
-			ERR("%d: %s(): Failed to read an entry: %m", __LINE__,
-			    __func__);
-			continue;
+	if (enable_fd(kq, s->dtt_fd, EVFILT_READ, NULL) < 0) {
+		ERR("%d: %s(): failed to enable EVFILT_READ on dtt_fd: %m");
+		broadcast_shutdown(s);
+		pthread_exit(NULL);
+	}
+
+	ts.tv_sec = 1;
+	ts.tv_nsec = 0;
+	for (;;) {
+		rval = dtraced_event(s, kq, NULL, 0, &ev, 1, &ts);
+
+		if (atomic_load(&s->shutdown))
+			break;
+
+		if (rval < 0) {
+			ERR("%d: %s(): dtraced_event failed: %m");
+			broadcast_shutdown(s);
+			pthread_exit(NULL);
+		}
+
+		assert((int)ev.ident == s->dtt_fd);
+		assert(ev.filter == EVFILT_READ);
+		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
+			ERR("%d: %s(): read on dtt_fd failed: %m");
+			broadcast_shutdown(s);
+			pthread_exit(NULL);
 		}
 
 		switch (e.event_kind) {
@@ -326,12 +351,6 @@ write_dttransport(void *_s)
 
 	while (atomic_load(&s->shutdown) == 0) {
 		if (recv(sockfd, &header, DTRACED_MSGHDRSIZE, 0) < 0) {
-			if (errno == EINTR) {
-				DEBUG("%d: %s(): got EINTR on recv, exiting",
-				    __LINE__, __func__);
-				pthread_exit(s);
-			}
-
 			ERR("%d: %s(): Failed to recv from sub.sock: %m",
 			    __LINE__, __func__);
 			continue;
@@ -340,7 +359,7 @@ write_dttransport(void *_s)
 		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
 			ERR("%d: %s(): Received unknown message type: %lu",
 			    __LINE__, __func__, DTRACED_MSG_TYPE(header));
-			atomic_store(&s->shutdown, 1);
+			broadcast_shutdown(s);
 			pthread_exit(NULL);
 		}
 
@@ -358,12 +377,9 @@ write_dttransport(void *_s)
 		for (;;) {
 			r = recv(sockfd, (void *)msg_ptr, len, 0);
 			if (r < 0) {
-				if (errno == EINTR)
-					pthread_exit(s);
-
 				ERR("%d: %s(): Exiting write_dttransport(): %m",
 				    __LINE__, __func__);
-				atomic_store(&s->shutdown, 1);
+				broadcast_shutdown(s);
 				pthread_exit(NULL);
 			} else if ((size_t)r == len)
 				break;
@@ -387,14 +403,13 @@ write_dttransport(void *_s)
 			e.u.elf.totallen = totallen;
 			memcpy(e.u.elf.data, msg, lentoread);
 
-			if (write(s->dtt_fd, &e, sizeof(e)) < 0) {
-				if (errno == EINTR)
-					pthread_exit(s);
+			if (unlikely(write(s->dtt_fd, &e, sizeof(e)) < 0)) {
 				/*
 				 * If we don't have dttransport opened,
 				 * we just move on. It might get opened
 				 * at some point.
 				 */
+				sleep(5);
 				continue;
 			}
 

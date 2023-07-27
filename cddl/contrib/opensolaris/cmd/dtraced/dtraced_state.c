@@ -437,3 +437,21 @@ destroy_state(struct dtraced_state *s)
 
 	return (0);
 }
+
+void
+broadcast_shutdown(struct dtraced_state *s)
+{
+	atomic_store(&s->shutdown, 1);
+
+	LOCK(&s->dispatched_jobsmtx);
+	SIGNAL(&s->dispatched_jobscv);
+	UNLOCK(&s->dispatched_jobsmtx);
+
+	LOCK(&s->kill_listmtx);
+	SIGNAL(&s->killcv);
+	UNLOCK(&s->kill_listmtx);
+
+	LOCK(&s->deadfdsmtx);
+	SIGNAL(&s->jobcleancv);
+	UNLOCK(&s->deadfdsmtx);
+}

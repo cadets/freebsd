@@ -78,22 +78,6 @@ static pthread_t sig_handletd;
 static const char *program_name;
 static unsigned long threadpool_size = 1;
 
-static void
-broadcast_condvar(void)
-{
-	LOCK(&state.dispatched_jobsmtx);
-	SIGNAL(&state.dispatched_jobscv);
-	UNLOCK(&state.dispatched_jobsmtx);
-
-	LOCK(&state.kill_listmtx);
-	SIGNAL(&state.killcv);
-	UNLOCK(&state.kill_listmtx);
-
-	LOCK(&state.deadfdsmtx);
-	SIGNAL(&state.jobcleancv);
-	UNLOCK(&state.deadfdsmtx);
-}
-
 static void *
 handle_signals(void *arg)
 {
@@ -120,9 +104,7 @@ handle_signals(void *arg)
 		abort();
 	}
 
-	atomic_store(&state.shutdown, 1);
-	broadcast_condvar();
-
+	broadcast_shutdown(&state);
 	return (NULL);
 }
 
