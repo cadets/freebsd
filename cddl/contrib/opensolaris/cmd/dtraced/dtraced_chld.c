@@ -114,7 +114,7 @@ reap_children(void *_s)
 	int status, rv;
 
 	for (;;) {
-		sleep(30);
+		sleep(1);
 		do {
 			rv = waitpid(-1, &status, WNOHANG);
 		} while (rv != -1 && rv != 0);

@@ -28,21 +28,22 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/param.h>
 #include <sys/types.h>
-#include <sys/conf.h>
+#include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/kernel.h>
-#include <sys/module.h>
 #include <sys/bus.h>
-#include <sys/proc.h>
-#include <sys/lock.h>
-#include <sys/mutex.h>
 #include <sys/condvar.h>
-#include <sys/uio.h>
+#include <sys/conf.h>
+#include <sys/fcntl.h>
+#include <sys/kernel.h>
+#include <sys/lock.h>
 #include <sys/malloc.h>
-#include <sys/stat.h>
+#include <sys/module.h>
+#include <sys/mutex.h>
+#include <sys/proc.h>
 #include <sys/queue.h>
+#include <sys/stat.h>
+#include <sys/uio.h>
 
 #include <dev/virtio/dtrace/virtio_dtrace.h>
 
@@ -214,8 +215,14 @@ dtt_read(struct cdev *dev, struct uio *uio, int flags)
 	mtx_unlock(&sc->mtx);
 
 	mtx_lock(&sc->qmtx);
-	while (err == 0 && dtt_queue_empty(sc))
+	while (err == 0 && dtt_queue_empty(sc)) {
+		if (flags & O_NONBLOCK) {
+			mtx_unlock(&sc->qmtx);
+			return (EWOULDBLOCK);
+		}
+
 		err = cv_wait_sig(&sc->cv, &sc->qmtx);
+	}
 
 	if (err) {
 		mtx_unlock(&sc->qmtx);

@@ -307,21 +307,18 @@ clean_jobs(void *_s)
 	struct dtraced_state *s = (struct dtraced_state *)_s;
 	dtraced_job_t *j, *next;
 	dtraced_fd_t *dfd;
-	int _shutdown = 0;
 	int woken;
 
 	while (1) {
 		woken = 0;
 		LOCK(&s->deadfdsmtx);
-		while (woken == 0 || (dt_list_next(&s->deadfds) == NULL &&
-		    ((_shutdown = atomic_load(&s->shutdown)) == 0))) {
+		while (atomic_load(&s->shutdown) == 0 &&
+		    (dt_list_next(&s->deadfds) == NULL || woken == 0)) {
 			WAIT(&s->jobcleancv, pmutex_of(&s->deadfdsmtx));
 			woken = 1;
 		}
 
-		DEBUG("%d: %s(): shutdown = %d, dt_list_next(&s->deadfds) = %p",
-		    __LINE__, __func__, _shutdown, dt_list_next(&s->deadfds));
-		if (unlikely(_shutdown == 1)) {
+		if (unlikely(atomic_load(&s->shutdown) == 1)) {
 			UNLOCK(&s->deadfdsmtx);
 			pthread_exit(_s);
 		}

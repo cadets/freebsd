@@ -148,7 +148,7 @@ dtraced_event(struct dtraced_state *s, int kq, const struct kevent *changelist,
 	int new_events;
 
 	new_events = 0;
-	while (atomic_load(&s->shutdown) == 0 || new_events == 0) {
+	while (atomic_load(&s->shutdown) == 0 && new_events == 0) {
 		new_events = kevent(kq, changelist, nchanges, eventlist,
 		    nevents, timeout);
 		if (new_events == -1)

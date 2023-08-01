@@ -1742,7 +1742,9 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 			fprintf(stderr, "failed to augment tracing: %s",
 			    strerror(errno));
 		} else {
-			notice("augmented with probes from %u\n", pgp->dp_vmid);
+			notice("augmented with probes from (%hhx%hhx%hhx) %u\n",
+			    pgp->dp_ident[0], pgp->dp_ident[1],
+			    pgp->dp_ident[2], pgp->dp_vmid);
 		}
 	}
 

@@ -264,45 +264,36 @@ listen_dttransport(void *_s)
 {
 	struct dtraced_state *s = (struct dtraced_state *)_s;
 	dtt_entry_t e;
-	struct kevent ev = { 0 };
-	struct timespec ts;
-	int kq, rval;
+	int rval;
 
 	LOCK(&s->inbounddir->dirmtx);
 	dirlen = strlen(s->inbounddir->dirpath);
 	UNLOCK(&s->inbounddir->dirmtx);
 
-	kq = kqueue();
-	if (kq == -1) {
-		ERR("%d: %s(): failed to create kqueue: %m");
-		broadcast_shutdown(s);
-		pthread_exit(NULL);
-	}
-
-	if (enable_fd(kq, s->dtt_fd, EVFILT_READ, NULL) < 0) {
-		ERR("%d: %s(): failed to enable EVFILT_READ on dtt_fd: %m");
-		broadcast_shutdown(s);
-		pthread_exit(NULL);
-	}
-
-	ts.tv_sec = 1;
-	ts.tv_nsec = 0;
 	for (;;) {
-		rval = dtraced_event(s, kq, NULL, 0, &ev, 1, &ts);
+		rval = 0;
+		while (atomic_load(&s->shutdown) == 0 && rval == 0) {
+			rval = read(s->dtt_fd, &e, sizeof(e));
+			if (rval < 0) {
+				if (errno == EWOULDBLOCK) {
+					sleep(1);
+					rval = 0;
+					continue;
+				}
 
-		if (atomic_load(&s->shutdown))
-			break;
-
-		if (rval < 0) {
-			ERR("%d: %s(): dtraced_event failed: %m");
-			broadcast_shutdown(s);
-			pthread_exit(NULL);
+				ERR("%d: %s(): failed to read event: %m",
+				    __LINE__, __func__);
+				broadcast_shutdown(s);
+				pthread_exit(NULL);
+			}
 		}
 
-		assert((int)ev.ident == s->dtt_fd);
-		assert(ev.filter == EVFILT_READ);
-		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
-			ERR("%d: %s(): read on dtt_fd failed: %m");
+		if (unlikely(atomic_load(&s->shutdown)))
+			break;
+
+		if (unlikely(rval != sizeof(e))) {
+			ERR("%d: %s(): expected to read size %zu, got %zu",
+			    __LINE__, __func__, sizeof(e), rval);
 			broadcast_shutdown(s);
 			pthread_exit(NULL);
 		}
@@ -338,7 +329,7 @@ write_dttransport(void *_s)
 	dtt_entry_t e;
 	size_t lentoread, len, totallen;
 	uint32_t identifier;
-	dtraced_hdr_t header;
+	dtraced_hdr_t header = { 0 };
 	ssize_t r;
 	uintptr_t msg_ptr;
 	unsigned char *msg;
@@ -346,17 +337,47 @@ write_dttransport(void *_s)
 	lentoread = len = totallen = 0;
 
 	sockfd = setup_connection(s);
-	if (sockfd == -1)
+	if (sockfd == -1) {
+		broadcast_shutdown(s);
 		pthread_exit(NULL);
+	}
 
-	while (atomic_load(&s->shutdown) == 0) {
-		if (recv(sockfd, &header, DTRACED_MSGHDRSIZE, 0) < 0) {
-			ERR("%d: %s(): Failed to recv from sub.sock: %m",
-			    __LINE__, __func__);
-			continue;
+	for (;;) {
+		r = 0;
+		while (atomic_load(&s->shutdown) == 0 && r == 0) {
+			r = recv(sockfd, &header, DTRACED_MSGHDRSIZE,
+			    MSG_DONTWAIT);
+			if (r < 0) {
+				/*
+				 * If there's nothing to read, sleep for a
+				 * second and try again.
+				 */
+				if (errno == EAGAIN) {
+					r = 0;
+					sleep(1);
+					continue;
+				}
+
+				ERR("%d: %s(): failed to recv from sub.sock: %m",
+				    __LINE__, __func__);
+				broadcast_shutdown(s);
+				pthread_exit(NULL);
+			}
 		}
 
-		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
+		if (unlikely(atomic_load(&s->shutdown))) {
+			broadcast_shutdown(s);
+			pthread_exit(s);
+		}
+
+		if (unlikely(r != DTRACED_MSGHDRSIZE)) {
+			ERR("%d: %s(): expected to read size %zu, got %zu",
+			    __LINE__, __func__, DTRACED_MSGHDRSIZE, r);
+			broadcast_shutdown(s);
+			pthread_exit(NULL);
+		}
+
+		if (unlikely(DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF)) {
 			ERR("%d: %s(): Received unknown message type: %lu",
 			    __LINE__, __func__, DTRACED_MSG_TYPE(header));
 			broadcast_shutdown(s);
@@ -377,7 +398,7 @@ write_dttransport(void *_s)
 		for (;;) {
 			r = recv(sockfd, (void *)msg_ptr, len, 0);
 			if (r < 0) {
-				ERR("%d: %s(): Exiting write_dttransport(): %m",
+				ERR("%d: %s(): exiting write_dttransport(): %m",
 				    __LINE__, __func__);
 				broadcast_shutdown(s);
 				pthread_exit(NULL);
@@ -409,8 +430,8 @@ write_dttransport(void *_s)
 				 * we just move on. It might get opened
 				 * at some point.
 				 */
-				sleep(5);
-				continue;
+				broadcast_shutdown(s);
+				pthread_exit(NULL);
 			}
 
 			len -= lentoread;

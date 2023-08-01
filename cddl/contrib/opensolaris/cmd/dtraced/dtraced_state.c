@@ -239,7 +239,8 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 
 	if (s->ctrlmachine == 0) {
 		/* We close dttransport on exec. */
-		s->dtt_fd = open("/dev/dttransport", O_RDWR | O_CLOEXEC);
+		s->dtt_fd = open("/dev/dttransport",
+		    O_RDWR | O_CLOEXEC | O_NONBLOCK);
 		if (s->dtt_fd == -1) {
 			ERR("%d: %s(): Failed to open /dev/dttransport: %m",
 			    __LINE__, __func__);
@@ -329,31 +330,29 @@ destroy_state(struct dtraced_state *s)
 	 * it's unlikely that a stuck thread is going to cause more chaos than
 	 * it already has.
 	 */
-	(void) pthread_kill(s->socktd, SIGTERM);
 	err = pthread_join(s->socktd, NULL);
 	if (err)
 		ERR("%d: %s(): socktd join failed: %s", __LINE__, __func__,
 		    strerror(err));
 
-	(void) pthread_kill(s->dtt_listentd, SIGTERM);
-	err = pthread_join(s->dtt_listentd, NULL);
-	if (err)
-		ERR("%d: %s(): dtt_listentd join failed: %s", __LINE__,
-		    __func__, strerror(err));
+	if (s->dtt_listentd) {
+		err = pthread_join(s->dtt_listentd, NULL);
+		if (err)
+			ERR("%d: %s(): dtt_listentd join failed: %s", __LINE__,
+			    __func__, strerror(err));
 
-	(void) pthread_kill(s->dtt_writetd, SIGTERM);
-	err = pthread_join(s->dtt_writetd, NULL);
-	if (err)
-		ERR("%d: %s(): dtt_writetd join failed: %s", __LINE__, __func__,
-		    strerror(err));
+		err = pthread_join(s->dtt_writetd, NULL);
+		if (err)
+			ERR("%d: %s(): dtt_writetd join failed: %s", __LINE__,
+			    __func__, strerror(err));
 
-	(void) pthread_kill(s->inboundtd, SIGTERM);
+	}
+
 	err = pthread_join(s->inboundtd, NULL);
 	if (err)
 		ERR("%d: %s(): inboundtd join failed: %s", __LINE__, __func__,
 		    strerror(err));
 
-	(void) pthread_kill(s->basetd, SIGTERM);
 	err = pthread_join(s->basetd, NULL);
 	if (err)
 		ERR("%d: %s(): basetd join failed: %s", __LINE__, __func__,
@@ -364,32 +363,27 @@ destroy_state(struct dtraced_state *s)
 	UNLOCK(&s->dispatched_jobsmtx);
 
 	for (i = 0; i < s->threadpool_size; i++) {
-		(void) pthread_kill(s->workers[i], SIGTERM);
 		err = pthread_join(s->workers[i], NULL);
 		if (err)
 			ERR("%d: %s(): worker %ju join failed: %s", __LINE__,
 			    __func__, (uintmax_t)i, strerror(err));
 	}
 
-	(void) pthread_kill(s->killtd, SIGTERM);
 	err = pthread_join(s->killtd, NULL);
 	if (err)
 		ERR("%d: %s(): killtd join failed: %s", __LINE__, __func__,
 		    strerror(err));
 
-	(void) pthread_kill(s->reaptd, SIGTERM);
 	err = pthread_join(s->reaptd, NULL);
 	if (err)
 		ERR("%d: %s(): reaptd join timed out: %s", __LINE__, __func__,
 		    strerror(err));
 
-	(void) pthread_kill(s->closetd, SIGTERM);
 	err = pthread_join(s->closetd, NULL);
 	if (err)
 		ERR("%d: %s(): closetd join failed: %s", __LINE__, __func__,
 		    strerror(err));
 
-	(void) pthread_kill(s->jobcleantd, SIGTERM);
 	err = pthread_join(s->jobcleantd, NULL);
 	if (err)
 		ERR("%d: %s(): jobcleantd join failed: %s", __LINE__, __func__,
@@ -439,8 +433,9 @@ destroy_state(struct dtraced_state *s)
 }
 
 void
-broadcast_shutdown(struct dtraced_state *s)
+_broadcast_shutdown(struct dtraced_state *s, const char *errfile, int errline)
 {
+	LOG("%s: %d: broadcasting shutdown", errfile, errline);
 	atomic_store(&s->shutdown, 1);
 
 	LOCK(&s->dispatched_jobsmtx);

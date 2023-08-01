@@ -78,8 +78,8 @@ handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
 	dir = curjob->j.notify_elfwrite.dir;
 	_nosha = curjob->j.notify_elfwrite.nosha;
 
-	DEBUG("%d: %s(): %s%s to %d", __LINE__, __func__, dir->dirpath, path,
-	    fd);
+	DEBUG("%d: %s(): %s%s to %s", __LINE__, __func__, dir->dirpath, path,
+	    dfd->ident);
 	/*
 	 * Sanity assertions.
 	 */

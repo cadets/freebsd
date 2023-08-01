@@ -280,12 +280,10 @@ hypertrace_read(void **buf, dtraced_hdr_t *hdr)
 	if ((rval = recv(rx_sockfd, hdr, DTRACED_MSGHDRSIZE, 0)) <= 0) {
 		fprintf(stderr, "recv(sub.sock) failed: %s\n", strerror(errno));
 		rx_set_unconfigured();
-
 		return (-1);
 	}
 
 	assert(rval == DTRACED_MSGHDRSIZE);
-
 	switch (hdr->msg_type) {
 	case DTRACED_MSG_ELF:
 		len = hdr->elf.len;
