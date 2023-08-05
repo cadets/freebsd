@@ -117,7 +117,7 @@ close_filedescs(void *_s)
 	int count;
 
 	while (atomic_load(&s->shutdown) == 0) {
-		sleep(5);
+		sleep(DTRACED_CLOSEFD_SLEEPTIME);
 		LOCK(&s->deadfdsmtx);
 		next = dt_list_next(&s->deadfds);
 		while ((dfd = next) != NULL) {
@@ -344,7 +344,7 @@ process_consumers(void *_s)
 	s->kq_hdl = kq;
 	SEMPOST(&s->socksema);
 
-	ts.tv_sec = 1;
+	ts.tv_sec = DTRACED_SLEEPTIME;
 	ts.tv_nsec = 0;
 	for (;;) {
 		new_events = dtraced_event(s, kq, NULL, 0, event, 1, &ts);

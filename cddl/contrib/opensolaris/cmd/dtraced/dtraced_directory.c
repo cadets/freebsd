@@ -142,7 +142,7 @@ listen_dir(void *_dir)
 	EV_SET(&ev, dir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR | EV_ENABLE,
 	    NOTE_WRITE, 0, (void *)dir);
 
-	ts.tv_sec = 1;
+	ts.tv_sec = DTRACED_SLEEPTIME;
 	ts.tv_nsec = 0;
 	for (;;) {
 		rval = dtraced_event(s, kq, &ev, 1, &ev_data, 1, &ts);
@@ -658,7 +658,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			 * This avoids a deadlock in dtraced in the case of a
 			 * bug in dtrace(1).
 			 */
-			timeout.tv_sec = 10;
+			timeout.tv_sec = DTRACED_WAITPID_SLEEPTIME;
 			timeout.tv_nsec = 0;
 
 			EV_SET(&ev, stdout_rdr[0], EVFILT_READ,
@@ -784,7 +784,7 @@ failmsg:
 
 			__maybe_unused(status);
 
-			timeout.tv_sec = 10;
+			timeout.tv_sec = DTRACED_WAITPID_SLEEPTIME;
 			timeout.tv_nsec = 0;
 			LOG("%d: %s(): waitpid_timeout(%d) (timeout=10s)",
 			    __LINE__, __func__, pid);
@@ -1021,7 +1021,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		struct timespec ts;
 
 		ts.tv_nsec = 0;
-		ts.tv_sec = 10;
+		ts.tv_sec = DTRACED_WAITPID_SLEEPTIME;
 		status = waitpid_timeout(pid, &ts);
 	} else {
 		argv[0] = strdup("/usr/sbin/dtrace");

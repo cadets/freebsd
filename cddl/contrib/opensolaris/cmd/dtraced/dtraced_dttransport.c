@@ -276,7 +276,7 @@ listen_dttransport(void *_s)
 			rval = read(s->dtt_fd, &e, sizeof(e));
 			if (rval < 0) {
 				if (errno == EWOULDBLOCK) {
-					sleep(1);
+					sleep(DTRACED_SLEEPTIME);
 					rval = 0;
 					continue;
 				}
@@ -354,7 +354,7 @@ write_dttransport(void *_s)
 				 */
 				if (errno == EAGAIN) {
 					r = 0;
-					sleep(1);
+					sleep(DTRACED_SLEEPTIME);
 					continue;
 				}
 

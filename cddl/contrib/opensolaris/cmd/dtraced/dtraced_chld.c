@@ -53,6 +53,7 @@
 
 #include "dtraced_chld.h"
 #include "dtraced_lock.h"
+#include "dtraced_misc.h"
 #include "dtraced_state.h"
 
 void *
@@ -114,7 +115,7 @@ reap_children(void *_s)
 	int status, rv;
 
 	for (;;) {
-		sleep(1);
+		sleep(DTRACED_SLEEPTIME);
 		do {
 			rv = waitpid(-1, &status, WNOHANG);
 		} while (rv != -1 && rv != 0);
