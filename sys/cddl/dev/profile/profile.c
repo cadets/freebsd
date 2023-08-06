@@ -60,6 +60,8 @@
 #include <sys/dtrace.h>
 #include <sys/dtrace_bsd.h>
 
+#include "dtrace_cddl.h"
+
 #define	PROF_NAMELEN		15
 
 #define	PROF_PROFILE		0
@@ -253,6 +255,7 @@ profile_probe(profile_probe_t *prof, hrtime_t late)
 	} else if (TD_IS_IDLETHREAD(td))
 		pc = (uintfptr_t)&cpu_idle;
 
+	curthread->t_hypertrace_vmhdl = NULL;
 	dtrace_probe(prof->prof_id, pc, upc, late, 0, 0);
 }
 

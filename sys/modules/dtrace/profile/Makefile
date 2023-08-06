@@ -9,6 +9,7 @@ SRCS=		profile.c
 SRCS+=		vnode_if.h
 
 CFLAGS+= 	${OPENZFS_CFLAGS}
+CFLAGS+=	-I${SYSDIR}/cddl/dev/dtrace
 
 .include <bsd.kmod.mk>
 
