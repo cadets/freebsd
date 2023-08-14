@@ -63,7 +63,7 @@ setup_threads(struct dtraced_state *s)
 	pthread_t *threads;
 	size_t i;
 
-	threads = malloc(sizeof(pthread_t) * s->threadpool_size);
+	threads = (pthread_t *)malloc(sizeof(pthread_t) * s->threadpool_size);
 	if (threads == NULL) {
 		ERR("%d: %s(): Failed to allocate thread array", __LINE__,
 		    __func__);
@@ -390,15 +390,16 @@ destroy_state(struct dtraced_state *s)
 		    strerror(err));
 
 	LOCK(&s->joblistmtx);
-	for (j = dt_list_next(&s->joblist); j; j = next) {
-		next = dt_list_next(j);
+	for (j = (dtraced_job_t *)dt_list_next(&s->joblist); j; j = next) {
+		next = (dtraced_job_t *)dt_list_next(j);
 		dtraced_free_job(j);
 	}
 	UNLOCK(&s->joblistmtx);
 
 	LOCK(&s->dispatched_jobsmtx);
-	for (j = dt_list_next(&s->dispatched_jobs); j; j = next) {
-		next = dt_list_next(j);
+	for (j = (dtraced_job_t *)dt_list_next(&s->dispatched_jobs); j;
+	     j = next) {
+		next = (dtraced_job_t *)dt_list_next(j);
 		dtraced_free_job(j);
 	}
 	UNLOCK(&s->dispatched_jobsmtx);

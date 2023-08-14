@@ -109,12 +109,6 @@ handle_signals(void *arg)
 }
 
 static void
-sig_pipe(int signo)
-{
-	__maybe_unused(signo);
-}
-
-static void
 print_help(void)
 {
 	fprintf(stderr, "Usage: %s [-dhmOqvZ] [-D directory]\n", program_name);

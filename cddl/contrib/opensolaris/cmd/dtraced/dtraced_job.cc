@@ -67,7 +67,7 @@ dtraced_new_job(int job_kind, dtraced_fd_t *dfd)
 {
 	dtraced_job_t *j = NULL;
 
-	j = malloc(sizeof(dtraced_job_t));
+	j = (dtraced_job_t *)malloc(sizeof(dtraced_job_t));
 	if (j == NULL)
 		return (NULL);
 
@@ -152,7 +152,7 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 	efd = (int)ev->ident;
 
 	if (ev->filter == EVFILT_READ) {
-		dfd = ev->udata;
+		dfd = (dtraced_fd_t *)ev->udata;
 
 		/*
 		 * Read is a little bit more complicated than write, because we
@@ -189,8 +189,9 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		 * will be modifying the joblist regardless.
 		 */
 		mutex_assert_owned(&s->joblistmtx);
-		for (job = dt_list_next(&s->joblist); job; job = next) {
-			next = dt_list_next(job);
+		for (job = (dtraced_job_t *)dt_list_next(&s->joblist); job;
+		     job = next) {
+			next = (dtraced_job_t *)dt_list_next(job);
 			dfd = job->connsockfd;
 			if (dfd->fd == efd) {
 				dt_list_delete(&s->joblist, job);
@@ -236,7 +237,8 @@ process_joblist(void *_s)
 
 	while (1) {
 		LOCK(&s->dispatched_jobsmtx);
-		while (((curjob = dt_list_next(&s->dispatched_jobs)) == NULL) &&
+		while (((curjob = (dtraced_job_t *)dt_list_next(
+		    &s->dispatched_jobs)) == NULL) &&
 		    ((_shutdown = atomic_load(&s->shutdown)) == 0)) {
 			WAIT(&s->dispatched_jobscv,
 			    pmutex_of(&s->dispatched_jobsmtx));
@@ -328,11 +330,12 @@ clean_jobs(void *_s)
 		 * We don't need to do anything with them, as the initiating
 		 * process is gone.
 		 */
-		for (dfd = dt_list_next(&s->deadfds); dfd;
-		     dfd = dt_list_next(dfd)) {
+		for (dfd = (dtraced_fd_t *)dt_list_next(&s->deadfds); dfd;
+		     dfd = (dtraced_fd_t *)dt_list_next(dfd)) {
 			LOCK(&s->joblistmtx);
-			for (j = dt_list_next(&s->joblist); j; j = next) {
-				next = dt_list_next(j);
+			for (j = (dtraced_job_t *)dt_list_next(&s->joblist); j;
+			     j = next) {
+				next = (dtraced_job_t *)dt_list_next(j);
 				if (j->identifier.job_initiator_id == dfd->id) {
 					dt_list_delete(&s->joblist, j);
 					dtraced_free_job(j);

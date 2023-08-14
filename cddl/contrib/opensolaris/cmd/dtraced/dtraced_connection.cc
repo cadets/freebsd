@@ -112,14 +112,14 @@ disable_fd(int kq, int fd, int filt)
 void *
 close_filedescs(void *_s)
 {
-	struct dtraced_state *s = _s;
+	struct dtraced_state *s = (struct dtraced_state *)_s;
 	dtraced_fd_t *dfd, *next;
 	int count;
 
 	while (atomic_load(&s->shutdown) == 0) {
 		sleep(DTRACED_CLOSEFD_SLEEPTIME);
 		LOCK(&s->deadfdsmtx);
-		next = dt_list_next(&s->deadfds);
+		next = (dtraced_fd_t *)dt_list_next(&s->deadfds);
 		while ((dfd = next) != NULL) {
 			/*
 			 * If it's still referenced somewhere, we don't close
@@ -130,7 +130,7 @@ close_filedescs(void *_s)
 				DEBUG("%d: %s(): fd %d (ident=%s, count=%d)\n",
 				    __LINE__, __func__, dfd->fd, dfd->ident,
 				    count);
-				next = dt_list_next(dfd);
+				next = (dtraced_fd_t *)dt_list_next(dfd);
 				continue;
 			}
 
@@ -139,7 +139,7 @@ close_filedescs(void *_s)
 				 * We haven't cleaned our jobs up yet. Delay the
 				 * closing of this file descriptor until we do.
 				 */
-				next = dt_list_next(dfd);
+				next = (dtraced_fd_t *)dt_list_next(dfd);
 				continue;
 			}
 
@@ -148,7 +148,7 @@ close_filedescs(void *_s)
 			LOG("%d: %s(): close(%p, %d)\n", __LINE__, __func__,
 			    dfd, dfd->fd);
 			close(dfd->fd);
-			next = dt_list_next(dfd);
+			next = (dtraced_fd_t *)dt_list_next(dfd);
 			free(dfd);
 		}
 		UNLOCK(&s->deadfdsmtx);
@@ -209,7 +209,7 @@ accept_new_connection(struct dtraced_state *s)
 		return (-1);
 	}
 
-	dfd = malloc(sizeof(dtraced_fd_t));
+	dfd = (dtraced_fd_t *)malloc(sizeof(dtraced_fd_t));
 	if (dfd == NULL) {
 		ERR("%d: %s(): malloc() failed with: %m", __LINE__, __func__);
 		abort();
@@ -270,7 +270,8 @@ kill_socket(struct dtraced_state *s, dtraced_fd_t *dfd)
 	 * threads.
 	 */
 	LOCK(&s->deadfdsmtx);
-	for (_dfd = dt_list_next(&s->deadfds); _dfd; _dfd = dt_list_next(_dfd))
+	for (_dfd = (dtraced_fd_t *)dt_list_next(&s->deadfds); _dfd;
+	     _dfd = (dtraced_fd_t *)dt_list_next(_dfd))
 		if (_dfd == dfd)
 			break;
 
@@ -303,7 +304,7 @@ process_consumers(void *_s)
 	struct dtraced_job *jle;
 	struct timespec ts;
 
-	struct kevent event[1] = { 0 };
+	struct kevent event[1] = { {} };
 
 	/*
 	 * Sanity checks on the state.
@@ -359,7 +360,7 @@ process_consumers(void *_s)
 		}
 
 		for (i = 0; i < new_events; i++) {
-			dfd = event[i].udata;
+			dfd = (dtraced_fd_t *)event[i].udata;
 			efd = event[i].ident;
 
 			if (efd == s->sockfd && event[i].flags & EV_ERROR) {
@@ -455,8 +456,8 @@ process_consumers(void *_s)
 				dispatch = 0;
 
 				LOCK(&s->joblistmtx);
-				for (jle = dt_list_next(&s->joblist); jle;
-				     jle = dt_list_next(jle)) {
+				for (jle = (dtraced_job_t *)dt_list_next(&s->joblist); jle;
+				     jle = (dtraced_job_t *)dt_list_next(jle)) {
 					if (jle->connsockfd == dfd)
 						dispatch = 1;
 				}

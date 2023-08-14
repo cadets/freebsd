@@ -1,5 +1,4 @@
 /*-
- * Copyright (c) 2020 Domagoj Stolfa
  * Copyright (c) 2021 Domagoj Stolfa
  * All rights reserved.
  *
@@ -39,109 +38,61 @@
  */
 
 #include <sys/socket.h>
-#include <sys/stat.h>
 
-#include <dt_list.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <openssl/sha.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "dtraced.h"
+#include "dtraced_cleanupjob.h"
 #include "dtraced_connection.h"
-#include "dtraced_directory.h"
-#include "dtraced_elfjob.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
 void
-handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
+handle_sendinfo(struct dtraced_state *s, struct dtraced_job *curjob)
 {
-	int fd, _nosha;
-	__cleanup(closefd_generic) int elffd = -1;
-	char *path = NULL;
-	__cleanup(freep) unsigned char *msg = NULL;
-	unsigned char *contents;
-	size_t pathlen, elflen, msglen;
-	dtraced_hdr_t header;
-	dtd_dir_t *dir;
+	dtraced_hdr_t hdr = {};
 	dtraced_fd_t *dfd = curjob->connsockfd;
-	struct stat stat;
+	dtraced_fd_t *client;
+	int fd = dfd->fd;
+	size_t info_count = 0;
+	__cleanup(freep) dtraced_infomsg_t *imsgs = NULL;
+	size_t i;
 
-	fd = dfd->fd;
-	path = curjob->j.notify_elfwrite.path;
-	pathlen = curjob->j.notify_elfwrite.pathlen;
-	dir = curjob->j.notify_elfwrite.dir;
-	_nosha = curjob->j.notify_elfwrite.nosha;
+	for (client = (dtraced_fd_t *)dt_list_next(&s->sockfds); client;
+	     client = (dtraced_fd_t *)dt_list_next(client))
+		info_count++;
 
-	DEBUG("%d: %s(): %s%s to %s", __LINE__, __func__, dir->dirpath, path,
-	    dfd->ident);
-	/*
-	 * Sanity assertions.
-	 */
-	assert(fd != -1);
-	assert(path != NULL);
-	assert(pathlen <= MAXPATHLEN);
-
-	assert(dir->dirfd != -1);
-
-	elffd = openat(dir->dirfd, path, O_RDONLY);
-	if (elffd == -1) {
-		ERR("%d: %s(): Failed to open %s: %m", __LINE__, __func__,
-		    path);
-		return;
-	}
-
-	if (fstat(elffd, &stat) != 0) {
-		ERR("%d: %s(): Failed to fstat %s: %m", __LINE__, __func__,
-		    path);
-		return;
-	}
-
-	elflen = stat.st_size;
-	msglen = _nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
-	msg = malloc(msglen);
-	if (msg == NULL) {
-		ERR("%d: %s(): Failed to malloc msg: %m", __LINE__, __func__);
+	imsgs = (dtraced_infomsg_t *)malloc(
+	    info_count * sizeof(dtraced_infomsg_t));
+	if (imsgs == NULL)
 		abort();
+
+	memset(imsgs, 0, info_count * sizeof(dtraced_infomsg_t));
+
+	i = 0;
+	for (client = (dtraced_fd_t *)dt_list_next(&s->sockfds); client;
+	     client = (dtraced_fd_t *)dt_list_next(client)) {
+		imsgs[i].client_kind = client->kind;
+		memcpy(
+		    imsgs[i++].client_name, client->ident, DTRACED_FDIDENTLEN);
 	}
 
-	DTRACED_MSG_TYPE(header) = DTRACED_MSG_ELF;
-	DTRACED_MSG_LEN(header) = msglen;
+	hdr.msg_type = DTRACED_MSG_INFO;
+	hdr.info.count = info_count;
 
-	memset(msg, 0, msglen);
-	contents = _nosha ? msg : msg + SHA256_DIGEST_LENGTH;
-
-	if (read(elffd, contents, elflen) < 0) {
-		ERR("%d: %s(): Failed to read ELF contents: %m", __LINE__,
-		    __func__);
+	if (send(fd, &hdr, DTRACED_MSGHDRSIZE, 0) < 0) {
+		ERR("%d: %s(): Failed to write header to %d : %m", __LINE__,
+		    __func__, fd);
 		return;
 	}
 
-	if (_nosha == 0 && SHA256(contents, elflen, msg) == NULL) {
-		ERR("%d: %s(): Failed to create a SHA256 of the file", __LINE__,
-		    __func__);
+	if (send(fd, imsgs, info_count * sizeof(dtraced_infomsg_t), 0) < 0) {
+		ERR("%d: %s(): Failed to write imsgs to %d: %m", __LINE__,
+		    __func__, fd);
 		return;
 	}
-
-	if (send(fd, &header, DTRACED_MSGHDRSIZE, 0) < 0) {
-		ERR("%d: %s(): Failed to write to %d (%s, %zu): %m", __LINE__,
-		    __func__, fd, path, pathlen);
-		return;
-	}
-
-	if (send(fd, msg, msglen, 0) < 0) {
-		ERR("%d: %s(): Failed to write to %d (%s, %zu): %m", __LINE__,
-		    __func__, fd, path, pathlen);
-		return;
-	}
-
-	DEBUG("%d: %s(): Re-enabling %d", __LINE__, __func__, fd);
-	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))
-		ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
-		    __func__);
 }

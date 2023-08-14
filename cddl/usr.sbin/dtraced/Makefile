@@ -5,22 +5,22 @@
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
 
 PROG=		dtraced
-SRCS=		dtraced.c \
-		dtraced_chld.c \
-		dtraced_cleanupjob.c \
-		dtraced_connection.c \
-		dtraced_directory.c \
-		dtraced_dttransport.c \
-		dtraced_elfjob.c \
-		dtraced_errmsg.c \
-		dtraced_id.c \
-		dtraced_job.c \
-		dtraced_killjob.c \
-		dtraced_lock.c \
-		dtraced_misc.c \
-		dtraced_readjob.c \
-		dtraced_sendinfojob.c \
-		dtraced_state.c
+SRCS=		dtraced.cc \
+		dtraced_chld.cc \
+		dtraced_cleanupjob.cc \
+		dtraced_connection.cc \
+		dtraced_directory.cc \
+		dtraced_dttransport.cc \
+		dtraced_elfjob.cc \
+		dtraced_errmsg.cc \
+		dtraced_id.cc \
+		dtraced_job.cc \
+		dtraced_killjob.cc \
+		dtraced_lock.cc \
+		dtraced_misc.cc \
+		dtraced_readjob.cc \
+		dtraced_sendinfojob.cc \
+		dtraced_state.cc
 
 
 MAN=		dtraced.8
@@ -38,10 +38,12 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
 		-I${SRCTOP}/sys/dev/dttransport
 
-CFLAGS+=	-Wall -Wextra
+CFLAGS+=	-Wall -Wextra -Wno-c11-extensions
+CXXFLAGS+=	-Wall -Wextra -Wno-c11-extensions -Wno-gcc-compat -Wno-unknown-pragmas -Wno-c99-designator
 CSTD:=c11
+CXXSTD:=c++17
 
-LIBADD=	dtrace ctf elf proc pthread crypto util
+LIBADD=	dtrace ctf elf proc pthread crypto util cxxrt
 
 .if ${MK_DTRACE_OPTIMIZED} != "no" && ${MACHINE_ARCH} != mips && \
     ${MACHINE_ARCH} != mips64 && ${MACHINE_ARCH} != powerpc64 && \
@@ -60,7 +62,7 @@ LDFLAGS+=	-fsanitize=thread
 
 .if ${MK_DTRACED_ROBUST} != "no"
 CFLAGS+=	-DDTRACED_ROBUST
-CFLAGS+=	-Wall -Wextra -ggdb3 -Werror -Wpedantic -Wno-gnu-include-next -Wno-nullability-extension -Wno-gnu-empty-struct
+CFLAGS+=	-Wall -Wextra -ggdb3 -Werror -Wpedantic -Wno-gnu-include-next -Wno-nullability-extension -Wno-gnu-empty-struct -fcxx-exceptions
 .endif
 
 .if ${MK_DTRACED_DEBUG} != "no"

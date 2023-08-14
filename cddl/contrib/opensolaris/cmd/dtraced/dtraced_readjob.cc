@@ -81,7 +81,7 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 	}
 
 	if (s->ctrlmachine == 0) {
-		newident = malloc(sizeof(identlist_t));
+		newident = (identlist_t *)malloc(sizeof(identlist_t));
 		if (newident == NULL) {
 			ERR("%d: %s(): Failed to allocate new identifier: %m",
 			    __LINE__, __func__);
@@ -124,7 +124,8 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 	 * need to only do it for FORWARDERs.
 	 */
 	LOCK(&s->socklistmtx);
-	for (dfd = dt_list_next(&s->sockfds); dfd; dfd = dt_list_next(dfd)) {
+	for (dfd = (dtraced_fd_t *)dt_list_next(&s->sockfds); dfd;
+	     dfd = (dtraced_fd_t *)dt_list_next(dfd)) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
 
@@ -172,7 +173,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 
 	n_entries = DTRACED_MSG_NUMENTRIES(*h);
 	if (n_entries > 0) {
-		entries = malloc(n_entries * sizeof(char *));
+		entries = (char **)malloc(n_entries * sizeof(char *));
 		if (entries == NULL)
 			abort();
 
@@ -180,7 +181,8 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 	}
 
 	LOCK(&s->socklistmtx);
-	for (dfd = dt_list_next(&s->sockfds); dfd; dfd = dt_list_next(dfd)) {
+	for (dfd = (dtraced_fd_t *)dt_list_next(&s->sockfds); dfd;
+	     dfd = (dtraced_fd_t *)dt_list_next(dfd)) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
 
@@ -196,7 +198,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 				return (-1);
 			}
 
-			buf = malloc(len);
+			buf = (char *)malloc(len);
 			if (buf == NULL)
 				abort();
 
@@ -230,7 +232,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 
 		job->j.cleanup.n_entries = n_entries;
 		if (n_entries > 0) {
-			job->j.cleanup.entries = malloc(
+			job->j.cleanup.entries = (char **)malloc(
 			    sizeof(char *) * n_entries);
 			if (job->j.cleanup.entries == NULL)
 				abort();
@@ -272,9 +274,9 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	dtraced_fd_t *dfd = curjob->connsockfd;
 	size_t nbytes, totalbytes;
 	ssize_t r;
-	char *_buf;
+	unsigned char *_buf;
 	dtraced_hdr_t header;
-	__cleanup(freep) char *buf = NULL;
+	__cleanup(freep) unsigned char *buf = NULL;
 
 	fd = dfd->fd;
 	totalbytes = 0;
@@ -287,7 +289,7 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	assert(r == sizeof(totalbytes));
 	nbytes = totalbytes;
 
-	buf = malloc(nbytes);
+	buf = (unsigned char *)malloc(nbytes);
 	if (buf == NULL) {
 		ERR("%d: %s(): malloc() failed with: %m", __LINE__, __func__);
 		abort();

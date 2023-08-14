@@ -74,7 +74,7 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	struct dtraced_state *s;
 	char donename[MAXPATHLEN];
 	size_t dirpathlen;
-	char template[MAXPATHLEN];
+	char tmpfile[MAXPATHLEN];
 	__cleanup(closefd_generic) int fd = -1;
 
 	if (dir == NULL) {
@@ -94,11 +94,11 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 		return (-1);
 	}
 
-	sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
+	sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
 	dirpathlen = strlen(dir->dirpath);
 	UNLOCK(&dir->dirmtx);
 
-	fd = mkstemp(template);
+	fd = mkstemp(tmpfile);
 	if (fd == -1) {
 		ERR("%d: %s(): mkstemp() failed with: %m", __LINE__, __func__);
 		return (-1);
@@ -109,11 +109,11 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 		return (-1);
 	}
 
-	strncpy(donename, template, dirpathlen);
-	strcpy(donename + dirpathlen, template + dirpathlen + 1);
-	if (rename(template, donename)) {
+	strncpy(donename, tmpfile, dirpathlen);
+	strcpy(donename + dirpathlen, tmpfile + dirpathlen + 1);
+	if (rename(tmpfile, donename)) {
 		ERR("%d: %s(): rename() failed %s -> %s: %m", __LINE__,
-		    __func__, template, donename);
+		    __func__, tmpfile, donename);
 		return (-1);
 	}
 
@@ -125,7 +125,7 @@ listen_dir(void *_dir)
 {
 	int err, rval;
 	__cleanup(closefd_generic) int kq = -1;
-	struct kevent ev, ev_data = { 0 };
+	struct kevent ev = {}, ev_data = {};
 	struct dtraced_state *s;
 	dtd_dir_t *dir;
 	struct timespec ts;
@@ -244,7 +244,7 @@ expand_paths(dtd_dir_t *dir)
 		 * Copy over the pointers to paths that were previously
 		 * allocated in the old array.
 		 */
-		newpaths = malloc(dir->efile_size * sizeof(char *));
+		newpaths = (char **)malloc(dir->efile_size * sizeof(char *));
 		if (newpaths == NULL) {
 			ERR("%d: %s(): Failed to malloc newpaths", __LINE__,
 			    __func__);
@@ -330,7 +330,7 @@ dtd_mkdir(const char *path, foreach_fn_t fn)
 	dtd_dir_t *dir;
 	int retry;
 
-	dir = malloc(sizeof(dtd_dir_t));
+	dir = (dtd_dir_t *)malloc(sizeof(dtd_dir_t));
 	if (dir == NULL) {
 		ERR("%d: %s(): failed to allocate directory: %m", __LINE__,
 		    __func__);
@@ -520,8 +520,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		 * want to process the same file in the future.
 		 */
 		LOCK(&s->socklistmtx);
-		for (dfd = dt_list_next(&s->sockfds); dfd;
-		    dfd = dt_list_next(dfd)) {
+		for (dfd = (dtraced_fd_t *)dt_list_next(&s->sockfds); dfd;
+		     dfd = (dtraced_fd_t *)dt_list_next(dfd)) {
 			if (dfd->kind != DTRACED_KIND_CONSUMER)
 				continue;
 
@@ -582,8 +582,9 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		 */
 		num_idents = 0;
 		LOCK(&s->identlistmtx);
-		for (ident_entry = dt_list_next(&s->identlist); ident_entry;
-		     ident_entry = dt_list_next(ident_entry))
+		for (ident_entry = (identlist_t *)dt_list_next(&s->identlist);
+		     ident_entry;
+		     ident_entry = (identlist_t *)dt_list_next(ident_entry))
 			num_idents++;
 		UNLOCK(&s->identlistmtx);
 
@@ -600,7 +601,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		} else if (num_idents > 0 && pid > 0) {
 			size_t current;
 			int wait_for_pid = 0;
-			struct timespec timeout = { 0 };
+			struct timespec timeout = {};
 			int remove = 1, rv = 0;
 			char msg[] = "DEL ident";
 			__cleanup(closefd_generic) int kq = kqueue();
@@ -633,10 +634,10 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			 * original state of the list in another list.
 			 */
 			LOCK(&s->identlistmtx);
-			for (ident_entry = dt_list_next(&s->identlist),
+			for (ident_entry = (identlist_t *)dt_list_next(&s->identlist),
 			    current = 0;
 			    ident_entry && current < num_idents;
-			    ident_entry = dt_list_next(ident_entry),
+			    ident_entry = (identlist_t *)dt_list_next(ident_entry),
 			    current++) {
 				LOG("%d: %s(): write ident %hhx%hhx%hhx\n",
 				    __LINE__, __func__, ident_entry->ident[0],
@@ -744,9 +745,9 @@ failmsg:
 			 */
 			if (remove) {
 				LOCK(&s->identlistmtx);
-				for (ident_entry = dt_list_next(&s->identlist);
+				for (ident_entry = (identlist_t *)dt_list_next(&s->identlist);
 				     ident_entry;
-				     ident_entry = dt_list_next(ident_entry)) {
+				     ident_entry = (identlist_t *)dt_list_next(ident_entry)) {
 					if (memcmp(ident_to_delete,
 					    ident_entry->ident,
 					    DTRACED_PROGIDENTLEN) == 0) {
@@ -769,7 +770,7 @@ failmsg:
 				waitpid(pid, &status, 0);
 				LOG("%d: %s(): joined %d, status %d", __LINE__, __func__, pid, status);
 			} else {
-				pe = malloc(sizeof(pidlist_t));
+				pe = (pidlist_t *)malloc(sizeof(pidlist_t));
 				if (pe == NULL)
 					abort();
 
@@ -926,7 +927,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	char fullarg[MAXPATHLEN*2 + 1] = { 0 };
 	size_t offset;
 	char donename[MAXPATHLEN] = { 0 };
-	char template[MAXPATHLEN];
+	char tmpfile[MAXPATHLEN];
 	size_t dirpathlen = 0;
 
 	__maybe_unused(status);
@@ -991,26 +992,26 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	strcpy(fullpath + strlen(fullpath), f->d_name);
 
 	LOCK(&s->outbounddir->dirmtx);
-	sprintf(template, "%s.elf.XXXXXXXXXXXXXXX", s->outbounddir->dirpath);
+	sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXXX", s->outbounddir->dirpath);
 	dirpathlen = strlen(s->outbounddir->dirpath);
 
-	fd = mkstemp(template);
+	fd = mkstemp(tmpfile);
 	if (fd == -1) {
 		UNLOCK(&s->outbounddir->dirmtx);
 		ERR("%d: %s(): mkstemp(%s) failed: %m", __LINE__, __func__,
-		    template);
+		    tmpfile);
 		abort();
 	}
 
-	strncpy(donename, template, dirpathlen);
-	strcpy(donename + dirpathlen, template + dirpathlen + 1);
+	strncpy(donename, tmpfile, dirpathlen);
+	strcpy(donename + dirpathlen, tmpfile + dirpathlen + 1);
 	UNLOCK(&s->outbounddir->dirmtx);
 
-	dtraced_copyfile(fullpath, fd, template);
+	dtraced_copyfile(fullpath, fd, tmpfile);
 
-	if (rename(template, donename))
+	if (rename(tmpfile, donename))
 		ERR("%d: %s(): failed to rename %s to %s: %m", __LINE__,
-		    __func__, template, donename);
+		    __func__, tmpfile, donename);
 
 	pid = fork();
 
@@ -1125,7 +1126,8 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 
 	LOCK(&s->socklistmtx);
-	for (dfd = dt_list_next(&s->sockfds); dfd; dfd = dt_list_next(dfd)) {
+	for (dfd = (dtraced_fd_t *)dt_list_next(&s->sockfds); dfd;
+	     dfd = (dtraced_fd_t *)dt_list_next(dfd)) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
 

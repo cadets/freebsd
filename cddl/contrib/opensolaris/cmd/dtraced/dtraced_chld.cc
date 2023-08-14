@@ -78,14 +78,15 @@ manage_children(void *_s)
 			pthread_exit(_s);
 		}
 
-		kill_entry = dt_list_next(&s->kill_list);
+		kill_entry = (pidlist_t *)dt_list_next(&s->kill_list);
 		assert(kill_entry && "kill entry should not be NULL");
 
 		dt_list_delete(&s->kill_list, kill_entry);
 		UNLOCK(&s->kill_listmtx);
 
 		LOCK(&s->pidlistmtx);
-		for (pe = dt_list_next(&s->pidlist); pe; pe = dt_list_next(pe))
+		for (pe = (pidlist_t *)dt_list_next(&s->pidlist); pe;
+		     pe = (pidlist_t *)dt_list_next(pe))
 			if (pe->pid == kill_entry->pid)
 				break;
 
@@ -111,7 +112,7 @@ manage_children(void *_s)
 void *
 reap_children(void *_s)
 {
-	struct dtraced_state *s = _s;
+	struct dtraced_state *s = (struct dtraced_state *)_s;
 	int status, rv;
 
 	for (;;) {

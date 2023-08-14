@@ -69,7 +69,7 @@ static size_t dirlen;
 static void
 dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 {
-	static char template[MAXPATHLEN];
+	static char tmpfile[MAXPATHLEN];
 	static int fd = 0;
 	static char *elf = NULL;
 	static size_t len = 0;
@@ -87,18 +87,18 @@ dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 	 */
 	if (fd == 0) {
 		LOCK(&s->inbounddir->dirmtx);
-		sprintf(template, "%s.elf.XXXXXXXXXXXXXX",
+		sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXX",
 		    s->inbounddir->dirpath);
 		UNLOCK(&s->inbounddir->dirmtx);
 
-		fd = mkstemp(template);
+		fd = mkstemp(tmpfile);
 		if (fd == -1) {
 			ERR("%d: %s(): failed to mkstemp(%s): %m", __LINE__,
-			    __func__, template);
+			    __func__, tmpfile);
 			return;
 		}
 
-		elf = malloc(e->u.elf.totallen);
+		elf = (char *)malloc(e->u.elf.totallen);
 		if (elf == NULL) {
 			ERR("%d: %s(): Failed to malloc elf: %m", __LINE__,
 			    __func__);
@@ -127,15 +127,15 @@ dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 				pthread_exit(s);
 
 			ERR("%d: %s(): failed to write data to %s: %m",
-			    __LINE__, __func__, template);
+			    __LINE__, __func__, tmpfile);
 		}
 
-		strncpy(donepath, template, dirlen);
-		strcpy(donepath + dirlen, template + dirlen + 1);
+		strncpy(donepath, tmpfile, dirlen);
+		strcpy(donepath + dirlen, tmpfile + dirlen + 1);
 
-		if (rename(template, donepath)) {
+		if (rename(tmpfile, donepath)) {
 			ERR("%d: %s(): failed to move %s to %s: %m", __LINE__,
-			    __func__, template, donepath);
+			    __func__, tmpfile, donepath);
 		}
 
 		free(elf);
@@ -145,7 +145,7 @@ dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 		len = 0;
 
 		LOCK(&s->inbounddir->dirmtx);
-		sprintf(template, "%s.elf.XXXXXXXXXXXXXX",
+		sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXX",
 		    s->inbounddir->dirpath);
 		UNLOCK(&s->inbounddir->dirmtx);
 	}
@@ -156,7 +156,7 @@ dtt_kill(struct dtraced_state *s, dtt_entry_t *e)
 {
 	pidlist_t *kill_entry;
 
-	kill_entry = malloc(sizeof(pidlist_t));
+	kill_entry = (pidlist_t *)malloc(sizeof(pidlist_t));
 	if (kill_entry == NULL) {
 		ERR("%d: %s(): failed to malloc kill_entry: %m", __LINE__,
 		    __func__);
@@ -177,7 +177,7 @@ dtt_cleanup(struct dtraced_state *s)
 	pidlist_t *pe = NULL;
 
 	LOCK(&s->pidlistmtx);
-	while (pe = dt_list_next(&s->pidlist)) {
+	while ((pe = (pidlist_t *)dt_list_next(&s->pidlist))) {
 		dt_list_delete(&s->pidlist, pe);
 		WARN("%d: %s(): SIGKILL %d", __LINE__, __func__, pe->pid);
 		(void)kill(pe->pid, SIGKILL);
@@ -329,7 +329,7 @@ write_dttransport(void *_s)
 	dtt_entry_t e;
 	size_t lentoread, len, totallen;
 	uint32_t identifier;
-	dtraced_hdr_t header = { 0 };
+	dtraced_hdr_t header = {};
 	ssize_t r;
 	uintptr_t msg_ptr;
 	unsigned char *msg;
@@ -385,7 +385,7 @@ write_dttransport(void *_s)
 		}
 
 		len = DTRACED_MSG_LEN(header);
-		msg = malloc(len);
+		msg = (unsigned char *)malloc(len);
 		if (msg == NULL) {
 			ERR("%d: %s(): Failed to allocate a new message: %m",
 			    __LINE__, __func__);

@@ -1,4 +1,5 @@
 /*-
+ * Copyright (c) 2020 Domagoj Stolfa
  * Copyright (c) 2021 Domagoj Stolfa
  * All rights reserved.
  *
@@ -37,61 +38,59 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/socket.h>
+#include <sys/param.h>
 
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "dtraced.h"
-#include "dtraced_cleanupjob.h"
-#include "dtraced_connection.h"
 #include "dtraced_errmsg.h"
-#include "dtraced_job.h"
-#include "dtraced_misc.h"
-#include "dtraced_state.h"
+#include "dtraced_lock.h"
 
+#ifdef DTRACED_ROBUST
 void
-handle_sendinfo(struct dtraced_state *s, struct dtraced_job *curjob)
+mutex_assert_owned(mutex_t *m)
 {
-	dtraced_hdr_t hdr = { 0 };
-	dtraced_fd_t *dfd = curjob->connsockfd;
-	dtraced_fd_t *client;
-	int fd = dfd->fd;
-	size_t info_count = 0;
-	__cleanup(freep) dtraced_infomsg_t *imsgs = NULL;
-	size_t i;
+	int err;
 
-	for (client = dt_list_next(&s->sockfds); client;
-	     client = dt_list_next(client))
-		info_count++;
-
-	imsgs = malloc(info_count * sizeof(dtraced_infomsg_t));
-	if (imsgs == NULL)
+	errno = 0; /* Clear the errno to check the condition */
+	err = pthread_mutex_trylock(pmutex_of(m));
+	if (err == 0 || (err && errno != 0)) {
+		ERR("%d: %s(): mutex %s is not owned: %m", __LINE__, __func__,
+		    m->_name);
 		abort();
-
-	memset(imsgs, 0, info_count * sizeof(dtraced_infomsg_t));
-
-	i = 0;
-	for (client = dt_list_next(&s->sockfds); client;
-	     client = dt_list_next(client)) {
-		imsgs[i].client_kind = client->kind;
-		memcpy(
-		    imsgs[i++].client_name, client->ident, DTRACED_FDIDENTLEN);
 	}
+}
+#endif
 
-	hdr.msg_type = DTRACED_MSG_INFO;
-	hdr.info.count = info_count;
+int
+mutex_init(mutex_t *m, const pthread_mutexattr_t *attr,
+    const char *name)
+{
+	size_t l;
 
-	if (send(fd, &hdr, DTRACED_MSGHDRSIZE, 0) < 0) {
-		ERR("%d: %s(): Failed to write header to %d : %m", __LINE__,
-		    __func__, fd);
-		return;
-	}
+	assert(m != NULL);
 
-	if (send(fd, imsgs, info_count * sizeof(dtraced_infomsg_t), 0) < 0) {
-		ERR("%d: %s(): Failed to write imsgs to %d: %m", __LINE__,
-		    __func__, fd);
-		return;
-	}
+	if (name == NULL)
+		return (-1);
+
+	l = strlcpy(m->_name, name, MAXPATHLEN);
+	if (l >= MAXPATHLEN)
+		return (-1);
+
+	return (pthread_mutex_init(&m->_m, attr));
+}
+
+int
+mutex_destroy(mutex_t *m)
+{
+
+	return (pthread_mutex_destroy(&m->_m));
+}
+
+pthread_mutex_t *
+pmutex_of(mutex_t *m)
+{
+
+	return (&m->_m);
 }
