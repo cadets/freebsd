@@ -47,11 +47,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include <atomic>
 
 #include "dtraced.h"
 #include "dtraced_chld.h"
@@ -154,21 +155,10 @@ dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 static void
 dtt_kill(struct dtraced_state *s, dtt_entry_t *e)
 {
-	pidlist_t *kill_entry;
-
-	kill_entry = (pidlist_t *)malloc(sizeof(pidlist_t));
-	if (kill_entry == NULL) {
-		ERR("%d: %s(): failed to malloc kill_entry: %m", __LINE__,
-		    __func__);
-		abort();
-	}
-
-	kill_entry->pid = e->u.kill.pid;
-
-	LOCK(&s->kill_listmtx);
-	dt_list_append(&s->kill_list, kill_entry);
+	LOCK(&s->killmtx);
+	s->pids_to_kill.push(e->u.kill.pid);
 	SIGNAL(&s->killcv);
-	UNLOCK(&s->kill_listmtx);
+	UNLOCK(&s->killmtx);
 }
 
 static void
@@ -272,7 +262,7 @@ listen_dttransport(void *_s)
 
 	for (;;) {
 		rval = 0;
-		while (atomic_load(&s->shutdown) == 0 && rval == 0) {
+		while (s->shutdown.load() == 0 && rval == 0) {
 			rval = read(s->dtt_fd, &e, sizeof(e));
 			if (rval < 0) {
 				if (errno == EWOULDBLOCK) {
@@ -288,7 +278,7 @@ listen_dttransport(void *_s)
 			}
 		}
 
-		if (unlikely(atomic_load(&s->shutdown)))
+		if (unlikely(s->shutdown.load()))
 			break;
 
 		if (unlikely(rval != sizeof(e))) {
@@ -344,7 +334,7 @@ write_dttransport(void *_s)
 
 	for (;;) {
 		r = 0;
-		while (atomic_load(&s->shutdown) == 0 && r == 0) {
+		while (s->shutdown.load() == 0 && r == 0) {
 			r = recv(sockfd, &header, DTRACED_MSGHDRSIZE,
 			    MSG_DONTWAIT);
 			if (r < 0) {
@@ -365,7 +355,7 @@ write_dttransport(void *_s)
 			}
 		}
 
-		if (unlikely(atomic_load(&s->shutdown))) {
+		if (unlikely(s->shutdown.load())) {
 			broadcast_shutdown(s);
 			pthread_exit(s);
 		}

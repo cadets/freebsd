@@ -195,7 +195,7 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 		return (-1);
 	}
 
-	if (mutex_init(&s->kill_listmtx, NULL, "kill list") != 0) {
+	if (mutex_init(&s->killmtx, NULL, "kill list") != 0) {
 		ERR("%d: %s(): Failed to create kill list mutex: %m", __LINE__,
 		    __func__);
 		return (-1);
@@ -407,7 +407,7 @@ destroy_state(struct dtraced_state *s)
 	(void) mutex_destroy(&s->socklistmtx);
 	(void) mutex_destroy(&s->sockmtx);
 	(void) mutex_destroy(&s->joblistmtx);
-	(void) mutex_destroy(&s->kill_listmtx);
+	(void) mutex_destroy(&s->killmtx);
 	(void) mutex_destroy(&s->deadfdsmtx);
 	(void) mutex_destroy(&s->dispatched_jobsmtx);
 	(void) pthread_cond_destroy(&s->killcv);
@@ -437,15 +437,15 @@ void
 _broadcast_shutdown(struct dtraced_state *s, const char *errfile, int errline)
 {
 	LOG("%s: %d: broadcasting shutdown", errfile, errline);
-	atomic_store(&s->shutdown, 1);
+	s->shutdown.store(1);
 
 	LOCK(&s->dispatched_jobsmtx);
 	SIGNAL(&s->dispatched_jobscv);
 	UNLOCK(&s->dispatched_jobsmtx);
 
-	LOCK(&s->kill_listmtx);
+	LOCK(&s->killmtx);
 	SIGNAL(&s->killcv);
-	UNLOCK(&s->kill_listmtx);
+	UNLOCK(&s->killmtx);
 
 	LOCK(&s->deadfdsmtx);
 	SIGNAL(&s->jobcleancv);

@@ -239,7 +239,7 @@ process_joblist(void *_s)
 		LOCK(&s->dispatched_jobsmtx);
 		while (((curjob = (dtraced_job_t *)dt_list_next(
 		    &s->dispatched_jobs)) == NULL) &&
-		    ((_shutdown = atomic_load(&s->shutdown)) == 0)) {
+		    ((_shutdown = s->shutdown.load()) == 0)) {
 			WAIT(&s->dispatched_jobscv,
 			    pmutex_of(&s->dispatched_jobsmtx));
 		}
@@ -314,13 +314,13 @@ clean_jobs(void *_s)
 	while (1) {
 		woken = 0;
 		LOCK(&s->deadfdsmtx);
-		while (atomic_load(&s->shutdown) == 0 &&
+		while (s->shutdown.load() == 0 &&
 		    (dt_list_next(&s->deadfds) == NULL || woken == 0)) {
 			WAIT(&s->jobcleancv, pmutex_of(&s->deadfdsmtx));
 			woken = 1;
 		}
 
-		if (unlikely(atomic_load(&s->shutdown) == 1)) {
+		if (unlikely(s->shutdown.load() == 1)) {
 			UNLOCK(&s->deadfdsmtx);
 			pthread_exit(_s);
 		}

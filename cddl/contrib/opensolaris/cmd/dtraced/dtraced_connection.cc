@@ -45,11 +45,12 @@
 #include <sys/un.h>
 
 #include <errno.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include <atomic>
 
 #include "dtraced.h"
 #include "dtraced_connection.h"
@@ -116,7 +117,7 @@ close_filedescs(void *_s)
 	dtraced_fd_t *dfd, *next;
 	int count;
 
-	while (atomic_load(&s->shutdown) == 0) {
+	while (s->shutdown.load() == 0) {
 		sleep(DTRACED_CLOSEFD_SLEEPTIME);
 		LOCK(&s->deadfdsmtx);
 		next = (dtraced_fd_t *)dt_list_next(&s->deadfds);
@@ -125,7 +126,7 @@ close_filedescs(void *_s)
 			 * If it's still referenced somewhere, we don't close
 			 * it. We'll pick it up on the next run.
 			 */
-			count = atomic_load(&dfd->__count);
+			count = dfd->__count.load();
 			if (count != 0) {
 				DEBUG("%d: %s(): fd %d (ident=%s, count=%d)\n",
 				    __LINE__, __func__, dfd->fd, dfd->ident,
@@ -144,7 +145,7 @@ close_filedescs(void *_s)
 			}
 
 			dt_list_delete(&s->deadfds, dfd);
-			assert(atomic_load(&dfd->__count) == 0);
+			assert(dfd->__count.load() == 0);
 			LOG("%d: %s(): close(%p, %d)\n", __LINE__, __func__,
 			    dfd, dfd->fd);
 			close(dfd->fd);
@@ -350,7 +351,7 @@ process_consumers(void *_s)
 	for (;;) {
 		new_events = dtraced_event(s, kq, NULL, 0, event, 1, &ts);
 
-		if (atomic_load(&s->shutdown))
+		if (s->shutdown.load())
 			break;
 
 		if (new_events == -1) {

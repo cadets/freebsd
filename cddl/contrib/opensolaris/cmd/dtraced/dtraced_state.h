@@ -41,9 +41,10 @@
 #ifndef _DTRACED_STATE_H_
 #define _DTRACED_STATE_H_
 
+#include <queue>
+
 #include <dt_list.h>
 #include <pthread.h>
-#include <stdatomic.h>
 
 #include "dtraced_directory.h"
 #include "dtraced_lock.h"
@@ -102,8 +103,8 @@ struct dtraced_state {
 	 * Children management.
 	 */
 	pthread_t killtd;      /* handle sending kill(SIGTERM) to the guest */
-	mutex_t kill_listmtx;  /* mutex of the kill list */
-	dt_list_t kill_list;   /* a list of pids to kill */
+	mutex_t killmtx;  /* mutex of the kill list */
+	std::queue<pid_t> pids_to_kill; /* a list of pids to kill */
 	pthread_cond_t killcv; /* kill list condvar */
 	pthread_t reaptd;      /* handle reaping children */
 
@@ -126,7 +127,7 @@ struct dtraced_state {
 	pthread_t consumer_listentd; /* handle consumer messages */
 	pthread_t consumer_writetd;  /* send messages to consumers */
 
-	_Atomic int shutdown;        /* shutdown flag */
+	std::atomic_int shutdown;    /* shutdown flag */
 	int nosha;                   /* do we want to checksum? */
 	int kq_hdl;                  /* event loop kqueue */
 

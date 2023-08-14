@@ -47,11 +47,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include <atomic>
 
 #include "dtraced_chld.h"
 #include "dtraced_connection.h"
@@ -147,7 +148,7 @@ listen_dir(void *_dir)
 	for (;;) {
 		rval = dtraced_event(s, kq, &ev, 1, &ev_data, 1, &ts);
 
-		if (atomic_load(&s->shutdown))
+		if (s->shutdown.load())
 			break;
 
 		if (rval < 0) {

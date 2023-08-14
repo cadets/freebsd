@@ -45,11 +45,12 @@
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include <atomic>
 
 #include "dtraced_chld.h"
 #include "dtraced_lock.h"
@@ -60,50 +61,47 @@ void *
 manage_children(void *_s)
 {
 	struct dtraced_state *s = (struct dtraced_state *)_s;
-	pidlist_t *kill_entry, *pe;
+	pid_t pid;
+	pidlist_t *pe;
 	int shutdown = 0;
 
 	while (1) {
 		/*
 		 * Wait for a notification that we need to kill a process
 		 */
-		LOCK(&s->kill_listmtx);
-		while (dt_list_next(&s->kill_list) == NULL &&
-		    ((shutdown = atomic_load(&s->shutdown)) == 0)) {
-			WAIT(&s->killcv, pmutex_of(&s->kill_listmtx));
+		LOCK(&s->killmtx);
+		while (s->pids_to_kill.empty() &&
+		    ((shutdown = s->shutdown.load()) == 0)) {
+			WAIT(&s->killcv, pmutex_of(&s->killmtx));
 		}
 
 		if (unlikely(shutdown == 1)) {
-			UNLOCK(&s->kill_listmtx);
+			UNLOCK(&s->killmtx);
 			pthread_exit(_s);
 		}
 
-		kill_entry = (pidlist_t *)dt_list_next(&s->kill_list);
-		assert(kill_entry && "kill entry should not be NULL");
-
-		dt_list_delete(&s->kill_list, kill_entry);
-		UNLOCK(&s->kill_listmtx);
+		pid = s->pids_to_kill.front();
+		s->pids_to_kill.pop();
+		UNLOCK(&s->killmtx);
 
 		LOCK(&s->pidlistmtx);
 		for (pe = (pidlist_t *)dt_list_next(&s->pidlist); pe;
 		     pe = (pidlist_t *)dt_list_next(pe))
-			if (pe->pid == kill_entry->pid)
+			if (pe->pid == pid)
 				break;
 
 		if (pe != NULL)
 			dt_list_delete(&s->pidlist, pe);
 		UNLOCK(&s->pidlistmtx);
 
-		if (kill(kill_entry->pid, SIGTERM)) {
+		if (kill(pid, SIGTERM)) {
 			assert(errno != EINVAL);
 			assert(errno != EPERM);
 
 			if (errno == ESRCH)
 				ERR("%d: %s(): pid %d does not exist", __LINE__,
-				    __func__, kill_entry->pid);
+				    __func__, pid);
 		}
-
-		free(kill_entry);
 	}
 
 	return (_s);
@@ -121,7 +119,7 @@ reap_children(void *_s)
 			rv = waitpid(-1, &status, WNOHANG);
 		} while (rv != -1 && rv != 0);
 
-		if (atomic_load(&s->shutdown) != 0)
+		if (s->shutdown.load() != 0)
 			pthread_exit(_s);
 	}
 }

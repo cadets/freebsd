@@ -47,7 +47,6 @@
 #include <assert.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include <stdatomic.h>
 
 #include "dtraced_errmsg.h"
 

@@ -41,7 +41,7 @@
 #ifndef _DTRACED_CONNECTION_H_
 #define _DTRACED_CONNECTION_H_
 
-#include <stdatomic.h>
+#include <atomic>
 
 #include "_dtraced_connection.h"
 
@@ -51,13 +51,13 @@ static __inline void
 fd_acquire(dtraced_fd_t *dfd)
 {
 
-	atomic_fetch_add(&dfd->__count, 1);
+	dfd->__count.fetch_add(1);
 }
 
 static __inline void
 fd_release(dtraced_fd_t *dfd)
 {
-	int count = atomic_fetch_sub(&dfd->__count, 1);
+	int count = dfd->__count.fetch_sub(1);
 	if (count < 0)
 		abort();
 }

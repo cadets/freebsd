@@ -43,6 +43,8 @@
 #include <sys/types.h>
 #include "dtraced.h"
 
+#include <atomic>
+
 #include <dt_list.h>
 
 #define DTRACED_FDIDENTLEN             128ull
@@ -52,7 +54,7 @@ typedef struct dtraced_fd {
 	int         fd;                 /* the actual filedesc */
 	int         kind;               /* consumer/forwarder */
 	uint64_t    subs;               /* events that efd subscribed to */
-	_Atomic int __count;            /* reference count */
+	std::atomic_int __count;	/* reference count */
 	char ident[DTRACED_FDIDENTLEN]; /* human-readable identifier */
 	uint64_t id;                    /* initiator id */
 	int cleaned_up;                 /* has this fd been cleaned up */
