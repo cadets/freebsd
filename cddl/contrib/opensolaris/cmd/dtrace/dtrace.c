@@ -116,6 +116,8 @@ typedef struct dt_probelist {
 #define	E_ERROR		1
 #define	E_USAGE		2
 
+#define	DTRACED_SLEEPTIME	10000	/* us to recv from dtraced again */
+
 static const char DTRACE_OPTSTR[] =
 	"1:3:6:aAb:Bc:CdD:eEf:FGhHi:I:lL:m:Mn:No:p:P:qrs:SuU:vVwx:y:Y:X:Z";
 
@@ -438,17 +440,6 @@ make_argv(char *s)
 	return (argv);
 }
 
-/*ARGSUSED*/
-static void
-intr(int signo)
-{
-	if (!atomic_load(&g_intr))
-		atomic_store(&g_newline, 1);
-
-	if (atomic_fetch_add(&g_intr, 1))
-		atomic_store(&g_impatient, 1);
-}
-
 #ifdef __FreeBSD__
 static void
 siginfo(int signo __unused)
@@ -499,9 +490,8 @@ handle_signals(void *arg __unused)
 }
 
 static void
-installsighands(void)
+block_signals(void)
 {
-	struct sigaction act, oact;
 	sigset_t sigset;
 
 	(void) sigemptyset(&sigset);
@@ -512,18 +502,27 @@ installsighands(void)
 	(void) sigaddset(&sigset, SIGUSR1);
 #endif
 
-	(void) sigprocmask(SIG_BLOCK, &sigset, NULL);
 	(void) pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+}
 
-	if (pthread_create(&g_sighandlertd, NULL, handle_signals, NULL) == -1)
+static void
+installsighands(void)
+{
+	struct sigaction act, oact;
+
+	block_signals();
+	if (pthread_create(&g_sighandlertd, NULL, handle_signals, NULL))
 		abort();
 
+	/*
+	 * Handle SIGINFO normally.
+	 */
 #ifdef __FreeBSD__
-	(void) sigemptyset(&act.sa_mask);
+	(void)sigemptyset(&act.sa_mask);
 	act.sa_flags = 0;
 	act.sa_handler = siginfo;
 	if (sigaction(SIGINFO, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGINFO, &act, NULL);
+		(void)sigaction(SIGINFO, &act, NULL);
 #endif
 }
 
@@ -1066,7 +1065,6 @@ listen_dtraced(void *arg)
 	void *verictx;
 	dt_snapshot_hdl_t cshdl;
 	dt_benchmark_t *bench;
-	struct timeval tv;
 	char buf[1024];
 
 	rx_sockfd = 0;
@@ -1090,14 +1088,6 @@ listen_dtraced(void *arg)
 	hostpgp = dtd_arg->hostpgp;
 	guestpgp = NULL;
 
-	tv.tv_sec = 1;
-	tv.tv_usec = 0;
-
-	err = setsockopt(rx_sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv,
-	    sizeof(tv));
-	if (err == -1)
-		fatal("failed to setsockopt");
-
 	verictx = dt_verictx_init(g_dtp);
 
 	do {
@@ -1112,11 +1102,13 @@ listen_dtraced(void *arg)
 		r = 0;
 		while (!done && atomic_load(&g_intr) == 0 &&
 		    atomic_load(&g_stop) == 0 && r != DTRACED_MSGHDRSIZE) {
-			r = recv(rx_sockfd, &header, DTRACED_MSGHDRSIZE, 0);
+			r = recv(rx_sockfd, &header, DTRACED_MSGHDRSIZE,
+			    MSG_DONTWAIT);
 			if (r < 0) {
-				if (errno == EAGAIN)
+				if (errno == EAGAIN) {
 					r = 0;
-				else
+					usleep(DTRACED_SLEEPTIME);
+				} else
 					fatal("failed to recv on rx_sockfd");
 			}
 		}
@@ -1594,8 +1586,8 @@ dtc_work(void *arg)
 		status = dtrace_status(g_dtp);
 		if (status == DTRACE_STATUS_STOPPED ||
 		    status == DTRACE_STATUS_EXITED) {
-			atomic_store(&g_stop, 1);
 			pthread_mutex_lock(&g_pgplistmtx);
+			atomic_store(&g_stop, 1);
 			pthread_cond_signal(&g_pgpcond);
 			pthread_mutex_unlock(&g_pgplistmtx);
 		}
@@ -1817,6 +1809,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 			close(tmpfd);
 		}
 	} else if (g_elf) {
+		block_signals();
+
 		/*
 		 * We open a dtraced socket because we expect the following
 		 * things to happen:
@@ -1899,21 +1893,12 @@ again:
 			    !atomic_load(&g_stop) &&
 			    (dt_list_next(&g_pgplist) == NULL ||
 			    again == 1)) {
-				int status;
-
-				status = dtrace_status(g_dtp);
-				if (status == DTRACE_STATUS_EXITED ||
-				    status == DTRACE_STATUS_STOPPED) {
-					atomic_store(&g_stop, 1);
-					break;
-				}
-
 				pthread_cond_wait(&g_pgpcond, &g_pgplistmtx);
 				again = 0;
 			}
 
 			if (atomic_load(&g_intr) ||
-			    dtrace_status(g_dtp) == DTRACE_STATUS_STOPPED) {
+			    atomic_load(&g_stop)) {
 				pthread_mutex_unlock(&g_pgplistmtx);
 				break;
 			}
@@ -1975,10 +1960,10 @@ again:
 		dt_merge_cleanup(merge);
 		dtrace_async_teardown();
 
-		err = pthread_join(g_dtracedtd, &rval);
+		err = pthread_join(g_dtracedtd, NULL);
 		if (err != 0)
 			fprintf(stderr, "failed to join g_dtracedtd\n");
-		err = pthread_join(g_worktd, &rval);
+		err = pthread_join(g_worktd, NULL);
 		if (err != 0)
 			fprintf(stderr, "failed to join g_worktd\n");
 
@@ -2424,8 +2409,8 @@ prochandler(struct ps_prochandle *P, const char *msg, void *arg)
 			notice("pid %d has exited\n", pid);
 		}
 
-		atomic_store(&g_stop, 1);
 		pthread_mutex_lock(&g_pgplistmtx);
+		atomic_store(&g_stop, 1);
 		pthread_cond_signal(&g_pgpcond);
 		pthread_mutex_unlock(&g_pgplistmtx);
 		g_pslive--;
@@ -3422,6 +3407,12 @@ main(int argc, char *argv[])
 			exec_prog(&g_cmdv[i]);
 
 		if (done && !g_grabanon) {
+			/*
+			 * Join the worker thread if we started it.
+			 */
+			if (g_worktd)
+				(void)pthread_join(g_worktd, NULL);
+
 			pthread_mutex_lock(&g_dtpmtx);
 			if (g_dtp)
 				dtrace_close(g_dtp);
