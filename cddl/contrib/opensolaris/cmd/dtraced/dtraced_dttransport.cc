@@ -276,7 +276,7 @@ listen_dttransport(void *_s)
 			rval = read(s->dtt_fd, &e, sizeof(e));
 			if (rval < 0) {
 				if (errno == EWOULDBLOCK) {
-					sleep(DTRACED_SLEEPTIME);
+					usleep(DTRACED_SLEEPTIME);
 					rval = 0;
 					continue;
 				}
@@ -349,12 +349,12 @@ write_dttransport(void *_s)
 			    MSG_DONTWAIT);
 			if (r < 0) {
 				/*
-				 * If there's nothing to read, sleep for a
-				 * second and try again.
+				 * If there's nothing to read, sleep and try
+				 * again.
 				 */
 				if (errno == EAGAIN) {
 					r = 0;
-					sleep(DTRACED_SLEEPTIME);
+					usleep(DTRACED_SLEEPTIME);
 					continue;
 				}
 

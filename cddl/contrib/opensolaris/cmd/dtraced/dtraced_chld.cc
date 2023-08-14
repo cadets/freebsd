@@ -116,7 +116,7 @@ reap_children(void *_s)
 	int status, rv;
 
 	for (;;) {
-		sleep(DTRACED_SLEEPTIME);
+		usleep(DTRACED_SLEEPTIME * 100);
 		do {
 			rv = waitpid(-1, &status, WNOHANG);
 		} while (rv != -1 && rv != 0);

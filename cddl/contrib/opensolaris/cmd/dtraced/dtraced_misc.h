@@ -65,9 +65,9 @@ struct dtraced_state;
 #define __cleanup(fn) __attribute__((__cleanup__(fn)))
 #define __maybe_unused(x) ((void)x)
 
-#define DTRACED_SLEEPTIME		1
-#define DTRACED_CLOSEFD_SLEEPTIME	5
-#define DTRACED_WAITPID_SLEEPTIME	10
+#define DTRACED_SLEEPTIME		10000	/* microseconds */
+#define DTRACED_CLOSEFD_SLEEPTIME	5	/* seconds */
+#define DTRACED_WAITPID_SLEEPTIME	10	/* seconds */
 
 void get_randname(char *, size_t);
 void freep(void *);

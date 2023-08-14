@@ -33,7 +33,7 @@
 #include <stdint.h>
 
 #define DTRACED_MAJOR                  0
-#define DTRACED_MINOR                  3
+#define DTRACED_MINOR                  4
 #define DTRACED_PATCH                  0
 #define DTRACED_EXTRA_IDENTIFIER       "BETA"
 

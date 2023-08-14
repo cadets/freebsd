@@ -151,7 +151,6 @@ setup_sighdlrs(void)
 	(void) sigaddset(&sigset, SIGINT);
 	(void) sigaddset(&sigset, SIGTERM);
 
-	(void) sigprocmask(SIG_BLOCK, &sigset, NULL);
 	(void) pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 
 	err = pthread_create(&sig_handletd, NULL, handle_signals, NULL);
