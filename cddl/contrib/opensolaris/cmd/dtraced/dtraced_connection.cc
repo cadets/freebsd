@@ -114,14 +114,13 @@ void *
 close_filedescs(void *_s)
 {
 	struct dtraced_state *s = (struct dtraced_state *)_s;
-	dtraced_fd_t *dfd, *next;
 	int count;
 
 	while (s->shutdown.load() == 0) {
 		sleep(DTRACED_CLOSEFD_SLEEPTIME);
 		LOCK(&s->deadfdsmtx);
-		next = (dtraced_fd_t *)dt_list_next(&s->deadfds);
-		while ((dfd = next) != NULL) {
+		for (auto it = s->deadfds.begin(); it != s->deadfds.end();) {
+			dtraced_fd_t *dfd = *it;
 			/*
 			 * If it's still referenced somewhere, we don't close
 			 * it. We'll pick it up on the next run.
@@ -131,7 +130,7 @@ close_filedescs(void *_s)
 				DEBUG("%d: %s(): fd %d (ident=%s, count=%d)\n",
 				    __LINE__, __func__, dfd->fd, dfd->ident,
 				    count);
-				next = (dtraced_fd_t *)dt_list_next(dfd);
+				++it;
 				continue;
 			}
 
@@ -140,16 +139,15 @@ close_filedescs(void *_s)
 				 * We haven't cleaned our jobs up yet. Delay the
 				 * closing of this file descriptor until we do.
 				 */
-				next = (dtraced_fd_t *)dt_list_next(dfd);
+				++it;
 				continue;
 			}
 
-			dt_list_delete(&s->deadfds, dfd);
+			it = s->deadfds.erase(it);
 			assert(dfd->__count.load() == 0);
 			LOG("%d: %s(): close(%p, %d)\n", __LINE__, __func__,
 			    dfd, dfd->fd);
 			close(dfd->fd);
-			next = (dtraced_fd_t *)dt_list_next(dfd);
 			free(dfd);
 		}
 		UNLOCK(&s->deadfdsmtx);
@@ -255,15 +253,13 @@ accept_new_connection(struct dtraced_state *s)
 static void
 kill_socket(struct dtraced_state *s, dtraced_fd_t *dfd)
 {
-	dtraced_fd_t *_dfd;
-
 	/* Remove it from the socket list and shutdown */
 	LOCK(&s->socklistmtx);
 	dt_list_delete(&s->sockfds, dfd);
 	UNLOCK(&s->socklistmtx);
 
 	shutdown(dfd->fd, SHUT_RDWR);
-
+	/* TODO(important): remove this later */
 	memset(dfd, 0, sizeof(dt_list_t));
 
 	/*
@@ -271,14 +267,7 @@ kill_socket(struct dtraced_state *s, dtraced_fd_t *dfd)
 	 * threads.
 	 */
 	LOCK(&s->deadfdsmtx);
-	for (_dfd = (dtraced_fd_t *)dt_list_next(&s->deadfds); _dfd;
-	     _dfd = (dtraced_fd_t *)dt_list_next(_dfd))
-		if (_dfd == dfd)
-			break;
-
-	if (_dfd == NULL)
-		dt_list_append(&s->deadfds, dfd);
-
+	s->deadfds.insert(dfd);
 	SIGNAL(&s->jobcleancv);
 	UNLOCK(&s->deadfdsmtx);
 }

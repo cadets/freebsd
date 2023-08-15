@@ -308,14 +308,13 @@ clean_jobs(void *_s)
 {
 	struct dtraced_state *s = (struct dtraced_state *)_s;
 	dtraced_job_t *j, *next;
-	dtraced_fd_t *dfd;
 	int woken;
 
 	while (1) {
 		woken = 0;
 		LOCK(&s->deadfdsmtx);
 		while (s->shutdown.load() == 0 &&
-		    (dt_list_next(&s->deadfds) == NULL || woken == 0)) {
+		    (s->deadfds.empty() || woken == 0)) {
 			WAIT(&s->jobcleancv, pmutex_of(&s->deadfdsmtx));
 			woken = 1;
 		}
@@ -330,8 +329,7 @@ clean_jobs(void *_s)
 		 * We don't need to do anything with them, as the initiating
 		 * process is gone.
 		 */
-		for (dfd = (dtraced_fd_t *)dt_list_next(&s->deadfds); dfd;
-		     dfd = (dtraced_fd_t *)dt_list_next(dfd)) {
+		for (dtraced_fd_t *dfd : s->deadfds) {
 			LOCK(&s->joblistmtx);
 			for (j = (dtraced_job_t *)dt_list_next(&s->joblist); j;
 			     j = next) {

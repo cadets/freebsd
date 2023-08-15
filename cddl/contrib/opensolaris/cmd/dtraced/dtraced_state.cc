@@ -164,7 +164,6 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 {
 	int err;
 
-	memset(s, 0, sizeof(struct dtraced_state));
 	s->argv = argv;
 	s->sockfd = -1;
 	s->ctrlmachine = ctrlmachine;

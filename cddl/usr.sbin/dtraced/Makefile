@@ -4,7 +4,7 @@
 
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
 
-PROG=		dtraced
+PROG_CXX=	dtraced
 SRCS=		dtraced.cc \
 		dtraced_chld.cc \
 		dtraced_cleanupjob.cc \

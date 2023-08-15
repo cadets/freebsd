@@ -41,13 +41,14 @@
 #ifndef _DTRACED_STATE_H_
 #define _DTRACED_STATE_H_
 
-#include <queue>
-
 #include <dt_list.h>
 #include <pthread.h>
 
 #include "dtraced_directory.h"
 #include "dtraced_lock.h"
+
+#include <queue>
+#include <unordered_set>
 
 #define unlikely(x) __predict_false(x)
 
@@ -114,7 +115,8 @@ struct dtraced_state {
 	/*
 	 * filedesc management.
 	 */
-	dt_list_t deadfds;  /* dead file descriptor list (to close) */
+	 /* dead file descriptor list (to close) */
+	std::unordered_set<dtraced_fd_t *> deadfds;
 	mutex_t deadfdsmtx; /* mutex for deadfds */
 	pthread_t closetd;  /* file descriptor closing thread */
 
