@@ -143,7 +143,7 @@ listen_dir(void *_dir)
 	EV_SET(&ev, dir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR | EV_ENABLE,
 	    NOTE_WRITE, 0, (void *)dir);
 
-	ts.tv_sec = DTRACED_SLEEPTIME;
+	ts.tv_sec = DTRACED_EVENTSLEEPTIME;
 	ts.tv_nsec = 0;
 	for (;;) {
 		rval = dtraced_event(s, kq, &ev, 1, &ev_data, 1, &ts);

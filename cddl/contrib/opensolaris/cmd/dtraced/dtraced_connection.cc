@@ -346,7 +346,7 @@ process_consumers(void *_s)
 	s->kq_hdl = kq;
 	SEMPOST(&s->socksema);
 
-	ts.tv_sec = DTRACED_SLEEPTIME;
+	ts.tv_sec = DTRACED_EVENTSLEEPTIME;
 	ts.tv_nsec = 0;
 	for (;;) {
 		new_events = dtraced_event(s, kq, NULL, 0, event, 1, &ts);

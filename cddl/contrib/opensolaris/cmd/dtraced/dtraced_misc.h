@@ -66,6 +66,7 @@ struct dtraced_state;
 #define __maybe_unused(x) ((void)x)
 
 #define DTRACED_SLEEPTIME		10000	/* microseconds */
+#define DTRACED_EVENTSLEEPTIME		1	/* seconds */
 #define DTRACED_CLOSEFD_SLEEPTIME	5	/* seconds */
 #define DTRACED_WAITPID_SLEEPTIME	10	/* seconds */
 
