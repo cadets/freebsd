@@ -933,7 +933,12 @@ send_kill(int tofd, dtrace_prog_t *pgp)
 	/*
 	 * It is highly unlikely we will have dtrace running as pid0 or init...
 	 */
-	assert(pid_to_kill != 0 && pid_to_kill != 1);
+	if (pid_to_kill == 0 || pid_to_kill == 1) {
+		fprintf(stderr,
+		    "dtrace: WARN: %s program pid claims to be %d\n",
+		    pgp->dp_vmname, pid_to_kill);
+		return (0);
+	}
 
 	DTRACED_MSG_TYPE(msg) = DTRACED_MSG_KILL;
 	DTRACED_MSG_KILLPID(msg) = pid_to_kill;
