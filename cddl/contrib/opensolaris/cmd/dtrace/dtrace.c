@@ -1730,7 +1730,6 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 			    pgp->dp_ident[2], pgp->dp_vmid);
 		}
 
-		setup_tracing();
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	} else {
 		if (dt_augment_tracing(g_dtp, pgp)) {
@@ -1814,7 +1813,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 			close(tmpfd);
 		}
 	} else if (g_elf) {
-		block_signals();
+		setup_tracing();
 
 		/*
 		 * We open a dtraced socket because we expect the following
@@ -1968,9 +1967,11 @@ again:
 		err = pthread_join(g_dtracedtd, NULL);
 		if (err != 0)
 			fprintf(stderr, "failed to join g_dtracedtd\n");
-		err = pthread_join(g_worktd, NULL);
-		if (err != 0)
-			fprintf(stderr, "failed to join g_worktd\n");
+		if (g_worktd) {
+			err = pthread_join(g_worktd, NULL);
+			if (err != 0)
+				fprintf(stderr, "failed to join g_worktd\n");
+		}
 
 		pthread_mutex_destroy(&g_pgplistmtx);
 		pthread_cond_destroy(&g_pgpcond);
