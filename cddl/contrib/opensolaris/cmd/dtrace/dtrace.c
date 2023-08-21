@@ -510,6 +510,14 @@ installsighands(void)
 {
 	struct sigaction act, oact;
 
+	/*
+	 * The signal handler is already installed and all the signals should be
+	 * blocked. If the caller wishes to just block signals, one should call
+	 * block_signals() instead.
+	 */
+	if (g_sighandlertd == NULL)
+		return;
+
 	block_signals();
 	if (pthread_create(&g_sighandlertd, NULL, handle_signals, NULL))
 		abort();
@@ -1730,6 +1738,7 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 			    pgp->dp_ident[2], pgp->dp_vmid);
 		}
 
+		setup_tracing();
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	} else {
 		if (dt_augment_tracing(g_dtp, pgp)) {
@@ -1813,7 +1822,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 			close(tmpfd);
 		}
 	} else if (g_elf) {
-		setup_tracing();
+		installsighands();
 
 		/*
 		 * We open a dtraced socket because we expect the following
@@ -1992,6 +2001,8 @@ again:
 			    dcp->dc_desc, dcp->dc_name,
 			    dpi.dpi_matches, dpi.dpi_matches == 1 ? "" : "s");
 		}
+
+		setup_tracing();
 	} else
 		dfatal("failed to apply relocations");
 
