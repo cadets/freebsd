@@ -143,12 +143,10 @@ dtraced_free_job(dtraced_job_t *j)
 int
 dispatch_event(struct dtraced_state *s, struct kevent *ev)
 {
-	struct dtraced_job *job, *next; /* in case we free */
 	dtraced_fd_t *dfd;
+	dtraced_job_t *job;
 	int efd;
 
-	job = NULL;
-	next = NULL;
 	efd = (int)ev->ident;
 
 	if (ev->filter == EVFILT_READ) {
@@ -168,7 +166,7 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		}
 
 		LOCK(&s->dispatched_jobsmtx);
-		dt_list_prepend(&s->dispatched_jobs, job);
+		s->dispatched_jobs.push_front(job);
 
 		DEBUG("%d: %s(): job %p: dispatch EVFILT_READ on %d", __LINE__,
 		    __func__, job, dfd->fd);
@@ -202,7 +200,7 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 				memset(job, 0, sizeof(dt_list_t));
 
 				LOCK(&s->dispatched_jobsmtx);
-				dt_list_append(&s->dispatched_jobs, job);
+				s->dispatched_jobs.push_back(job);
 				SIGNAL(&s->dispatched_jobscv);
 				UNLOCK(&s->dispatched_jobsmtx);
 			} else
@@ -237,9 +235,8 @@ process_joblist(void *_s)
 
 	while (1) {
 		LOCK(&s->dispatched_jobsmtx);
-		while (((curjob = (dtraced_job_t *)dt_list_next(
-		    &s->dispatched_jobs)) == NULL) &&
-		    ((_shutdown = s->shutdown.load()) == 0)) {
+		while (s->dispatched_jobs.empty() &&
+		    (_shutdown = s->shutdown.load()) == 0) {
 			WAIT(&s->dispatched_jobscv,
 			    pmutex_of(&s->dispatched_jobsmtx));
 		}
@@ -249,7 +246,8 @@ process_joblist(void *_s)
 			break;
 		}
 
-		dt_list_delete(&s->dispatched_jobs, curjob);
+		curjob = s->dispatched_jobs.front();
+		s->dispatched_jobs.pop_front();
 		UNLOCK(&s->dispatched_jobsmtx);
 
 		if (curjob->job >= 0 && curjob->job <= JOB_LAST)

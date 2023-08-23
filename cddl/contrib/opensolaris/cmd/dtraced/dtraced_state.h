@@ -103,7 +103,9 @@ struct dtraced_state {
 	mutex_t joblistmtx;         /* joblist mutex */
 	std::list<dtraced_job_t *> joblist;
 	mutex_t dispatched_jobsmtx; /* dispatched joblist mutex */
-	dt_list_t dispatched_jobs;  /* the dispatched joblist itself */
+
+	/* jobs to be picked up by the workers */
+	std::list<dtraced_job_t *> dispatched_jobs;
 	pthread_cond_t dispatched_jobscv;   /* dispatched joblist condvar */
 
 	/*

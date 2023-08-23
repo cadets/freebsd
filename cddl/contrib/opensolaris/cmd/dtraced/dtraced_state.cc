@@ -315,7 +315,6 @@ destroy_state(struct dtraced_state *s)
 {
 	size_t i;
 	int err;
-	struct dtraced_job *j, *next;
 
 	/*
 	 * Give all the threads a chance to stop, but we don't really care if
@@ -389,19 +388,13 @@ destroy_state(struct dtraced_state *s)
 		    strerror(err));
 
 	LOCK(&s->joblistmtx);
-	for (auto it = s->joblist.begin(); it != s->joblist.end();) {
-		j = *it;
-		it = s->joblist.erase(it);
-		dtraced_free_job(j);
-	}
+	for (; !s->joblist.empty(); s->joblist.pop_front())
+		dtraced_free_job(s->joblist.front());
 	UNLOCK(&s->joblistmtx);
 
 	LOCK(&s->dispatched_jobsmtx);
-	for (j = (dtraced_job_t *)dt_list_next(&s->dispatched_jobs); j;
-	     j = next) {
-		next = (dtraced_job_t *)dt_list_next(j);
-		dtraced_free_job(j);
-	}
+	for (; !s->dispatched_jobs.empty(); s->dispatched_jobs.pop_front())
+		dtraced_free_job(s->dispatched_jobs.front());
 	UNLOCK(&s->dispatched_jobsmtx);
 
 	(void) mutex_destroy(&s->socklistmtx);
