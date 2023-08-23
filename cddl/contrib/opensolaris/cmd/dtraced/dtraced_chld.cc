@@ -62,7 +62,6 @@ manage_children(void *_s)
 {
 	struct dtraced_state *s = (struct dtraced_state *)_s;
 	pid_t pid;
-	pidlist_t *pe;
 	int shutdown = 0;
 
 	while (1) {
@@ -85,13 +84,7 @@ manage_children(void *_s)
 		UNLOCK(&s->killmtx);
 
 		LOCK(&s->pidlistmtx);
-		for (pe = (pidlist_t *)dt_list_next(&s->pidlist); pe;
-		     pe = (pidlist_t *)dt_list_next(pe))
-			if (pe->pid == pid)
-				break;
-
-		if (pe != NULL)
-			dt_list_delete(&s->pidlist, pe);
+		s->pidlist.erase(pid);
 		UNLOCK(&s->pidlistmtx);
 
 		if (kill(pid, SIGTERM)) {

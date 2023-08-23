@@ -164,14 +164,13 @@ dtt_kill(struct dtraced_state *s, dtt_entry_t *e)
 static void
 dtt_cleanup(struct dtraced_state *s)
 {
-	pidlist_t *pe = NULL;
-
 	LOCK(&s->pidlistmtx);
-	while ((pe = (pidlist_t *)dt_list_next(&s->pidlist))) {
-		dt_list_delete(&s->pidlist, pe);
-		WARN("%d: %s(): SIGKILL %d", __LINE__, __func__, pe->pid);
-		(void)kill(pe->pid, SIGKILL);
-		free(pe);
+	while (!s->pidlist.empty()) {
+		auto it = s->pidlist.begin();
+		pid_t pid = *it;
+		s->pidlist.erase(it);
+		WARN("%d: %s(): SIGKILL %d", __LINE__, __func__, pid);
+		(void)kill(pid, SIGKILL);
 	}
 	UNLOCK(&s->pidlistmtx);
 

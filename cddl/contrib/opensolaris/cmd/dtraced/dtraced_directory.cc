@@ -435,7 +435,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	char *argv[7] = { 0 };
 	identlist_t *ident_entry;
 	unsigned char ident_to_delete[DTRACED_PROGIDENTLEN];
-	pidlist_t *pe;
 
 	memset(ident_to_delete, 0, sizeof(ident_to_delete));
 
@@ -769,13 +768,8 @@ failmsg:
 				waitpid(pid, &status, 0);
 				LOG("%d: %s(): joined %d, status %d", __LINE__, __func__, pid, status);
 			} else {
-				pe = (pidlist_t *)malloc(sizeof(pidlist_t));
-				if (pe == NULL)
-					abort();
-
-				pe->pid = pid;
 				LOCK(&s->pidlistmtx);
-				dt_list_append(&s->pidlist, pe);
+				s->pidlist.insert(pid);
 				UNLOCK(&s->pidlistmtx);
 			}
 		} else if (num_idents == 0 && pid > 0) {
