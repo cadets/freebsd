@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2021 Domagoj Stolfa
+ * Copyright (c) 2021, 2023 Domagoj Stolfa
  * All rights reserved.
  *
  * This software was developed by SRI International and the University of
@@ -52,8 +52,10 @@
 #include <sys/dtrace.h>
 #include <sys/dtrace_bsd.h>
 #include <sys/hash.h>
+#include <sys/jail.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
+#include <sys/sysctl.h>
 
 #include <machine/vmm.h>
 
@@ -62,6 +64,7 @@
 
 static MALLOC_DEFINE(M_HYPERTRACE, "HyperTrace", "");
 
+static int        sysctl_num_probes(SYSCTL_HANDLER_ARGS);
 static lwpid_t    hypertrace_priv_gettid(const void *);
 static uint16_t   hypertrace_priv_getns(const void *);
 static const char *hypertrace_priv_getname(const void *);
@@ -87,6 +90,11 @@ static struct cdevsw hypertrace_cdevsw = {
 	.d_name            = "hypertrace",
 };
 
+SYSCTL_NODE(_dev, OID_AUTO, hypertrace, CTLFLAG_RD, NULL, NULL);
+SYSCTL_PROC(_dev_hypertrace, OID_AUTO, nprobes,
+    CTLFLAG_RD | CTLTYPE_U64 | CTLFLAG_MPSAFE, NULL, 0, sysctl_num_probes, "LU",
+    NULL);
+
 /*
  * A sensible hash size seems to be around 4096 (for providers, anyway).
  *
@@ -103,7 +111,36 @@ static struct cdevsw hypertrace_cdevsw = {
 static struct cdev            *hypertrace_cdev;
 static int         __unused   hypertrace_verbose = 0;
 static hypertrace_map_t       *hypertrace_map;
+static kmutex_t               provmtx;
 static hypertrace_vprovider_t **provtab;
+
+static int
+privcheck(struct thread *td)
+{
+	if (jailed(td->td_ucred))
+		return (EPERM);
+
+	return (0);
+}
+
+static int
+sysctl_num_probes(SYSCTL_HANDLER_ARGS)
+{
+	int err = 0;
+	size_t num_probes = 0;
+	__unused uint16_t vmid;
+
+	err = privcheck(req->td);
+	if (err)
+		return (EPERM);
+
+	err = map_count(hypertrace_map, 0, &num_probes);
+	if (err)
+		return (err);
+
+	err = SYSCTL_OUT(req, &num_probes, sizeof(num_probes));
+	return (err);
+}
 
 static void
 hypertrace_load(void *dummy __unused)
@@ -113,10 +150,6 @@ hypertrace_load(void *dummy __unused)
 	 */
 	hypertrace_cdev = make_dev(&hypertrace_cdevsw, 0, UID_ROOT, GID_WHEEL,
 	    0600, "dtrace/hypertrace");
-
-	/*
-	 * TODO: Initialize the map.
-	 */
 }
 
 static int
@@ -139,6 +172,8 @@ hypertrace_modevent(module_t mod __unused, int type, void *data __unused)
 		 */
 		provtab = kmem_zalloc(
 		    sizeof(hypertrace_vprovider_t *) * HASH_SIZE, KM_SLEEP);
+		mutex_init(&provmtx, "hypertrace provider table mutex",
+		    MUTEX_DEFAULT, NULL);
 
 		hypertrace_map = map_init();
 		/*
@@ -172,8 +207,9 @@ hypertrace_modevent(module_t mod __unused, int type, void *data __unused)
 		hypertrace_resume        = NULL;
 
 		/*
-		 * Free the provtab and tear down the probe map.	
+		 * Free the provtab and tear down the probe map.
 		 */
+		mutex_destroy(&provmtx);
 		kmem_free(
 		    provtab, sizeof(hypertrace_vprovider_t *) * HASH_SIZE);
 		map_teardown(hypertrace_map);
@@ -198,7 +234,7 @@ static int
 hypertrace_open(struct cdev *dev __unused, int oflags __unused,
     int devtype __unused, struct thread *td __unused)
 {
-	
+
 	return (0);
 }
 
@@ -209,7 +245,7 @@ hypertrace_priv_is_enabled(uint16_t vmid, hypertrace_id_t id)
 
 	ht_probe = map_get(hypertrace_map, vmid, id);
 	if (ht_probe == NULL)
-		return (-ESRCH);
+		return (ESRCH);
 
 	return (ht_probe->htpb_enabled);
 }
@@ -221,7 +257,7 @@ hypertrace_priv_enable(uint16_t vmid, hypertrace_id_t id)
 
 	ht_probe = map_get(hypertrace_map, vmid, id);
 	if (ht_probe == NULL)
-		return (-ESRCH);
+		return (ESRCH);
 
 	ht_probe->htpb_enabled = 1;
 	ht_probe->htpb_running = 1;
@@ -236,7 +272,7 @@ hypertrace_priv_disable(uint16_t vmid, hypertrace_id_t id)
 
 	ht_probe = map_get(hypertrace_map, vmid, id);
 	if (ht_probe == NULL)
-		return (-ESRCH);
+		return (ESRCH);
 
 	ht_probe->htpb_running = 0;
 	ht_probe->htpb_enabled = 0;
@@ -251,7 +287,7 @@ hypertrace_priv_suspend(uint16_t vmid, hypertrace_id_t id)
 
 	ht_probe = map_get(hypertrace_map, vmid, id);
 	if (ht_probe == NULL)
-		return (-ESRCH);
+		return (ESRCH);
 
 	ht_probe->htpb_running = 0;
 	return (0);
@@ -264,7 +300,7 @@ hypertrace_priv_resume(uint16_t vmid, hypertrace_id_t id)
 
 	ht_probe = map_get(hypertrace_map, vmid, id);
 	if (ht_probe == NULL)
-		return (-ESRCH);
+		return (ESRCH);
 
 	ht_probe->htpb_running = 1;
 	return (0);
@@ -330,12 +366,14 @@ hypertrace_get_vprovider(const char *provider)
 	uint32_t hash_ndx;
 
 	hash = HASHINIT;
+	mutex_enter(&provmtx);
 	do {
 		hash = murmur3_32_hash(provider, DTRACE_PROVNAMELEN, HASHINIT);
 		hash_ndx = hash & HASH_MASK;
 		vprov = provtab[hash_ndx];
 	} while (vprov &&
 	    memcmp(provider, vprov->name, DTRACE_PROVNAMELEN) != 0);
+	mutex_exit(&provmtx);
 
 	if (vprov != NULL)
 		return (vprov);
@@ -351,7 +389,9 @@ hypertrace_get_vprovider(const char *provider)
 	/*
 	 * Insert the provider into our provider table.
 	 */
+	mutex_enter(&provmtx);
 	provtab[hash_ndx] = vprov;
+	mutex_exit(&provmtx);
 
 	return (vprov);
 }
@@ -408,7 +448,7 @@ hypertrace_priv_rmprobe(uint16_t vmid, hypertrace_id_t id)
 {
 	hypertrace_vprovider_t *vprov;
 	hypertrace_probe_t *ht_probe;
-	
+
 	ht_probe = map_get(hypertrace_map, vmid, id);
 	if (ht_probe == NULL)
 		return (ESRCH);
@@ -423,7 +463,9 @@ hypertrace_priv_rmprobe(uint16_t vmid, hypertrace_id_t id)
 		panic("probe's provider is NULL.");
 
 	if (--vprov->nprobes == 0) {
+		mutex_enter(&provmtx);
 		provtab[vprov->hash_ndx] = NULL;
+		mutex_exit(&provmtx);
 		kmem_free(vprov, sizeof(hypertrace_vprovider_t));
 	}
 

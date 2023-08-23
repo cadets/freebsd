@@ -61,7 +61,8 @@ extern dtrace_provider_id_t hypertrace_id;
 
 typedef struct hypertrace_map {
 	hypertrace_probe_t **probes[HYPERTRACE_MAX_VMS];
-	size_t             nprobes[HYPERTRACE_MAX_VMS];
+	size_t nprobes[HYPERTRACE_MAX_VMS];
+	kmutex_t mtx; /* protects both nprobes and probes */
 } hypertrace_map_t;
 
 hypertrace_map_t *map_init(void);
@@ -70,6 +71,7 @@ void map_teardown(hypertrace_map_t *);
 hypertrace_probe_t *map_get(hypertrace_map_t *, uint16_t, dtrace_id_t);
 void map_insert(hypertrace_map_t *, hypertrace_probe_t *);
 void map_rm(hypertrace_map_t *, hypertrace_probe_t *);
+int map_count(hypertrace_map_t *, uint16_t, size_t *);
 
 
 #endif /* __HYPERTRACE_IMPL_H_ */

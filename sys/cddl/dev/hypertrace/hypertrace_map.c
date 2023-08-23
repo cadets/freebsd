@@ -42,20 +42,37 @@
 
 #include "hypertrace.h"
 
+#define MAP_HOSTID     0
 #define MAP_BUCKETSIZE 4096
+
+static void
+syncfn(void *arg __unused)
+{
+}
+
+static void
+sync(void)
+{
+
+	smp_rendezvous_cpus(all_cpus, smp_no_rendezvous_barrier, syncfn,
+	    smp_no_rendezvous_barrier, NULL);
+}
 
 hypertrace_map_t *
 map_init(void)
 {
+	hypertrace_map_t *map;
 
-	return (kmem_zalloc(sizeof(hypertrace_map_t), KM_SLEEP));
+	map = kmem_zalloc(sizeof(hypertrace_map_t), KM_SLEEP);
+	mutex_init(&map->mtx, "hypertrace map state", MUTEX_DEFAULT, NULL);
+	return (map);
 }
 
 void
 map_teardown(hypertrace_map_t *map)
 {
 	size_t i, j;
-	hypertrace_probe_t *probe;
+	hypertrace_probe_t **probes, *probe;
 
 	if (map == NULL)
 		return;
@@ -64,6 +81,7 @@ map_teardown(hypertrace_map_t *map)
 	 * Go over all of the buckets in a map and free each probe, followed by
 	 * freeing the probe table itself. At the end, free the map.
 	 */
+	mutex_enter(&map->mtx);
 	for (i = 0; i < HYPERTRACE_MAX_VMS; i++) {
 		if (map->probes[i] == NULL)
 			continue;
@@ -72,15 +90,20 @@ map_teardown(hypertrace_map_t *map)
 			probe = map->probes[i][j];
 			if (probe == NULL)
 				continue;
-			
+
 			map->probes[i][j] = NULL;
 			kmem_free(probe, sizeof(hypertrace_probe_t));
 		}
 
+		probes = map->probes[i];
 		map->nprobes[i] = 0;
-		kmem_free(map->probes[i], sizeof(hypertrace_probe_t *));
+		map->probes[i] = NULL;
+		sync();
+
+		kmem_free(probes, sizeof(hypertrace_probe_t *));
 	}
 
+	mutex_exit(&map->mtx);
 	kmem_free(map, sizeof(hypertrace_map_t));
 }
 
@@ -97,6 +120,7 @@ map_insert(hypertrace_map_t *map, hypertrace_probe_t *probe)
 
 	id = probe->htpb_id;
 
+	mutex_enter(&map->mtx);
 	if (id - 1 >= nprobes && id - 1 <= DTRACE_SENSIBLE_PROBELIMIT) {
 		size_t nsize;
 		size_t osize;
@@ -111,12 +135,12 @@ map_insert(hypertrace_map_t *map, hypertrace_probe_t *probe)
 			ASSERT(osize == 0);
 			map->probes[vmid] = new_probes;
 			map->nprobes[vmid] = nsize / sizeof(dtrace_probe_t *);
-			
 		} else {
 			hypertrace_probe_t **oprobes = map->probes[vmid];
 
 			memcpy(new_probes, oprobes, osize);
 			map->probes[vmid] = new_probes;
+			sync();
 
 			kmem_free(oprobes, osize);
 			map->nprobes[vmid] = nsize / sizeof(dtrace_probe_t *);
@@ -127,6 +151,7 @@ map_insert(hypertrace_map_t *map, hypertrace_probe_t *probe)
 
 	ASSERT(map->probes[vmid][id - 1] == NULL);
 	map->probes[vmid][id - 1] = probe;
+	mutex_exit(&map->mtx);
 }
 
 /*
@@ -135,13 +160,7 @@ map_insert(hypertrace_map_t *map, hypertrace_probe_t *probe)
 hypertrace_probe_t *
 map_get(hypertrace_map_t *map, uint16_t vmid, dtrace_id_t id)
 {
-	if (map == NULL)
-		return (NULL);
-
-	if (map->probes[vmid] == NULL)
-		return (NULL);
-
-	if (map->nprobes[vmid] <= id)
+	if (map == NULL || map->probes[vmid] == NULL || map->nprobes[vmid] <= id)
 		return (NULL);
 
 	return (map->probes[vmid][id - 1]);
@@ -150,10 +169,7 @@ map_get(hypertrace_map_t *map, uint16_t vmid, dtrace_id_t id)
 void
 map_rm(hypertrace_map_t *map, hypertrace_probe_t *probe)
 {
-	if (map == NULL)
-		return;
-
-	if (map->probes[probe->htpb_vmid] == NULL)
+	if (map == NULL || map->probes[probe->htpb_vmid] == NULL)
 		return;
 
 	if (map->nprobes[probe->htpb_vmid] <= probe->htpb_id)
@@ -164,5 +180,41 @@ map_rm(hypertrace_map_t *map, hypertrace_probe_t *probe)
 		panic("Attempting to remove a NULL entry: %u, %d\n",
 		    probe->htpb_vmid, probe->htpb_id);
 
+	mutex_enter(&map->mtx);
 	map->probes[probe->htpb_vmid][probe->htpb_id - 1] = NULL;
+	mutex_exit(&map->mtx);
+}
+
+int
+map_count(hypertrace_map_t *map, uint16_t vmid, size_t *count)
+{
+	size_t nprobes, i;
+	hypertrace_probe_t **probes;
+
+	if (map == NULL || vmid >= HYPERTRACE_MAX_VMS)
+		return (EINVAL);
+
+	mutex_enter(&map->mtx);
+	/* vmid == MAP_HOSTID means all probes */
+	if (vmid == MAP_HOSTID) {
+		nprobes = 0;
+
+		for (i = 0; i < HYPERTRACE_MAX_VMS; i++) {
+			if (map->probes[i] == NULL)
+				continue;
+			nprobes += map->nprobes[i];
+		}
+	} else {
+		probes = map->probes[vmid];
+		if (probes == NULL) {
+			mutex_exit(&map->mtx);
+			return (EINVAL);
+		}
+
+		nprobes = map->nprobes[vmid];
+	}
+	mutex_exit(&map->mtx);
+
+	*count = nprobes;
+	return (0);
 }
