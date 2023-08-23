@@ -143,7 +143,7 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 		DEBUG("%d: %s: job %s: dispatch KILL on %d", __LINE__,
 		    __func__, dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
-		dt_list_append(&s->joblist, job);
+		s->joblist.push_back(job);
 		UNLOCK(&s->joblistmtx);
 
 		if (reenable_fd(s->kq_hdl, dfd->fd, EVFILT_WRITE)) {
@@ -246,7 +246,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 		DEBUG("%d: %s: job %s: dispatch CLEANUP on %d", __LINE__,
 		    __func__, dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
-		dt_list_append(&s->joblist, job);
+		s->joblist.push_back(job);
 		UNLOCK(&s->joblistmtx);
 
 		if (reenable_fd(s->kq_hdl, dfd->fd, EVFILT_WRITE)) {

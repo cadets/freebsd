@@ -189,12 +189,11 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		 * will be modifying the joblist regardless.
 		 */
 		mutex_assert_owned(&s->joblistmtx);
-		for (job = (dtraced_job_t *)dt_list_next(&s->joblist); job;
-		     job = next) {
-			next = (dtraced_job_t *)dt_list_next(job);
+		for (auto it = s->joblist.begin(); it != s->joblist.end();) {
+			job = *it;
 			dfd = job->connsockfd;
 			if (dfd->fd == efd) {
-				dt_list_delete(&s->joblist, job);
+				it = s->joblist.erase(it);
 
 				/*
 				 * Zero the list to avoid stale pointers in the
@@ -206,7 +205,8 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 				dt_list_append(&s->dispatched_jobs, job);
 				SIGNAL(&s->dispatched_jobscv);
 				UNLOCK(&s->dispatched_jobsmtx);
-			}
+			} else
+				++it;
 		}
 
 	} else {
@@ -307,7 +307,6 @@ void *
 clean_jobs(void *_s)
 {
 	struct dtraced_state *s = (struct dtraced_state *)_s;
-	dtraced_job_t *j, *next;
 	int woken;
 
 	while (1) {
@@ -331,13 +330,14 @@ clean_jobs(void *_s)
 		 */
 		for (dtraced_fd_t *dfd : s->deadfds) {
 			LOCK(&s->joblistmtx);
-			for (j = (dtraced_job_t *)dt_list_next(&s->joblist); j;
-			     j = next) {
-				next = (dtraced_job_t *)dt_list_next(j);
+			for (auto it = s->joblist.begin();
+			     it != s->joblist.end();) {
+				dtraced_job_t *j = *it;
 				if (j->identifier.job_initiator_id == dfd->id) {
-					dt_list_delete(&s->joblist, j);
+					it = s->joblist.erase(it);
 					dtraced_free_job(j);
-				}
+				} else
+					++it;
 			}
 			UNLOCK(&s->joblistmtx);
 

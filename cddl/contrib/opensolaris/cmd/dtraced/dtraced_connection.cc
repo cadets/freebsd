@@ -166,7 +166,7 @@ enqueue_info_message(struct dtraced_state *s, dtraced_fd_t *dfd)
 		abort();
 
 	LOCK(&s->joblistmtx);
-	dt_list_append(&s->joblist, job);
+	s->joblist.push_back(job);
 	UNLOCK(&s->joblistmtx);
 }
 
@@ -291,7 +291,6 @@ process_consumers(void *_s)
 	int dispatch;
 	int i;
 	struct dtraced_state *s = (struct dtraced_state *)_s;
-	struct dtraced_job *jle;
 	struct timespec ts;
 
 	struct kevent event[1] = { {} };
@@ -446,9 +445,8 @@ process_consumers(void *_s)
 				dispatch = 0;
 
 				LOCK(&s->joblistmtx);
-				for (jle = (dtraced_job_t *)dt_list_next(&s->joblist); jle;
-				     jle = (dtraced_job_t *)dt_list_next(jle)) {
-					if (jle->connsockfd == dfd)
+				for (dtraced_job_t *job : s->joblist) {
+					if (job->connsockfd == dfd)
 						dispatch = 1;
 				}
 

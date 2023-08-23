@@ -47,10 +47,14 @@
 #include "dtraced_directory.h"
 #include "dtraced_lock.h"
 
+#include <list>
 #include <queue>
 #include <unordered_set>
 
 #define unlikely(x) __predict_false(x)
+
+struct dtraced_job;
+typedef struct dtraced_job dtraced_job_t;
 
 /*
  * dtraced state structure. This contains everything relevant to dtraced's
@@ -97,7 +101,7 @@ struct dtraced_state {
 	 */
 	pthread_t *workers;         /* thread pool for the joblist */
 	mutex_t joblistmtx;         /* joblist mutex */
-	dt_list_t joblist;          /* the joblist itself */
+	std::list<dtraced_job_t *> joblist;
 	mutex_t dispatched_jobsmtx; /* dispatched joblist mutex */
 	dt_list_t dispatched_jobs;  /* the dispatched joblist itself */
 	pthread_cond_t dispatched_jobscv;   /* dispatched joblist condvar */

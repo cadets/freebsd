@@ -550,7 +550,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			    __LINE__, __func__, dtraced_job_identifier(job),
 			    dfd->fd);
 			LOCK(&s->joblistmtx);
-			dt_list_append(&s->joblist, job);
+			s->joblist.push_back(job);
 			UNLOCK(&s->joblistmtx);
 
 			if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))
@@ -1153,7 +1153,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		DEBUG("%d: %s: job %s: dispatch EVFILT_WRITE on %d",
 		    __LINE__, __func__, dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
-		dt_list_append(&s->joblist, job);
+		s->joblist.push_back(job);
 		UNLOCK(&s->joblistmtx);
 
 		if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))

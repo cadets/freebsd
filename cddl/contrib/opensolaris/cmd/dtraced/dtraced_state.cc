@@ -389,8 +389,9 @@ destroy_state(struct dtraced_state *s)
 		    strerror(err));
 
 	LOCK(&s->joblistmtx);
-	for (j = (dtraced_job_t *)dt_list_next(&s->joblist); j; j = next) {
-		next = (dtraced_job_t *)dt_list_next(j);
+	for (auto it = s->joblist.begin(); it != s->joblist.end();) {
+		j = *it;
+		it = s->joblist.erase(it);
 		dtraced_free_job(j);
 	}
 	UNLOCK(&s->joblistmtx);
@@ -430,7 +431,7 @@ destroy_state(struct dtraced_state *s)
 	}
 
 	return (0);
-}
+	}
 
 void
 _broadcast_shutdown(struct dtraced_state *s, const char *errfile, int errline)
