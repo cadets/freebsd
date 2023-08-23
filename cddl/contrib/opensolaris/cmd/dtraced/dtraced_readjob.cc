@@ -112,7 +112,6 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 static int
 handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 {
-	dtraced_fd_t *dfd = NULL;
 	struct dtraced_job *job;
 
 	DEBUG("%d: %s(): KILL (%d)", __LINE__, __func__,
@@ -124,8 +123,7 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 	 * need to only do it for FORWARDERs.
 	 */
 	LOCK(&s->socklistmtx);
-	for (dfd = (dtraced_fd_t *)dt_list_next(&s->sockfds); dfd;
-	     dfd = (dtraced_fd_t *)dt_list_next(dfd)) {
+	for (dtraced_fd_t *dfd : s->sockfds) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
 
@@ -166,7 +164,6 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 	ssize_t r;
 	char *buf, *_buf;
 	struct dtraced_job *job;
-	dtraced_fd_t *dfd;
 
 	/* XXX: Would be nice if __cleanup() did everything. */
 	__cleanup(freep) char **entries = NULL;
@@ -181,8 +178,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 	}
 
 	LOCK(&s->socklistmtx);
-	for (dfd = (dtraced_fd_t *)dt_list_next(&s->sockfds); dfd;
-	     dfd = (dtraced_fd_t *)dt_list_next(dfd)) {
+	for (dtraced_fd_t *dfd : s->sockfds) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
 

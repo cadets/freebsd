@@ -240,7 +240,7 @@ accept_new_connection(struct dtraced_state *s)
 	LOG("%d: %s(): accept(%d, %x, 0x%x, %s)", __LINE__, __func__, dfd->fd,
 	    dfd->kind, dfd->subs, dfd->ident);
 	LOCK(&s->socklistmtx);
-	dt_list_append(&s->sockfds, dfd);
+	s->sockfds.insert(dfd);
 	UNLOCK(&s->socklistmtx);
 
 	if (dfd->subs & DTD_SUB_INFO) {
@@ -255,7 +255,7 @@ kill_socket(struct dtraced_state *s, dtraced_fd_t *dfd)
 {
 	/* Remove it from the socket list and shutdown */
 	LOCK(&s->socklistmtx);
-	dt_list_delete(&s->sockfds, dfd);
+	s->sockfds.erase(dfd);
 	UNLOCK(&s->socklistmtx);
 
 	shutdown(dfd->fd, SHUT_RDWR);

@@ -425,7 +425,6 @@ int
 process_inbound(struct dirent *f, dtd_dir_t *dir)
 {
 	int err, jfd;
-	dtraced_fd_t *dfd;
 	struct dtraced_job *job;
 	struct dtraced_state *s;
 	int idx;
@@ -521,8 +520,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		 * want to process the same file in the future.
 		 */
 		LOCK(&s->socklistmtx);
-		for (dfd = (dtraced_fd_t *)dt_list_next(&s->sockfds); dfd;
-		     dfd = (dtraced_fd_t *)dt_list_next(dfd)) {
+		for (dtraced_fd_t *dfd : s->sockfds) {
 			if (dfd->kind != DTRACED_KIND_CONSUMER)
 				continue;
 
@@ -1077,7 +1075,6 @@ int
 process_outbound(struct dirent *f, dtd_dir_t *dir)
 {
 	int err, jfd;
-	dtraced_fd_t *dfd;
 	struct dtraced_job *job;
 	struct dtraced_state *s;
 	int idx;
@@ -1127,8 +1124,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 
 	LOCK(&s->socklistmtx);
-	for (dfd = (dtraced_fd_t *)dt_list_next(&s->sockfds); dfd;
-	     dfd = (dtraced_fd_t *)dt_list_next(dfd)) {
+	for (dtraced_fd_t *dfd : s->sockfds) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
 

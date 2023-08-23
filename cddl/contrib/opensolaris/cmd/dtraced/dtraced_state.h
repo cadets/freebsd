@@ -73,7 +73,9 @@ struct dtraced_state {
 	 * Sockets.
 	 */
 	mutex_t socklistmtx; /* mutex fos sockfds */
-	dt_list_t sockfds;   /* list of sockets we know about */
+
+	/* list of sockets we know about */
+	std::unordered_set<dtraced_fd_t *> sockfds;
 
 	/*
 	 * Configuration socket.
