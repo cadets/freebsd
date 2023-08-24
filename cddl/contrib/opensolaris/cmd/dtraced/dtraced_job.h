@@ -51,7 +51,6 @@
 #include "dtraced_id.h"
 
 typedef struct dtraced_job {
-	dt_list_t    list;       /* next element */
 	int          job;        /* job kind */
 #define NOTIFY_ELFWRITE    1
 #define KILL               2

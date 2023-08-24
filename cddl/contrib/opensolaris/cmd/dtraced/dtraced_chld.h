@@ -43,13 +43,6 @@
 
 #include <sys/types.h>
 
-#include <dt_list.h>
-
-typedef struct pidlist {
-	dt_list_t list; /* next element */
-	pid_t pid;
-} pidlist_t;
-
 void *manage_children(void *);
 void *reap_children(void *);
 

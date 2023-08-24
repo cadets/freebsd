@@ -192,13 +192,6 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 			dfd = job->connsockfd;
 			if (dfd->fd == efd) {
 				it = s->joblist.erase(it);
-
-				/*
-				 * Zero the list to avoid stale pointers in the
-				 * new list.
-				 */
-				memset(job, 0, sizeof(dt_list_t));
-
 				LOCK(&s->dispatched_jobsmtx);
 				s->dispatched_jobs.push_back(job);
 				SIGNAL(&s->dispatched_jobscv);

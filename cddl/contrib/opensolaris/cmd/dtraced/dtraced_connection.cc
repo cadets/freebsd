@@ -259,8 +259,6 @@ kill_socket(struct dtraced_state *s, dtraced_fd_t *dfd)
 	UNLOCK(&s->socklistmtx);
 
 	shutdown(dfd->fd, SHUT_RDWR);
-	/* TODO(important): remove this later */
-	memset(dfd, 0, sizeof(dt_list_t));
 
 	/*
 	 * Add it to the deadfds list and let it get cleaned up by other

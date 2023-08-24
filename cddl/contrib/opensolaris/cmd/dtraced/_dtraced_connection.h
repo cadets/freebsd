@@ -45,12 +45,9 @@
 
 #include <atomic>
 
-#include <dt_list.h>
-
 #define DTRACED_FDIDENTLEN             128ull
 
 typedef struct dtraced_fd {
-	dt_list_t   list;               /* next element */
 	int         fd;                 /* the actual filedesc */
 	int         kind;               /* consumer/forwarder */
 	uint64_t    subs;               /* events that efd subscribed to */

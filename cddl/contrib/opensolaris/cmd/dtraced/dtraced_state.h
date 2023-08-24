@@ -41,7 +41,6 @@
 #ifndef _DTRACED_STATE_H_
 #define _DTRACED_STATE_H_
 
-#include <dt_list.h>
 #include <pthread.h>
 
 #include "dtraced.h"
