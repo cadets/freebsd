@@ -59,7 +59,6 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
     unsigned char *buf, size_t bsize)
 {
 	dtd_dir_t *dir;
-	identlist_t *newident;
 
 	DEBUG("%d: %s(): ELF file", __LINE__, __func__);
 
@@ -81,22 +80,15 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 	}
 
 	if (s->ctrlmachine == 0) {
-		newident = (identlist_t *)malloc(sizeof(identlist_t));
-		if (newident == NULL) {
-			ERR("%d: %s(): Failed to allocate new identifier: %m",
-			    __LINE__, __func__);
-			abort();
-		}
-
 		if (DTRACED_MSG_IDENT_PRESENT(*h)) {
-			memcpy(newident->ident, DTRACED_MSG_IDENT(*h),
-			    DTRACED_PROGIDENTLEN);
+			std::array<char, DTRACED_PROGIDENTLEN> ident;
+			std::copy_n(std::begin(DTRACED_MSG_IDENT(*h)),
+			    DTRACED_PROGIDENTLEN, std::begin(ident));
 
 			LOCK(&s->identlistmtx);
 			DEBUG("%d: %s(): identifier: insert %hhx%hhx%hhx\n",
-			    __LINE__, __func__, newident->ident[0],
-			    newident->ident[1], newident->ident[2]);
-			dt_list_append(&s->identlist, newident);
+			    __LINE__, __func__, ident[0], ident[1], ident[2]);
+			s->identlist.push_back(std::move(ident));
 			UNLOCK(&s->identlistmtx);
 		}
 	}

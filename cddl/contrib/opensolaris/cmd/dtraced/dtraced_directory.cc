@@ -433,7 +433,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	int status;
 	size_t l, dirpathlen;
 	char *argv[7] = { 0 };
-	identlist_t *ident_entry;
 	unsigned char ident_to_delete[DTRACED_PROGIDENTLEN];
 
 	memset(ident_to_delete, 0, sizeof(ident_to_delete));
@@ -578,12 +577,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		 * Count up how many identifiers we have. We will need to use
 		 * this both in the child and parent.
 		 */
-		num_idents = 0;
 		LOCK(&s->identlistmtx);
-		for (ident_entry = (identlist_t *)dt_list_next(&s->identlist);
-		     ident_entry;
-		     ident_entry = (identlist_t *)dt_list_next(ident_entry))
-			num_idents++;
+		num_idents = s->identlist.size();
 		UNLOCK(&s->identlistmtx);
 
 		pid = fork();
@@ -632,16 +627,15 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			 * original state of the list in another list.
 			 */
 			LOCK(&s->identlistmtx);
-			for (ident_entry = (identlist_t *)dt_list_next(&s->identlist),
-			    current = 0;
-			    ident_entry && current < num_idents;
-			    ident_entry = (identlist_t *)dt_list_next(ident_entry),
-			    current++) {
+			current = 0;
+			for (auto it = s->identlist.begin();
+			     it != s->identlist.end() && current < num_idents;
+			     ++it, ++current) {
+				auto ident = *it;
 				LOG("%d: %s(): write ident %hhx%hhx%hhx\n",
-				    __LINE__, __func__, ident_entry->ident[0],
-				    ident_entry->ident[1],
-				    ident_entry->ident[2]);
-				if (write(stdin_rdr[1], ident_entry->ident,
+				    __LINE__, __func__, ident[0], ident[1],
+				    ident[2]);
+				if (write(stdin_rdr[1], ident.data(),
 				    DTRACED_PROGIDENTLEN) == -1) {
 					ERR("%d: %s(): write(stdin) failed: %m",
 					    __LINE__, __func__);
@@ -743,17 +737,18 @@ failmsg:
 			 */
 			if (remove) {
 				LOCK(&s->identlistmtx);
-				for (ident_entry = (identlist_t *)dt_list_next(&s->identlist);
-				     ident_entry;
-				     ident_entry = (identlist_t *)dt_list_next(ident_entry)) {
-					if (memcmp(ident_to_delete,
-					    ident_entry->ident,
-					    DTRACED_PROGIDENTLEN) == 0) {
-						dt_list_delete(
-						    &s->identlist, ident_entry);
-						free(ident_entry);
+				for (auto it = s->identlist.begin();
+				     it != s->identlist.end();) {
+					auto ident = *it;
+					int r;
+
+					r = memcmp(ident_to_delete,
+					    ident.data(), DTRACED_PROGIDENTLEN);
+					if (r == 0) {
+						it = s->identlist.erase(it);
 						break;
-					}
+					} else
+						++it;
 				}
 				UNLOCK(&s->identlistmtx);
 			}

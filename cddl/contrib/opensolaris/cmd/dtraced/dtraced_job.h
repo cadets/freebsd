@@ -50,12 +50,6 @@
 #include "dtraced_directory.h"
 #include "dtraced_id.h"
 
-typedef struct identlist {
-	dt_list_t list;
-	unsigned char ident[DTRACED_PROGIDENTLEN];
-} identlist_t;
-
-
 typedef struct dtraced_job {
 	dt_list_t    list;       /* next element */
 	int          job;        /* job kind */

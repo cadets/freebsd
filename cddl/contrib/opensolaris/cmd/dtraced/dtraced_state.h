@@ -44,9 +44,11 @@
 #include <dt_list.h>
 #include <pthread.h>
 
+#include "dtraced.h"
 #include "dtraced_directory.h"
 #include "dtraced_lock.h"
 
+#include <array>
 #include <list>
 #include <queue>
 #include <unordered_set>
@@ -141,7 +143,7 @@ struct dtraced_state {
 	int nosha;                   /* do we want to checksum? */
 	int kq_hdl;                  /* event loop kqueue */
 
-	dt_list_t identlist;         /* list of identifiers */
+	std::list<std::array<char, DTRACED_PROGIDENTLEN>> identlist;
 	mutex_t identlistmtx;        /* mutex protecting the ident list */
 };
 
