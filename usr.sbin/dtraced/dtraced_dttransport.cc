@@ -94,15 +94,13 @@ dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 
 		fd = mkstemp(tmpfile);
 		if (fd == -1) {
-			ERR("%d: %s(): failed to mkstemp(%s): %m", __LINE__,
-			    __func__, tmpfile);
+			ERR("failed to mkstemp(%s): %m", tmpfile);
 			return;
 		}
 
 		elf = (char *)malloc(e->u.elf.totallen);
 		if (elf == NULL) {
-			ERR("%d: %s(): Failed to malloc elf: %m", __LINE__,
-			    __func__);
+			ERR("Failed to malloc elf: %m");
 			abort();
 		}
 
@@ -112,8 +110,8 @@ dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 
 	assert(offs < len && "Assertion happens if file was not created");
 	if (offs + e->u.elf.len > len) {
-		ERR("%d: %s(): offs + elflen (%zu) > len (%zu)", __LINE__,
-		    __func__, offs + e->u.elf.len, len);
+		ERR("offs + elflen (%zu) > len (%zu)", offs + e->u.elf.len,
+		    len);
 		return;
 	}
 
@@ -127,16 +125,14 @@ dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 			if (errno == EINTR)
 				pthread_exit(s);
 
-			ERR("%d: %s(): failed to write data to %s: %m",
-			    __LINE__, __func__, tmpfile);
+			ERR("failed to write data to %s: %m", tmpfile);
 		}
 
 		strncpy(donepath, tmpfile, dirlen);
 		strcpy(donepath + dirlen, tmpfile + dirlen + 1);
 
 		if (rename(tmpfile, donepath)) {
-			ERR("%d: %s(): failed to move %s to %s: %m", __LINE__,
-			    __func__, tmpfile, donepath);
+			ERR("failed to move %s to %s: %m", tmpfile, donepath);
 		}
 
 		free(elf);
@@ -169,13 +165,13 @@ dtt_cleanup(struct dtraced_state *s)
 		auto it = s->pidlist.begin();
 		pid_t pid = *it;
 		s->pidlist.erase(it);
-		WARN("%d: %s(): SIGKILL %d", __LINE__, __func__, pid);
+		WARN("SIGKILL %d", pid);
 		(void)kill(pid, SIGKILL);
 	}
 	UNLOCK(&s->pidlistmtx);
 
 	/* Re-exec ourselves to ensure full cleanup. */
-	WARN("%d: %s(): re-execing", __LINE__, __func__);
+	WARN("re-execing");
 	execve(s->argv[0], (char *const *)s->argv, NULL);
 }
 
@@ -191,8 +187,7 @@ setup_connection(struct dtraced_state *s)
 
 	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
 	if (sockfd == -1) {
-		ERR("%d: %s(): Failed creating a socket: %m", __LINE__,
-		    __func__);
+		ERR("Failed creating a socket: %m");
 		return (-1);
 	}
 
@@ -201,8 +196,7 @@ setup_connection(struct dtraced_state *s)
 
 	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
 	if (l >= sizeof(addr.sun_path)) {
-		ERR("%d: %s(): Failed setting addr.sun_path to /var/ddtrace/sub.sock",
-		    __LINE__, __func__);
+		ERR("Failed setting addr.sun_path to /var/ddtrace/sub.sock");
 		close(sockfd);
 		return (-1);
 	}
@@ -210,8 +204,7 @@ setup_connection(struct dtraced_state *s)
 	SEMWAIT(&s->socksema);
 
 	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		ERR("%d: %s(): connect to /var/ddtrace/sub.sock failed: %m",
-		    __LINE__, __func__);
+		ERR("connect to /var/ddtrace/sub.sock failed: %m");
 		close(sockfd);
 		return (-1);
 	}
@@ -223,8 +216,7 @@ setup_connection(struct dtraced_state *s)
 	}
 
 	if (initmsg.kind != DTRACED_KIND_DTRACED) {
-		ERR("%d: %s(): Expected dtraced kind, got %d", __LINE__,
-		    __func__, initmsg.kind);
+		ERR("Expected dtraced kind, got %d", initmsg.kind);
 		close(sockfd);
 		return (-1);
 	}
@@ -235,8 +227,7 @@ setup_connection(struct dtraced_state *s)
 	snprintf(initmsg.ident, DTRACED_FDIDENTLEN, "dtraced-dttransport-%d", getpid());
 
 	if (send(sockfd, &initmsg, sizeof(initmsg), 0) < 0) {
-		ERR("%d: %s(): Failed to write initmsg to sockfd: %m", __LINE__,
-		    __func__);
+		ERR("Failed to write initmsg to sockfd: %m");
 		close(sockfd);
 		return (-1);
 	}
@@ -270,8 +261,7 @@ listen_dttransport(void *_s)
 					continue;
 				}
 
-				ERR("%d: %s(): failed to read event: %m",
-				    __LINE__, __func__);
+				ERR("failed to read event: %m");
 				broadcast_shutdown(s);
 				pthread_exit(NULL);
 			}
@@ -281,8 +271,8 @@ listen_dttransport(void *_s)
 			break;
 
 		if (unlikely(rval != sizeof(e))) {
-			ERR("%d: %s(): expected to read size %zu, got %zu",
-			    __LINE__, __func__, sizeof(e), rval);
+			ERR("expected to read size %zu, got %zu", sizeof(e),
+			    rval);
 			broadcast_shutdown(s);
 			pthread_exit(NULL);
 		}
@@ -301,8 +291,8 @@ listen_dttransport(void *_s)
 			break;
 
 		default:
-			ERR("%d: %s(): got unknown event (%d) from dttransport",
-			    __LINE__, __func__, e.event_kind);
+			ERR("got unknown event (%d) from dttransport",
+			    e.event_kind);
 			break;
 		}
 	}
@@ -347,8 +337,7 @@ write_dttransport(void *_s)
 					continue;
 				}
 
-				ERR("%d: %s(): failed to recv from sub.sock: %m",
-				    __LINE__, __func__);
+				ERR("failed to recv from sub.sock: %m");
 				broadcast_shutdown(s);
 				pthread_exit(NULL);
 			}
@@ -360,15 +349,15 @@ write_dttransport(void *_s)
 		}
 
 		if (unlikely(r != DTRACED_MSGHDRSIZE)) {
-			ERR("%d: %s(): expected to read size %zu, got %zu",
-			    __LINE__, __func__, DTRACED_MSGHDRSIZE, r);
+			ERR("expected to read size %zu, got %zu",
+			    DTRACED_MSGHDRSIZE, r);
 			broadcast_shutdown(s);
 			pthread_exit(NULL);
 		}
 
 		if (unlikely(DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF)) {
-			ERR("%d: %s(): Received unknown message type: %lu",
-			    __LINE__, __func__, DTRACED_MSG_TYPE(header));
+			ERR("Received unknown message type: %lu",
+			    DTRACED_MSG_TYPE(header));
 			broadcast_shutdown(s);
 			pthread_exit(NULL);
 		}
@@ -376,8 +365,7 @@ write_dttransport(void *_s)
 		len = DTRACED_MSG_LEN(header);
 		msg = (unsigned char *)malloc(len);
 		if (msg == NULL) {
-			ERR("%d: %s(): Failed to allocate a new message: %m",
-			    __LINE__, __func__);
+			ERR("Failed to allocate a new message: %m");
 			abort();
 		}
 
@@ -387,8 +375,7 @@ write_dttransport(void *_s)
 		for (;;) {
 			r = recv(sockfd, (void *)msg_ptr, len, 0);
 			if (r < 0) {
-				ERR("%d: %s(): exiting write_dttransport(): %m",
-				    __LINE__, __func__);
+				ERR("exiting write_dttransport(): %m");
 				broadcast_shutdown(s);
 				pthread_exit(NULL);
 			} else if ((size_t)r == len)

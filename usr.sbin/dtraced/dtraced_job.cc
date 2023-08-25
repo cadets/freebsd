@@ -129,8 +129,7 @@ dtraced_free_job(dtraced_job_t *j)
 		break;
 
 	default:
-		ERR("%d: %s(): free of unknown job kind: %d", __LINE__,
-		    __func__, j->job);
+		ERR("free of unknown job kind: %d", j->job);
 		break;
 	}
 
@@ -161,16 +160,14 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		 */
 		job = dtraced_new_job(READ_DATA, dfd);
 		if (job == NULL) {
-			ERR("%d: %s(): dtraced_new_job() failed with: %m",
-			    __LINE__, __func__);
+			ERR("dtraced_new_job() failed with: %m");
 			abort();
 		}
 
 		LOCK(&s->dispatched_jobsmtx);
 		s->dispatched_jobs.push_front(job);
 
-		DEBUG("%d: %s(): job %p: dispatch EVFILT_READ on %d", __LINE__,
-		    __func__, job, dfd->fd);
+		DEBUG("job %p: dispatch EVFILT_READ on %d", job, dfd->fd);
 
 		SIGNAL(&s->dispatched_jobscv);
 		UNLOCK(&s->dispatched_jobsmtx);
@@ -202,8 +199,7 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		}
 
 	} else {
-		ERR("%d: %s(): Unexpected event flags: %d", __LINE__, __func__,
-		    ev->flags);
+		ERR("Unexpected event flags: %d", ev->flags);
 		return (-1);
 	}
 
@@ -245,16 +241,14 @@ process_joblist(void *_s)
 		UNLOCK(&s->dispatched_jobsmtx);
 
 		if (curjob->job >= 0 && curjob->job <= JOB_LAST)
-			DEBUG("%d: %s(): processing %s[%s]", __LINE__, __func__,
-			    jobname[curjob->job],
+			DEBUG("processing %s[%s]", jobname[curjob->job],
 			    dtraced_job_identifier(curjob));
 		else
-			ERR("%d: %s(): job %u[%s] out of bounds", __LINE__,
-			    __func__, curjob->job,
+			ERR("job %u[%s] out of bounds", curjob->job,
 			    dtraced_job_identifier(curjob));
 
-		DEBUG("%d: %s: job %s: processing (kind=%d)\n", __LINE__,
-		    __func__, dtraced_job_identifier(curjob), curjob->job);
+		DEBUG("%d: %s: job %s: processing (kind=%d)\n",
+		    dtraced_job_identifier(curjob), curjob->job);
 		switch (curjob->job) {
 		case READ_DATA:
 			handle_read_data(s, curjob);
@@ -277,8 +271,7 @@ process_joblist(void *_s)
 			break;
 
 		default:
-			ERR("%d: %s(): Unknown job: %d", __LINE__, __func__,
-			    curjob->job);
+			ERR("Unknown job: %d", curjob->job);
 			abort();
 		}
 

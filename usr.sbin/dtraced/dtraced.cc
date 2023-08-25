@@ -87,8 +87,8 @@ handle_signals(void *arg)
 	(void) sigfillset(&sigset);
 	err = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 	if (err) {
-		ERR("%d: %s(): failed to sigmask signal handler thread: %s",
-		    __LINE__, __func__, strerror(err));
+		ERR("failed to sigmask signal handler thread: %s",
+		    strerror(err));
 		abort();
 	}
 
@@ -98,8 +98,7 @@ handle_signals(void *arg)
 
 	err = sigwait(&sigset, &sig);
 	if (err) {
-		ERR("%d: %s(): failed to sigwait: %s", __LINE__, __func__,
-		    strerror(err));
+		ERR("failed to sigwait: %s", strerror(err));
 		abort();
 	}
 
@@ -154,8 +153,7 @@ setup_sighdlrs(void)
 
 	err = pthread_create(&sig_handletd, NULL, handle_signals, NULL);
 	if (err) {
-		ERR("%d: %s(): failed to create sighandler thread: %s",
-		    __LINE__, __func__, strerror(err));
+		ERR("failed to create sighandler thread: %s", strerror(err));
 		abort();
 	}
 }
@@ -183,7 +181,7 @@ main(int argc, const char **argv)
 	memset(pidstr, 0, sizeof(pidstr));
 
 	if (sysctlbyname("kern.vm_guest", hypervisor, &len, NULL, 0)) {
-		ERR("%d: %s(): Failed to get kern.vm_guest: %m", __LINE__, __func__);
+		ERR("Failed to get kern.vm_guest: %m");
 		return (EX_OSERR);
 	}
 
@@ -192,10 +190,9 @@ main(int argc, const char **argv)
 		ctrlmachine = 0;
 
 	if (ctrlmachine == 0)
-		DEBUG("%d: %s(): Running in minion mode.", __LINE__, __func__);
+		DEBUG("Running in minion mode.");
 	else
-		DEBUG("%d: %s(): Running in overlord mode.", __LINE__,
-		    __func__);
+		DEBUG("Running in overlord mode.");
 
 	while ((ch = getopt(argc, (char *const *)argv, "D:Odhmvt:qZ")) != -1) {
 		switch (ch) {
@@ -232,10 +229,9 @@ main(int argc, const char **argv)
 				 * minions.
 				 */
 				WARN(
-				    "%d: %s(): Specified '-O' (overlord mode) "
+				    "Specified '-O' (overlord mode) "
 				    "on a virtual machine. This is not (really)"
-				    " supported... Don't report bugs.",
-				    __LINE__, __func__);
+				    " supported... Don't report bugs.");
 			}
 
 			ctrlmachine = 1;
@@ -252,12 +248,10 @@ main(int argc, const char **argv)
 				 *
 				 * XXX: We only support bhyve for now.
 				 */
-				WARN(
-				    "%d: %s(): Specified '-m' (minion mode) on "
-				    "a native (bare metal) machine. Did you "
-				    "mean to make this machine an "
-				    "overlord ('-O')?",
-				    __LINE__, __func__);
+				WARN("Specified '-m' (minion mode) on "
+				     "a native (bare metal) machine. Did you "
+				     "mean to make this machine an "
+				     "overlord ('-O')?");
 			}
 			ctrlmachine = 0;
 			break;
@@ -269,14 +263,14 @@ main(int argc, const char **argv)
 		case 't':
 			threadpool_size = strtoul(optarg, &end, 10);
 			if (errno != 0) {
-				ERR("%d: %s(): Invalid argument (-t): "
+				ERR("Invalid argument (-t): "
 				    "failed to parse %s as a number",
-				    __LINE__, __func__, optarg);
+				    optarg);
 				return (EXIT_FAILURE);
 			}
 
-			DEBUG("%d: %s(): Setting threadpool size to %lu",
-			    __LINE__, __func__, threadpool_size);
+			DEBUG("Setting threadpool size to %lu",
+			    threadpool_size);
 			break;
 
 		case 'Z':
@@ -296,31 +290,28 @@ main(int argc, const char **argv)
 	pfh = pidfile_open(LOCK_FILE, 0600, &otherpid);
 	if (pfh == NULL) {
 		if (errno == EEXIST) {
-			ERR("%d: %s(): dtraced is already running as pid %jd (check %s)",
-			    __LINE__, __func__, (intmax_t)otherpid, LOCK_FILE);
+			ERR("dtraced is already running as pid %jd (check %s)",
+			    (intmax_t)otherpid, LOCK_FILE);
 			return (EX_OSERR);
 		}
 
-		ERR("%d: %s(): Could not open %s: %m", __LINE__, __func__,
-		    LOCK_FILE);
+		ERR("Could not open %s: %m", LOCK_FILE);
 		return (EX_OSERR);
 	}
 
 	if (ctrlmachine != 0 && ctrlmachine != 1) {
-		ERR("%d: %s(): You must either specify whether to run the daemon in "
-		    "minion ('-m') or overlord ('-O') mode",
-		    __LINE__, __func__);
+		ERR("You must either specify whether to run the daemon in "
+		    "minion ('-m') or overlord ('-O') mode");
 		return (EX_OSERR);
 	}
 
 	if (!debug_mode && daemon(0, 0) != 0) {
-		ERR("%d: %s(): Failed to daemonize %m", __LINE__, __func__);
+		ERR("Failed to daemonize %m");
 		return (EX_OSERR);
 	}
 
 	if (pidfile_write(pfh)) {
-		ERR("%d: %s(): Failed to write PID to %s: %m", __LINE__,
-		    __func__, LOCK_FILE);
+		ERR("Failed to write PID to %s: %m", LOCK_FILE);
 		return (EX_OSERR);
 	}
 
@@ -329,16 +320,15 @@ againefd:
 	if (efd == -1) {
 		if (retry == 0 && errno == ENOENT) {
 			if (mkdir(elfpath, 0700) != 0)
-				ERR("%d: %s(): Failed to mkdir %s: %m",
-				    __LINE__, __func__, elfpath);
+				ERR("Failed to mkdir %s: %m",
+				    elfpath);
 			else {
 				retry = 1;
 				goto againefd;
 			}
 		}
 
-		ERR("%d: %s(): Failed to open %s: %m", __LINE__, __func__,
-		    elfpath);
+		ERR("Failed to open %s: %m", elfpath);
 		return (EX_OSERR);
 	}
 
@@ -347,20 +337,18 @@ againefd:
 	errval = init_state(&state, ctrlmachine, nosha,
 	    threadpool_size, argv);
 	if (errval != 0) {
-		ERR("%d: %s(): Failed to initialize the state", __LINE__,
-		    __func__);
+		ERR("Failed to initialize the state");
 		return (EXIT_FAILURE);
 	}
 
 	if (listen_dir(state.outbounddir) == NULL) {
-		ERR("%d: %s(): listen_dir() on %s failed", __LINE__, __func__,
-		    state.outbounddir->dirpath);
+		ERR("listen_dir() on %s failed", state.outbounddir->dirpath);
 		return (EXIT_FAILURE);
 	}
 
 	errval = destroy_state(&state);
 	if (errval != 0) {
-		ERR("%d: %s(): Failed to clean up state", __LINE__, __func__);
+		ERR("Failed to clean up state");
 		return (EXIT_FAILURE);
 	}
 

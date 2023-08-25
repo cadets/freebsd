@@ -55,54 +55,49 @@ typedef struct mutex {
 	char _name[MAXPATHLEN]; /* name of the mutex */
 } mutex_t;
 
-#define SIGNAL(c)                                                          \
-	{                                                                  \
-		int err;                                                   \
-		err = pthread_cond_signal(c);                              \
-		if (err != 0) {                                            \
-			ERR("%d: %s(): Failed to signal cv: %s", __LINE__, \
-			    __func__, strerror(err));                      \
-		}                                                          \
+#define SIGNAL(c)                                                      \
+	{                                                              \
+		int err;                                               \
+		err = pthread_cond_signal(c);                          \
+		if (err != 0) {                                        \
+			ERR("failed to signal cv: %s", strerror(err)); \
+		}                                                      \
 	}
 
-#define WAIT(c, m)                                                           \
-	{                                                                    \
-		int err;                                                     \
-		err = pthread_cond_wait(c, m);                               \
-		if (err != 0) {                                              \
-			ERR("%d: %s(): Failed to wait for cv: %s", __LINE__, \
-			    __func__, strerror(err));                        \
-		}                                                            \
+#define WAIT(c, m)                                                       \
+	{                                                                \
+		int err;                                                 \
+		err = pthread_cond_wait(c, m);                           \
+		if (err != 0) {                                          \
+			ERR("failed to wait for cv: %s", strerror(err)); \
+		}                                                        \
 	}
 
-#define BROADCAST(c)                                                          \
-	{                                                                     \
-		int err;                                                      \
-		err = pthread_cond_broadcast(c);                              \
-		if (err != 0) {                                               \
-			ERR("%d: %s(): Failed to broadcast cv: %s", __LINE__, \
-			    __func__, strerror(err));                         \
-		}                                                             \
+#define BROADCAST(c)                                                      \
+	{                                                                 \
+		int err;                                                  \
+		err = pthread_cond_broadcast(c);                          \
+		if (err != 0) {                                           \
+			ERR("failed to broadcast cv: %s", strerror(err)); \
+		}                                                         \
 	}
 
-#define SEMWAIT(s)                                                             \
-	{                                                                      \
-		int err;                                                       \
-		err = sem_wait(s);                                             \
-		if (err != 0) {                                                \
-			ERR("%d: %s(): Failed to wait for sema: %m", __LINE__, \
-			    __func__);                                         \
-		}                                                              \
+#define SEMWAIT(s)                                          \
+	{                                                   \
+		int err;                                    \
+		err = sem_wait(s);                          \
+		if (err != 0) {                             \
+			ERR("failed to wait for sema: %m"); \
+		}                                           \
 	}
 
-#define SEMPOST(s)                                                             \
-	{                                                                      \
-		int err;                                                       \
-		err = sem_post(s);                                             \
-		if (err != 0) {                                                \
-			ERR("%d: %s(): Failed to post for sema: %m", __LINE__, \
-			    __func__);                                         \
-		}                                                              \
+#define SEMPOST(s)                                          \
+	{                                                   \
+		int err;                                    \
+		err = sem_post(s);                          \
+		if (err != 0) {                             \
+			ERR("failed to post for sema: %m"); \
+		}                                           \
 	}
 
 #ifdef DTRACED_ROBUST
@@ -111,24 +106,22 @@ void mutex_assert_owned(mutex_t *);
 #define mutex_assert_owned(...)
 #endif
 
-#define LOCK(m)                                                             \
-	{                                                                   \
-		int err;                                                    \
-		err = pthread_mutex_lock(pmutex_of(m));                     \
-		if (err != 0) {                                             \
-			ERR("%d: %s(): Failed to lock mutex: %s", __LINE__, \
-			    __func__, strerror(err));                       \
-		}                                                           \
+#define LOCK(m)                                                         \
+	{                                                               \
+		int err;                                                \
+		err = pthread_mutex_lock(pmutex_of(m));                 \
+		if (err != 0) {                                         \
+			ERR("failed to lock mutex: %s", strerror(err)); \
+		}                                                       \
 	}
 
-#define UNLOCK(m)                                                           \
-	{                                                                   \
-		int err;                                                    \
-		err = pthread_mutex_unlock(pmutex_of(m));                   \
-		if (err != 0) {                                             \
-			ERR("%d: %s(): Failed to lock mutex: %s", __LINE__, \
-			    __func__, strerror(err));                       \
-		}                                                           \
+#define UNLOCK(m)                                                       \
+	{                                                               \
+		int err;                                                \
+		err = pthread_mutex_unlock(pmutex_of(m));               \
+		if (err != 0) {                                         \
+			ERR("failed to lock mutex: %s", strerror(err)); \
+		}                                                       \
 	}
 
 int mutex_destroy(mutex_t *);

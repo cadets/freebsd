@@ -56,7 +56,7 @@ mutex_assert_owned(mutex_t *m)
 	errno = 0; /* Clear the errno to check the condition */
 	err = pthread_mutex_trylock(pmutex_of(m));
 	if (err == 0 || (err && errno != 0)) {
-		ERR("%d: %s(): mutex %s is not owned: %m", __LINE__, __func__,
+		ERR("mutex %s is not owned: %m",
 		    m->_name);
 		abort();
 	}

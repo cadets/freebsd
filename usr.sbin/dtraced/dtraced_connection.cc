@@ -86,7 +86,7 @@ enable_fd(int kq, int fd, int filt, void *data)
 	struct kevent change_event[1];
 
 	EV_SET(change_event, fd, filt, EV_ADD | EV_ENABLE, 0, 0, data);
-	DEBUG("%d: %s(): Enable %d", __LINE__, __func__, fd);
+	DEBUG("Enable %d", fd);
 	return (kevent(kq, change_event, 1, NULL, 0, NULL) < 0);
 }
 
@@ -96,7 +96,7 @@ reenable_fd(int kq, int fd, int filt)
 	struct kevent change_event[1];
 
 	EV_SET(change_event, fd, filt, EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
-	DEBUG("%d: %s(): Re-enable %d", __LINE__, __func__, fd);
+	DEBUG("Re-enable %d", fd);
 	return (kevent(kq, change_event, 1, NULL, 0, NULL));
 }
 
@@ -106,7 +106,7 @@ disable_fd(int kq, int fd, int filt)
 	struct kevent change_event[1];
 
 	EV_SET(change_event, fd, filt, EV_DISABLE | EV_KEEPUDATA, 0, 0, 0);
-	DEBUG("%d: %s(): Disable %d", __LINE__, __func__, fd);
+	DEBUG("Disable %d", fd);
 	return (kevent(kq, change_event, 1, NULL, 0, NULL));
 }
 
@@ -127,9 +127,8 @@ close_filedescs(void *_s)
 			 */
 			count = dfd->__count.load();
 			if (count != 0) {
-				DEBUG("%d: %s(): fd %d (ident=%s, count=%d)\n",
-				    __LINE__, __func__, dfd->fd, dfd->ident,
-				    count);
+				DEBUG("fd %d (ident=%s, count=%d)", dfd->fd,
+				    dfd->ident, count);
 				++it;
 				continue;
 			}
@@ -145,8 +144,7 @@ close_filedescs(void *_s)
 
 			it = s->deadfds.erase(it);
 			assert(dfd->__count.load() == 0);
-			LOG("%d: %s(): close(%p, %d-%s)\n", __LINE__, __func__,
-			    dfd, dfd->fd, dfd->ident);
+			LOG("close(%p, %d-%s)\n", dfd, dfd->fd, dfd->ident);
 			close(dfd->fd);
 			free(dfd);
 		}
@@ -182,35 +180,33 @@ accept_new_connection(struct dtraced_state *s)
 
 	connsockfd = accept(s->sockfd, NULL, 0);
 	if (connsockfd == -1) {
-		ERR("%d: %s(): accept() failed: %m", __LINE__, __func__);
+		ERR("accept() failed: %m");
 		return (-1);
 	}
 
 	if (setsockopt(connsockfd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on))) {
 		close(connsockfd);
-		ERR("%d: %s(): setsockopt() failed: %m", __LINE__, __func__);
+		ERR("setsockopt() failed: %m");
 		return (-1);
 	}
 
 	initmsg.kind = DTRACED_KIND_DTRACED;
 	if (send(connsockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		close(connsockfd);
-		ERR("%d: %s(): send() initmsg to connsockfd failed: %m",
-		    __LINE__, __func__);
+		ERR("send() initmsg to connsockfd failed: %m");
 		return (-1);
 	}
 
 	memset(&initmsg, 0, sizeof(initmsg));
 	if (recv(connsockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		close(connsockfd);
-		ERR("%d: %s(): recv() get initmsg failed: %m", __LINE__,
-		    __func__);
+		ERR("recv() get initmsg failed: %m");
 		return (-1);
 	}
 
 	dfd = (dtraced_fd_t *)malloc(sizeof(dtraced_fd_t));
 	if (dfd == NULL) {
-		ERR("%d: %s(): malloc() failed with: %m", __LINE__, __func__);
+		ERR("malloc() failed with: %m");
 		abort();
 	}
 
@@ -224,21 +220,19 @@ accept_new_connection(struct dtraced_state *s)
 	if (enable_fd(s->kq_hdl, connsockfd, EVFILT_READ, dfd) < 0) {
 		close(connsockfd);
 		free(dfd);
-		ERR("%d: %s(): kevent() adding new connection failed: %m",
-		    __LINE__, __func__);
+		ERR("kevent() adding new connection failed: %m");
 		return (-1);
 	}
 
 	if (enable_fd(s->kq_hdl, connsockfd, EVFILT_WRITE, dfd) < 0) {
 		close(connsockfd);
 		free(dfd);
-		ERR("%d: %s(): kevent() adding new connection failed: %m",
-		    __LINE__, __func__);
+		ERR("kevent() adding new connection failed: %m");
 		return (-1);
 	}
 
-	LOG("%d: %s(): accept(%d, %x, 0x%x, %s)", __LINE__, __func__, dfd->fd,
-	    dfd->kind, dfd->subs, dfd->ident);
+	LOG("accept(%d, %x, 0x%x, %s)", dfd->fd, dfd->kind, dfd->subs,
+	    dfd->ident);
 	LOCK(&s->socklistmtx);
 	s->sockfds.insert(dfd);
 	UNLOCK(&s->socklistmtx);
@@ -307,23 +301,20 @@ process_consumers(void *_s)
 
 	err = listen(s->sockfd, DTRACED_BACKLOG_SIZE);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to listen on %d: %m", __LINE__, __func__,
-		    s->sockfd);
+		ERR("Failed to listen on %d: %m", s->sockfd);
 		broadcast_shutdown(s);
 		pthread_exit(NULL);
 	}
 
 	kq = kqueue();
 	if (kq == -1) {
-		ERR("%d: %s(): Failed to create dtraced socket kqueue: %m",
-		    __LINE__, __func__);
+		ERR("Failed to create dtraced socket kqueue: %m");
 		broadcast_shutdown(s);
 		pthread_exit(NULL);
 	}
 
 	if (enable_fd(kq, s->sockfd, EVFILT_READ, NULL)) {
-		ERR("%d: %s(): Failed to register listening socket kevent: %m",
-		    __LINE__, __func__);
+		ERR("Failed to register listening socket kevent: %m");
 		close(kq);
 		broadcast_shutdown(s);
 		pthread_exit(NULL);
@@ -341,7 +332,7 @@ process_consumers(void *_s)
 			break;
 
 		if (new_events == -1) {
-			ERR("%d: %s(): dtraced_event failed: %m");
+			ERR("dtraced_event failed: %m");
 			broadcast_shutdown(s);
 			pthread_exit(NULL);
 		}
@@ -351,15 +342,13 @@ process_consumers(void *_s)
 			efd = event[i].ident;
 
 			if (efd == s->sockfd && event[i].flags & EV_ERROR) {
-				ERR("%d: %s(): error on %s: %m", __LINE__,
-				    __func__, DTRACED_SOCKPATH);
+				ERR("error on %s: %m", DTRACED_SOCKPATH);
 				broadcast_shutdown(s);
 				pthread_exit(NULL);
 			}
 
 			if (efd == s->sockfd && event[i].flags & EV_EOF) {
-				ERR("%d: %s(): EOF on %s: %m", __LINE__,
-				    __func__, DTRACED_SOCKPATH);
+				ERR("EOF on %s: %m", DTRACED_SOCKPATH);
 				broadcast_shutdown(s);
 				pthread_exit(NULL);
 			}
@@ -372,16 +361,14 @@ process_consumers(void *_s)
 				assert(efd == dfd->fd);
 
 				if (disable_rw(s->kq_hdl, efd)) {
-					ERR("%d: %s(): disable_rw() failed: %m",
-					    __LINE__, __func__);
+					ERR("disable_rw() failed: %m");
 					broadcast_shutdown(s);
 					pthread_exit(NULL);
 				}
 
 				kill_socket(s, dfd);
 				if (event[i].flags & EV_ERROR)
-					ERR("%d: %s(): event error: %m",
-					    __LINE__, __func__);
+					ERR("event error: %m");
 			} else if (efd == s->sockfd) {
 				/*
 				 * New connection incoming. dfd is NULL
@@ -402,8 +389,7 @@ process_consumers(void *_s)
 				 * don't get spammed by it.
 				 */
 				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
-					ERR("%d: %s(): disable_fd() failed with: %m",
-					    __LINE__, __func__);
+					ERR("disable_fd() failed with: %m");
 					broadcast_shutdown(s);
 					pthread_exit(NULL);
 				}
@@ -415,16 +401,15 @@ process_consumers(void *_s)
 				 * warning.
 				 */
 				if ((dfd->subs & DTD_SUB_READDATA) == 0) {
-					WARN("%d: %s(): socket %d tried to "
+					WARN("socket %d tried to "
 					     "READDATA, but "
 					     "is not subscribed (%lx)",
-					    __LINE__, __func__, efd, dfd->subs);
+					    efd, dfd->subs);
 					continue;
 				}
 
 				if (dispatch_event(s, &event[i])) {
-					ERR("%d: %s(): dispatch_event() failed",
-					    __LINE__, __func__);
+					ERR("dispatch_event() failed");
 					broadcast_shutdown(s);
 					pthread_exit(NULL);
 				}
@@ -434,8 +419,7 @@ process_consumers(void *_s)
 				assert(efd == dfd->fd);
 
 				if (disable_fd(kq, efd, EVFILT_WRITE)) {
-					ERR("%d: %s(): disable_fd() failed with: %m",
-					    __LINE__, __func__);
+					ERR("disable_fd() failed with: %m");
 					broadcast_shutdown(s);
 					pthread_exit(NULL);
 				}
@@ -455,8 +439,7 @@ process_consumers(void *_s)
 				 */
 				if (dispatch != 0 &&
 				    dispatch_event(s, &event[i])) {
-					ERR("%d: %s(): dispatch_event() failed",
-					    __LINE__, __func__);
+					ERR("dispatch_event() failed");
 					UNLOCK(&s->joblistmtx);
 					broadcast_shutdown(s);
 					pthread_exit(NULL);
@@ -479,7 +462,7 @@ setup_sockfd(struct dtraced_state *s)
 
 	s->sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
 	if (s->sockfd == -1) {
-		ERR("%d: %s(): Failed to create unix: %m", __LINE__, __func__);
+		ERR("Failed to create unix: %m");
 		return (-1);
 	}
 
@@ -488,36 +471,32 @@ setup_sockfd(struct dtraced_state *s)
 	addr.sun_family = PF_UNIX;
 	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
 	if (l >= sizeof(addr.sun_path)) {
-		ERR("%d: %s(): Failed to copy %s into sockaddr (%zu)", __LINE__,
-		    __func__, DTRACED_SOCKPATH, l);
+		ERR("Failed to copy %s into sockaddr (%zu)", DTRACED_SOCKPATH,
+		    l);
 		close(s->sockfd);
 		s->sockfd = -1;
 		err = mutex_destroy(&s->sockmtx);
 		if (err != 0)
-			ERR("%d: %s(): Failed to destroy sockmtx: %m", __LINE__,
-			    __func__);
+			ERR("Failed to destroy sockmtx: %m");
 
 		return (-1);
 	}
 
 	if (remove(DTRACED_SOCKPATH) != 0) {
 		if (errno != ENOENT) {
-			ERR("%d: %s(): Failed to remove %s: %m", __LINE__,
-			    __func__, DTRACED_SOCKPATH);
+			ERR("Failed to remove %s: %m", DTRACED_SOCKPATH);
 			return (-1);
 		}
 	}
 
 	err = bind(s->sockfd, (struct sockaddr *)&addr, sizeof(addr));
 	if (err != 0) {
-		ERR("%d: %s(): Failed to bind to %d: %m", __LINE__, __func__,
-		    s->sockfd);
+		ERR("Failed to bind to %d: %m", s->sockfd);
 		close(s->sockfd);
 		s->sockfd = -1;
 		err = mutex_destroy(&s->sockmtx);
 		if (err != 0)
-			ERR("%d: %s(): Failed to destroy sockmtx: %m", __LINE__,
-			    __func__);
+			ERR("Failed to destroy sockmtx: %m");
 
 		return (-1);
 	}
@@ -529,16 +508,14 @@ int
 destroy_sockfd(struct dtraced_state *s)
 {
 	if (close(s->sockfd) != 0) {
-		ERR("%d: %s(): Failed to close %d: %m", __LINE__, __func__,
-		    s->sockfd);
+		ERR("Failed to close %d: %m", s->sockfd);
 		return (-1);
 	}
 
 	s->sockfd = -1;
 
 	if (remove(DTRACED_SOCKPATH) != 0)
-		ERR("%d: %s(): Failed to remove %s: %m", __LINE__, __func__,
-		    DTRACED_SOCKPATH);
+		ERR("Failed to remove %s: %m", DTRACED_SOCKPATH);
 
 	return (0);
 }

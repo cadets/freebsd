@@ -59,7 +59,7 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 {
 	dtd_dir_t *dir;
 
-	DEBUG("%d: %s(): ELF file", __LINE__, __func__);
+	DEBUG("ELF file");
 
 	if (strcmp(DTRACED_MSG_LOC(*h), "base") == 0)
 		dir = s->basedir;
@@ -70,11 +70,9 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 	else
 		dir = NULL;
 
-	DEBUG("%d: %s(): elfmsg on directory: %s", __LINE__, __func__,
-	    dir ? dir->dirpath : "(null)");
+	DEBUG("elfmsg on directory: %s", dir ? dir->dirpath : "(null)");
 	if (dir == NULL) {
-		ERR("%d: %s(): unrecognized location: %s", __LINE__, __func__,
-		    DTRACED_MSG_LOC(*h));
+		ERR("unrecognized location: %s", DTRACED_MSG_LOC(*h));
 		return (-1);
 	}
 
@@ -85,17 +83,17 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 			    DTRACED_PROGIDENTLEN, std::begin(ident));
 
 			LOCK(&s->identlistmtx);
-			DEBUG("%d: %s(): identifier: insert %hhx%hhx%hhx\n",
-			    __LINE__, __func__, ident[0], ident[1], ident[2]);
+			DEBUG("identifier: insert %hhx%hhx%hhx\n", ident[0],
+			    ident[1], ident[2]);
 			s->identlist.push_back(std::move(ident));
 			UNLOCK(&s->identlistmtx);
 		}
 	}
 
-	DEBUG("%d: %s(): write_data(%s, [buf], %zu)", __LINE__, __func__,
-	    dir ? dir->dirpath : "(null)", bsize);
+	DEBUG("write_data(%s, [buf], %zu)", dir ? dir->dirpath : "(null)",
+	    bsize);
 	if (write_data(dir, buf, bsize))
-		ERR("%d: %s(): write_data() failed", __LINE__, __func__);
+		ERR("write_data() failed");
 
 	return (0);
 }
@@ -105,8 +103,7 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 {
 	struct dtraced_job *job;
 
-	DEBUG("%d: %s(): KILL (%d)", __LINE__, __func__,
-	    DTRACED_MSG_KILLPID(*h));
+	DEBUG("KILL (%d)", DTRACED_MSG_KILLPID(*h));
 
 	/*
 	 * We enqueue a KILL message in the joblist
@@ -123,23 +120,21 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 
 		job = dtraced_new_job(KILL, dfd);
 		if (job == NULL) {
-			ERR("%d: %s(): dtraced_new_job() failed: %m", __LINE__,
-			    __func__);
+			ERR("dtraced_new_job() failed: %m");
 			abort();
 		}
 
 		job->j.kill.pid = DTRACED_MSG_KILLPID(*h);
 		job->j.kill.vmid = DTRACED_MSG_KILLVMID(*h);
 
-		DEBUG("%d: %s: job %s: dispatch KILL on %d", __LINE__,
-		    __func__, dtraced_job_identifier(job), dfd->fd);
+		DEBUG("%d: %s: job %s: dispatch KILL on %d",
+		    dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
 		s->joblist.push_back(job);
 		UNLOCK(&s->joblistmtx);
 
 		if (reenable_fd(s->kq_hdl, dfd->fd, EVFILT_WRITE)) {
-			ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
-			    __func__);
+			ERR("reenable_fd() failed with: %m");
 			return (-1);
 		}
 	}
@@ -178,8 +173,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 
 		for (i = 0; i < n_entries; i++) {
 			if (recv(dfd->fd, &len, sizeof(len), 0) < 0) {
-				ERR("%d: %s(): recv() failed with: %m",
-				    __LINE__, __func__);
+				ERR("recv() failed with: %m");
 				for (j = 0; j < i; j++)
 					free(entries[j]);
 				return (-1);
@@ -194,8 +188,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 			for (;;) {
 				r = recv(dfd->fd, _buf, nbytes, 0);
 				if (r < 0) {
-					ERR("%d: %s(): recv() failed with: %m",
-					    __LINE__, __func__);
+					ERR("recv() failed with: %m");
 					for (j = 0; j < i; j++)
 						free(entries[j]);
 					free(buf);
@@ -234,15 +227,14 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 				abort();
 		}
 
-		DEBUG("%d: %s: job %s: dispatch CLEANUP on %d", __LINE__,
-		    __func__, dtraced_job_identifier(job), dfd->fd);
+		DEBUG("%d: %s: job %s: dispatch CLEANUP on %d",
+		    dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
 		s->joblist.push_back(job);
 		UNLOCK(&s->joblistmtx);
 
 		if (reenable_fd(s->kq_hdl, dfd->fd, EVFILT_WRITE)) {
-			ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
-			    __func__);
+			ERR("reenable_fd() failed with: %m");
 			return (-1);
 		}
 	}
@@ -269,7 +261,7 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	totalbytes = 0;
 
 	if ((r = recv(fd, &totalbytes, sizeof(totalbytes), 0)) < 0) {
-		ERR("%d: %s(): recv() failed with: %m", __LINE__, __func__);
+		ERR("recv() failed with: %m");
 		return;
 	}
 
@@ -278,7 +270,7 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 
 	buf = (unsigned char *)malloc(nbytes);
 	if (buf == NULL) {
-		ERR("%d: %s(): malloc() failed with: %m", __LINE__, __func__);
+		ERR("malloc() failed with: %m");
 		abort();
 	}
 
@@ -286,8 +278,7 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	for (;;) {
 		r = recv(fd, _buf, nbytes, 0);
 		if (r < 0) {
-			ERR("%d: %s(): recv() failed with: %m", __LINE__,
-			    __func__);
+			ERR("recv() failed with: %m");
 			buf = NULL;
 			return;
 		} else if ((size_t)r == nbytes || r == 0)
@@ -300,8 +291,7 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 
 	if (r < 0) {
 		if (send_nak(fd) < 0) {
-			ERR("%d: %s(): send_nak() failed with: %m", __LINE__,
-			    __func__);
+			ERR("send_nak() failed with: %m");
 			return;
 		}
 
@@ -310,8 +300,7 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 		 * failed, re-enable the event and keep going.
 		 */
 		if (reenable_fd(s->kq_hdl, fd, EVFILT_READ)) {
-			ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
-			    __func__);
+			ERR("reenable_fd() failed with: %m");
 			return;
 		}
 	}
@@ -326,8 +315,7 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	 */
 
 	memcpy(&header, buf, DTRACED_MSGHDRSIZE);
-	DEBUG("%d: %s(): READ_DATA: handle %d", __LINE__, __func__,
-	    DTRACED_MSG_TYPE(header));
+	DEBUG("READ_DATA: handle %d", DTRACED_MSG_TYPE(header));
 	switch (DTRACED_MSG_TYPE(header)) {
 	case DTRACED_MSG_ELF:
 		_buf += DTRACED_MSGHDRSIZE;
@@ -344,21 +332,18 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 		break;
 
 	default:
-		ERR("%d: %s(): Unknown message: %d", __LINE__, __func__,
-		    DTRACED_MSG_TYPE(header));
+		ERR("Unknown message: %d", DTRACED_MSG_TYPE(header));
 		err = 1;
 	}
 
 	if (err == 0) {
 		if (send_ack(fd) < 0) {
-			ERR("%d: %s(): send_ack() failed with: %m", __LINE__,
-			    __func__);
+			ERR("send_ack() failed with: %m");
 			return;
 		}
 	} else {
 		if (send_nak(fd) < 0) {
-			ERR("%d: %s(): send_nak() failed with: %m", __LINE__,
-			    __func__);
+			ERR("send_nak() failed with: %m");
 			return;
 		}
 	}
@@ -368,6 +353,5 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	 * event and keep going.
 	 */
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_READ))
-		ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
-		    __func__);
+		ERR("reenable_fd() failed with: %m");
 }

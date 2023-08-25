@@ -79,8 +79,7 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	__cleanup(closefd_generic) int fd = -1;
 
 	if (dir == NULL) {
-		ERR("%d: %s(): dir is NULL in write_data()", __LINE__,
-		    __func__);
+		ERR("dir is NULL in write_data()");
 		return (-1);
 	}
 
@@ -90,8 +89,7 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	if (s == NULL) {
 		UNLOCK(&dir->dirmtx);
 
-		ERR("%d: %s(): state is NULL in write_data()", __LINE__,
-		    __func__);
+		ERR("state is NULL in write_data()");
 		return (-1);
 	}
 
@@ -101,20 +99,19 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 
 	fd = mkstemp(tmpfile);
 	if (fd == -1) {
-		ERR("%d: %s(): mkstemp() failed with: %m", __LINE__, __func__);
+		ERR("mkstemp() failed with: %m");
 		return (-1);
 	}
 
 	if (write(fd, data, nbytes) < 0) {
-		ERR("%d: %s(): write() failed with: %m", __LINE__, __func__);
+		ERR("write() failed with: %m");
 		return (-1);
 	}
 
 	strncpy(donename, tmpfile, dirpathlen);
 	strcpy(donename + dirpathlen, tmpfile + dirpathlen + 1);
 	if (rename(tmpfile, donename)) {
-		ERR("%d: %s(): rename() failed %s -> %s: %m", __LINE__,
-		    __func__, tmpfile, donename);
+		ERR("rename() failed %s -> %s: %m", tmpfile, donename);
 		return (-1);
 	}
 
@@ -135,8 +132,7 @@ listen_dir(void *_dir)
 	s = dir->state;
 
 	if ((kq = kqueue()) == -1) {
-		ERR("%d: %s(): Failed to create a kqueue %m", __LINE__,
-		    __func__);
+		ERR("Failed to create a kqueue %m");
 		return (NULL);
 	}
 
@@ -152,23 +148,23 @@ listen_dir(void *_dir)
 			break;
 
 		if (rval < 0) {
-			ERR("%d: %s(): dtraced_event failed on %s: %m",
-			    __LINE__, __func__, dir->dirpath);
+			ERR("dtraced_event failed on %s: %m",
+			    dir->dirpath);
 			broadcast_shutdown(s);
 			return (NULL);
 		}
 
 		if (ev_data.flags == EV_ERROR) {
-			ERR("%d: %s(): dtraced_event got EV_ERROR on %s: %m",
-			    __LINE__, __func__, dir->dirpath);
+			ERR("dtraced_event got EV_ERROR on %s: %m",
+			    dir->dirpath);
 			continue;
 		}
 
 		if (rval > 0) {
 			err = file_foreach(dir->dir, dir->processfn, dir);
 			if (err) {
-				ERR("%d: %s(): Failed to process new files in %s",
-				    __LINE__, __func__, dir->dirpath);
+				ERR("Failed to process new files in %s",
+				    dir->dirpath);
 				broadcast_shutdown(s);
 				return (NULL);
 			}
@@ -214,16 +210,14 @@ expand_paths(dtd_dir_t *dir)
 	struct dtraced_state *s;
 
 	if (dir == NULL) {
-		ERR("%d: %s(): Expand paths called with dir == NULL", __LINE__,
-		    __func__);
+		ERR("Expand paths called with dir == NULL");
 		return (-1);
 	}
 
 	s = dir->state;
 
 	if (s == NULL) {
-		ERR("%d: %s(): Expand paths called with state == NULL",
-		    __LINE__, __func__);
+		ERR("Expand paths called with state == NULL");
 		return (-1);
 	}
 
@@ -235,9 +229,8 @@ expand_paths(dtd_dir_t *dir)
 		 * Assert sanity after we multiply the size by two.
 		 */
 		if (dir->efile_size <= dir->efile_len) {
-			ERR("%d: %s(): dir->efile_size <= dir->efile_len (%zu <= %zu)",
-			    __LINE__, __func__, dir->efile_size,
-			    dir->efile_len);
+			ERR("dir->efile_size <= dir->efile_len (%zu <= %zu)",
+			    dir->efile_size, dir->efile_len);
 			return (-1);
 		}
 
@@ -247,8 +240,7 @@ expand_paths(dtd_dir_t *dir)
 		 */
 		newpaths = (char **)malloc(dir->efile_size * sizeof(char *));
 		if (newpaths == NULL) {
-			ERR("%d: %s(): Failed to malloc newpaths", __LINE__,
-			    __func__);
+			ERR("Failed to malloc newpaths");
 			abort();
 		}
 
@@ -271,12 +263,12 @@ populate_existing(struct dirent *f, dtd_dir_t *dir)
 	int err;
 
 	if (dir == NULL) {
-		ERR("%d: %s(): dir is NULL", __LINE__, __func__);
+		ERR("dir is NULL");
 		return (-1);
 	}
 
 	if (f == NULL) {
-		ERR("%d: %s(): dirent is NULL", __LINE__, __func__);
+		ERR("dirent is NULL");
 		return (-1);
 	}
 
@@ -290,8 +282,7 @@ populate_existing(struct dirent *f, dtd_dir_t *dir)
 	err = expand_paths(dir);
 	if (err != 0) {
 		UNLOCK(&dir->dirmtx);
-		ERR("%d: %s(): Failed to expand paths in initialization",
-		    __LINE__, __func__);
+		ERR("Failed to expand paths in initialization");
 		return (-1);
 	}
 
@@ -300,8 +291,7 @@ populate_existing(struct dirent *f, dtd_dir_t *dir)
 	UNLOCK(&dir->dirmtx);
 
 	if (dir->existing_files[dir->efile_len++] == NULL) {
-		ERR("%d: %s(): failed to strdup f->d_name: %m", __LINE__,
-		    __func__);
+		ERR("failed to strdup f->d_name: %m");
 		abort();
 	}
 
@@ -333,8 +323,7 @@ dtd_mkdir(const char *path, foreach_fn_t fn)
 
 	dir = (dtd_dir_t *)malloc(sizeof(dtd_dir_t));
 	if (dir == NULL) {
-		ERR("%d: %s(): failed to allocate directory: %m", __LINE__,
-		    __func__);
+		ERR("failed to allocate directory: %m");
 		abort();
 	}
 
@@ -342,14 +331,12 @@ dtd_mkdir(const char *path, foreach_fn_t fn)
 
 	dir->dirpath = strdup(path);
 	if (dir->dirpath == NULL) {
-		ERR("%d: %s(): failed to strdup() dirpath: %m", __LINE__,
-		    __func__);
+		ERR("failed to strdup() dirpath: %m");
 		abort();
 	}
 
 	if (mutex_init(&dir->dirmtx, NULL, dir->dirpath) != 0) {
-		ERR("%d: %s(): Failed to create dir mutex: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create dir mutex: %m");
 		return (NULL);
 	}
 
@@ -359,8 +346,7 @@ againmkdir:
 	if (dir->dirfd == -1) {
 		if (retry == 0 && errno == ENOENT) {
 			if (mkdir(path, 0700) != 0) {
-				ERR("%d: %s(): Failed to mkdir %s: %m",
-				    __LINE__, __func__, path);
+				ERR("Failed to mkdir %s: %m", path);
 				free(dir->dirpath);
 				free(dir);
 
@@ -371,8 +357,7 @@ againmkdir:
 			}
 		}
 
-		ERR("%d: %s(): Failed to open %s: %m", __LINE__, __func__,
-		    path);
+		ERR("Failed to open %s: %m", path);
 		free(dir->dirpath);
 		free(dir);
 
@@ -414,8 +399,7 @@ dtd_closedir(dtd_dir_t *dir)
 
 	err = mutex_destroy(&dir->dirmtx);
 	if (err != 0)
-		ERR("%d: %s(): Failed to destroy dirmtx: %m", __LINE__,
-		    __func__);
+		ERR("Failed to destroy dirmtx: %m");
 
 	free(dir);
 }
@@ -439,19 +423,19 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 	status = 0;
 	if (dir == NULL) {
-		ERR("%d: %s(): dir is NULL", __LINE__, __func__);
+		ERR("dir is NULL");
 		return (-1);
 	}
 
 	s = dir->state;
 
 	if (s == NULL) {
-		ERR("%d: %s(): state is NULL", __LINE__, __func__);
+		ERR("state is NULL");
 		return (-1);
 	}
 
 	if (f == NULL) {
-		ERR("%d: %s(): dirent is NULL", __LINE__, __func__);
+		ERR("dirent is NULL");
 		return (-1);
 	}
 
@@ -469,8 +453,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	 * this to ever happen if communication happens through dtraced itself.
 	 */
 	if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
-		ERR("%d: %s(): %s%s does not exist", __LINE__, __func__,
-		    dir->dirpath, f->d_name);
+		ERR("%s%s does not exist", dir->dirpath, f->d_name);
 		rmpath(f->d_name, dir);
 		UNLOCK(&dir->dirmtx);
 		return (-1);
@@ -484,8 +467,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 	l = strlcpy(fullpath, dir->dirpath, sizeof(fullpath));
 	if (l >= sizeof(fullpath)) {
-		ERR("%d: %s(): Failed to copy %s into a path string", __LINE__,
-		    __func__, dir->dirpath);
+		ERR("Failed to copy %s into a path string", dir->dirpath);
 		UNLOCK(&dir->dirmtx);
 		return (-1);
 	}
@@ -496,12 +478,11 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	l = strlcpy(fullpath + dirpathlen, f->d_name,
 	    sizeof(fullpath) - dirpathlen);
 	if (l >= sizeof(fullpath) - dirpathlen) {
-		ERR("%d: %s(): Failed to copy %s into a path string", __LINE__,
-		    __func__, f->d_name);
+		ERR("Failed to copy %s into a path string", f->d_name);
 		return (-1);
 	}
 
-	DEBUG("%d: %s(): processing %s", __LINE__, __func__, fullpath);
+	DEBUG("processing %s", fullpath);
 
 	assert(s->ctrlmachine == 1 || s->ctrlmachine == 0);
 	if (s->ctrlmachine == 1) {
@@ -528,8 +509,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			jfd = dfd->fd;
 			job = dtraced_new_job(NOTIFY_ELFWRITE, dfd);
 			if (job == NULL) {
-				ERR("%d: %s(): dtraced_new_job() failed: %m",
-				    __LINE__, __func__);
+				ERR("dtraced_new_job() failed: %m");
 				abort();
 			}
 
@@ -539,21 +519,18 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			job->j.notify_elfwrite.nosha = 1;
 
 			if (job->j.notify_elfwrite.path == NULL) {
-				ERR("%d: %s(): failed to strdup() f->d_name: %m",
-				    __LINE__, __func__);
+				ERR("failed to strdup() f->d_name: %m");
 				abort();
 			}
 
 			DEBUG("%d: %s: job %s: dispatch EVFILT_WRITE on %d",
-			    __LINE__, __func__, dtraced_job_identifier(job),
-			    dfd->fd);
+			    dtraced_job_identifier(job), dfd->fd);
 			LOCK(&s->joblistmtx);
 			s->joblist.push_back(job);
 			UNLOCK(&s->joblistmtx);
 
 			if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))
-				ERR("%d: %s(): process_inbound: kevent() failed with: %m",
-				    __LINE__, __func__);
+				ERR("process_inbound: kevent() failed with: %m");
 		}
 		UNLOCK(&s->socklistmtx);
 	} else {
@@ -562,14 +539,12 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		size_t num_idents;
 
 		if (pipe(stdout_rdr) != 0) {
-			ERR("%d: %s(): pipe(stdout) failed: %m", __LINE__,
-			    __func__);
+			ERR("pipe(stdout) failed: %m");
 			return (-1);
 		}
 
 		if (pipe(stdin_rdr) != 0) {
-			ERR("%d: %s(): pipe(stdin) failed: %m", __LINE__,
-			    __func__);
+			ERR("pipe(stdin) failed: %m");
 			return (-1);
 		}
 
@@ -589,7 +564,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		 * a message arrives to do so.
 		 */
 		if (pid == -1) {
-			ERR("%d: %s(): Failed to fork: %m", __LINE__, __func__);
+			ERR("Failed to fork: %m");
 			return (-1);
 		} else if (num_idents > 0 && pid > 0) {
 			size_t current;
@@ -601,19 +576,17 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			struct kevent ev, ev_data;
 
 			if (kq == -1) {
-				ERR("%d: %s(): Failed to create timeout kq, __LINE__, __func__");
+				ERR("Failed to create timeout kq");
 				return (-1);
 			}
 
 			close(stdin_rdr[0]);
 			close(stdout_rdr[1]);
 
-			LOG("%d: %s(): write num_idents = %d\n", __LINE__,
-			    __func__, num_idents);
+			LOG("write num_idents = %d\n", num_idents);
 			if (write(stdin_rdr[1], &num_idents,
 			    sizeof(num_idents)) == -1) {
-				ERR("%d: %s(): write(%zu) failed: %m", __LINE__,
-				    __func__, num_idents);
+				ERR("write(%zu) failed: %m", num_idents);
 				return (-1);
 			}
 
@@ -632,13 +605,11 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			     it != s->identlist.end() && current < num_idents;
 			     ++it, ++current) {
 				auto ident = *it;
-				LOG("%d: %s(): write ident %hhx%hhx%hhx\n",
-				    __LINE__, __func__, ident[0], ident[1],
-				    ident[2]);
+				LOG("write ident %hhx%hhx%hhx\n", ident[0],
+				    ident[1], ident[2]);
 				if (write(stdin_rdr[1], ident.data(),
 				    DTRACED_PROGIDENTLEN) == -1) {
-					ERR("%d: %s(): write(stdin) failed: %m",
-					    __LINE__, __func__);
+					ERR("write(stdin) failed: %m");
 					return (-1);
 				}
 			}
@@ -656,16 +627,15 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			EV_SET(&ev, stdout_rdr[0], EVFILT_READ,
 			    EV_ADD | EV_CLEAR | EV_ENABLE, 0, 0, 0);
-			LOG("%d: %s(): waiting for %d", __LINE__, __func__, pid);
+			LOG("waiting for %d", pid);
 			rv = kevent(kq, &ev, 1, &ev_data, 1, &timeout);
 
 			if (rv < 0) {
-				ERR("%d: %s(): kevent() failed: %m, __LINE__, __func__");
+				ERR("kevent() failed: %m");
 				return (-1);
 			} else if (rv == 0) {
 				/* Timeout */
-				ERR("%d: %s(): killing %d", __LINE__, __func__,
-				    pid);
+				ERR("killing %d", pid);
 				kill(pid, SIGKILL);
 				waitpid(pid, &status, 0);
 				return (0);
@@ -678,22 +648,21 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			 */
 			if ((rv = read(stdout_rdr[0], msg,
 			    sizeof(msg))) == -1) {
-				ERR("%d: %s(): read() failed: %m", __LINE__,
-				    __func__);
+				ERR("read() failed: %m");
 				remove = 0;
 			}
 
 			if (rv != sizeof(msg) && rv != 0) {
-				WARN("%d: %s(): Expected a read of %zu bytes, "
+				WARN("Expected a read of %zu bytes, "
 				     "but got %zu. Not removing ident",
-				    __LINE__, __func__, sizeof(msg), rv, pid);
+				    sizeof(msg), rv, pid);
 				remove = 0;
 				goto failmsg;
 			}
 
 			msg[sizeof(msg) - 1] = '\0';
 
-			DEBUG("%d: %s(): Got message: %s", __LINE__, __func__, msg);
+			DEBUG("Got message: %s", msg);
 			if (strcmp(msg, "FAIL FAIL") == 0) {
 				remove = 0;
 				wait_for_pid = 1;
@@ -702,8 +671,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			if (strcmp(msg, "DEL ident") != 0) {
 				kill(pid, SIGKILL);
-				WARN("%d: %s(): Expected DEL ident, but got %s",
-				    __LINE__, __func__, msg);
+				WARN("Expected DEL ident, but got %s",
+				    msg);
 				goto failmsg;
 			}
 
@@ -714,16 +683,14 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			 */
 			if ((rv = read(stdout_rdr[0], ident_to_delete,
 			    DTRACED_PROGIDENTLEN)) == -1) {
-				ERR("%d: %s(): read() failed: %m", __LINE__,
-				    __func__);
+				ERR("read() failed: %m");
 				remove = 0;
 			}
 
 			if (rv != DTRACED_PROGIDENTLEN && rv != 0) {
-				WARN("%d: %s(): Expected a read of %zu bytes, "
+				WARN("Expected a read of %zu bytes, "
 				     "but got %zu. Not removing ident.",
-				    __LINE__, __func__, DTRACED_PROGIDENTLEN,
-				    rv, pid);
+				    DTRACED_PROGIDENTLEN, rv, pid);
 				remove = 0;
 			}
 
@@ -759,9 +726,9 @@ failmsg:
 			 * SIGKILL if we timed out.
 			 */
 			if (wait_for_pid != 0) {
-				LOG("%d: %s(): waitpid(%d)", __LINE__, __func__, pid);
+				LOG("waitpid(%d)", pid);
 				waitpid(pid, &status, 0);
-				LOG("%d: %s(): joined %d, status %d", __LINE__, __func__, pid, status);
+				LOG("joined %d, status %d", pid, status);
 			} else {
 				LOCK(&s->pidlistmtx);
 				s->pidlist.insert(pid);
@@ -775,26 +742,22 @@ failmsg:
 
 			timeout.tv_sec = DTRACED_WAITPID_SLEEPTIME;
 			timeout.tv_nsec = 0;
-			LOG("%d: %s(): waitpid_timeout(%d) (timeout=10s)",
-			    __LINE__, __func__, pid);
+			LOG("waitpid_timeout(%d) (timeout=10s)", pid);
 			status = waitpid_timeout(pid, &timeout);
 			__maybe_unused(status);
-			LOG("%d: %s(): joined %d, status %d", __LINE__,
-			    __func__, pid, status);
+			LOG("joined %d, status %d", pid, status);
 		} else if (pid == 0) {
 			int last = 0;
 
 			close(stdout_rdr[0]);
 			if (dup2(stdout_rdr[1], STDOUT_FILENO) == -1) {
-				ERR("%d: %s(): dup2(stdout) failed: %m",
-				    __LINE__, __func__);
+				ERR("dup2(stdout) failed: %m");
 				exit(EXIT_FAILURE);
 			}
 
 			close(stdin_rdr[1]);
 			if (dup2(stdin_rdr[0], STDIN_FILENO) == -1) {
-				ERR("%d: %s(): dup2(stdin) failed: %m",
-				    __LINE__, __func__);
+				ERR("dup2(stdin) failed: %m");
 				exit(EXIT_FAILURE);
 			}
 
@@ -843,8 +806,7 @@ failmsg:
 	err = expand_paths(dir);
 	if (err != 0) {
 		UNLOCK(&dir->dirmtx);
-		ERR("%d: %s(): Failed to expand paths after processing %s",
-		    __LINE__, __func__, f->d_name);
+		ERR("Failed to expand paths after processing %s", f->d_name);
 		return (-1);
 	}
 
@@ -853,8 +815,7 @@ failmsg:
 
 	if (dir->existing_files[dir->efile_len++] == NULL) {
 		UNLOCK(&dir->dirmtx);
-		ERR("%d: %s(): failed to strdup f->d_name: %m", __LINE__,
-		    __func__);
+		ERR("failed to strdup f->d_name: %m");
 		abort();
 	}
 
@@ -875,30 +836,28 @@ dtraced_copyfile(const char *src, int fd_dst, const char *dst)
 
 	fd = open(src, O_RDONLY);
 	if (fd == -1)
-		ERR("%d: %s(): Failed to open %s: %m", __LINE__, __func__, src);
+		ERR("Failed to open %s: %m", src);
 
 	if (fstat(fd, &sb)) {
-		ERR("%d: %s(): Failed to fstat %s (%d): %m", __LINE__, __func__,
-		    src, fd);
+		ERR("Failed to fstat %s (%d): %m", src, fd);
 		return;
 	}
 
 	len = sb.st_size;
 	buf = malloc(len);
 	if (buf == NULL) {
-		ERR("%d: %s(): failed to allocate buf: %m", __LINE__, __func__);
+		ERR("failed to allocate buf: %m");
 		abort();
 	}
 
 	if (read(fd, buf, len) < 0) {
-		ERR("%d: %s(): Failed to read %zu bytes from %s (%d): %m",
-		    __LINE__, __func__, len, src, fd);
+		ERR("Failed to read %zu bytes from %s (%d): %m", len, src, fd);
 		return;
 	}
 
 	if (write(fd_dst, buf, len) < 0) {
-		ERR("%d: %s(): failed to write %zu bytes to %s (%d): %m",
-		    __LINE__, __func__, len, dst, newfd);
+		ERR("failed to write %zu bytes to %s (%d): %m", len, dst,
+		    newfd);
 		return;
 	}
 }
@@ -921,8 +880,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	__maybe_unused(status);
 
 	if (dir == NULL) {
-		ERR("%d: %s(): dir is NULL in base directory monitoring thread",
-		    __LINE__, __func__);
+		ERR("dir is NULL in base directory monitoring thread");
 		return (-1);
 	}
 
@@ -931,15 +889,13 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 
 	if (s == NULL) {
 		UNLOCK(&dir->dirmtx);
-		ERR("%d: %s(): state is NULL in base directory monitoring thread",
-		    __LINE__, __func__);
+		ERR("state is NULL in base directory monitoring thread");
 		return (-1);
 	}
 
 	if (f == NULL) {
 		UNLOCK(&dir->dirmtx);
-		ERR("%d: %s(): dirent is NULL in base directory monitoring thread",
-		    __LINE__, __func__);
+		ERR("dirent is NULL in base directory monitoring thread");
 		return (-1);
 	}
 
@@ -959,8 +915,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	 * this to ever happen if communication happens through dtraced itself.
 	 */
 	if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
-		ERR("%d: %s(): %s%s does not exist", __LINE__, __func__,
-		    dir->dirpath, f->d_name);
+		ERR("%s%s does not exist", dir->dirpath, f->d_name);
 		rmpath(f->d_name, dir);
 		UNLOCK(&dir->dirmtx);
 		return (-1);
@@ -972,7 +927,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 	}
 
-	DEBUG("%d: %s(): processing %s", __LINE__, __func__, f->d_name);
+	DEBUG("processing %s", f->d_name);
 
 	strcpy(fullpath, dir->dirpath);
 	UNLOCK(&dir->dirmtx);
@@ -986,8 +941,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	fd = mkstemp(tmpfile);
 	if (fd == -1) {
 		UNLOCK(&s->outbounddir->dirmtx);
-		ERR("%d: %s(): mkstemp(%s) failed: %m", __LINE__, __func__,
-		    tmpfile);
+		ERR("mkstemp(%s) failed: %m", tmpfile);
 		abort();
 	}
 
@@ -998,13 +952,12 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	dtraced_copyfile(fullpath, fd, tmpfile);
 
 	if (rename(tmpfile, donename))
-		ERR("%d: %s(): failed to rename %s to %s: %m", __LINE__,
-		    __func__, tmpfile, donename);
+		ERR("failed to rename %s to %s: %m", tmpfile, donename);
 
 	pid = fork();
 
 	if (pid == -1) {
-		ERR("%d: %s(): Failed to fork: %m", __LINE__, __func__);
+		ERR("Failed to fork: %m");
 		return (-1);
 	} else if (pid > 0) {
 		struct timespec ts;
@@ -1041,8 +994,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	err = expand_paths(dir);
 	if (err != 0) {
 		UNLOCK(&dir->dirmtx);
-		ERR("%d: %s(): Failed to expand paths after processing %s",
-		    __LINE__, __func__, f->d_name);
+		ERR("Failed to expand paths after processing %s", f->d_name);
 		return (-1);
 	}
 
@@ -1051,8 +1003,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 
 	if (dir->existing_files[dir->efile_len++] == NULL) {
 		UNLOCK(&dir->dirmtx);
-		ERR("%d: %s(): Failed to strdup f->d_name: %m", __LINE__,
-		    __func__);
+		ERR("Failed to strdup f->d_name: %m");
 		abort();
 	}
 
@@ -1069,19 +1020,19 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	int idx;
 
 	if (dir == NULL) {
-		ERR("%d: %s(): dir is NULL", __LINE__, __func__);
+		ERR("dir is NULL");
 		return (-1);
 	}
 
 	s = dir->state;
 
 	if (s == NULL) {
-		ERR("%d: %s(): state is NULL", __LINE__, __func__);
+		ERR("state is NULL");
 		return (-1);
 	}
 
 	if (f == NULL) {
-		ERR("%d: %s(): dirent is NULL", __LINE__, __func__);
+		ERR("dirent is NULL");
 		return (-1);
 	}
 
@@ -1099,8 +1050,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	 * this to ever happen if communication happens through dtraced itself.
 	 */
 	if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
-		ERR("%d: %s(): %s%s does not exist", __LINE__, __func__,
-		    dir->dirpath, f->d_name);
+		ERR("%s%s does not exist", dir->dirpath, f->d_name);
 		rmpath(f->d_name, dir);
 		UNLOCK(&dir->dirmtx);
 		return (-1);
@@ -1123,8 +1073,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		jfd = dfd->fd;
 		job = dtraced_new_job(NOTIFY_ELFWRITE, dfd);
 		if (job == NULL) {
-			ERR("%d: %s(): dtraced_new_job() failed: %m",
-			    __LINE__, __func__);
+			ERR("dtraced_new_job() failed: %m");
 			abort();
 		}
 
@@ -1134,20 +1083,18 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		job->j.notify_elfwrite.nosha = s->nosha;
 
 		if (job->j.notify_elfwrite.path == NULL) {
-			ERR("%d: %s(): Failed to strdup() f->d_name: %m",
-			    __LINE__, __func__);
+			ERR("Failed to strdup() f->d_name: %m");
 			abort();
 		}
 
 		DEBUG("%d: %s: job %s: dispatch EVFILT_WRITE on %d",
-		    __LINE__, __func__, dtraced_job_identifier(job), dfd->fd);
+		    dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
 		s->joblist.push_back(job);
 		UNLOCK(&s->joblistmtx);
 
 		if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))
-			ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
-			    __func__);
+			ERR("reenable_fd() failed with: %m");
 	}
 	UNLOCK(&s->socklistmtx);
 
@@ -1155,8 +1102,8 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	err = expand_paths(dir);
 	if (err != 0) {
 		UNLOCK(&dir->dirmtx);
-		ERR("%d: %s(): Failed to expand paths after processing %s",
-		    __LINE__, __func__, f->d_name);
+		ERR("Failed to expand paths after processing %s",
+		    f->d_name);
 		return (-1);
 	}
 
@@ -1165,8 +1112,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 
 	if (dir->existing_files[dir->efile_len++] == NULL) {
 		UNLOCK(&dir->dirmtx);
-		ERR("%d: %s(): Failed to strdup f->d_name: %m", __LINE__,
-		    __func__);
+		ERR("Failed to strdup f->d_name: %m");
 		abort();
 	}
 

@@ -68,7 +68,7 @@ handle_kill(struct dtraced_state *s, struct dtraced_job *curjob)
 	pid = curjob->j.kill.pid;
 	vmid = curjob->j.kill.vmid;
 
-	DEBUG("%d: %s(): kill pid %d to %d", __LINE__, __func__, pid, fd);
+	DEBUG("kill pid %d to %d", pid, fd);
 
 	assert(fd != -1);
 	/*
@@ -87,12 +87,10 @@ handle_kill(struct dtraced_state *s, struct dtraced_job *curjob)
 
 	if (send(fd, &header, DTRACED_MSGHDRSIZE, 0) < 0) {
 		if (errno == EPIPE)
-			ERR("%d: %s(): Failed to write to %d: %m", __LINE__,
-			    __func__, fd);
+			ERR("Failed to write to %d: %m", fd);
 		return;
 	}
 
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))
-		ERR("%d: %s(): process_joblist: reenable_fd() failed with: %m",
-		    __LINE__, __func__);
+		ERR("process_joblist: reenable_fd() failed with: %m");
 }

@@ -64,12 +64,12 @@ be_quiet(void)
 }
 
 void
-dump_errmsg(const char *file, const char *func, int line, const char *msg, ...)
+dump_errmsg(const char *file, int line, const char *msg, ...)
 {
 	va_list ap;
 	if (msg) {
 		pthread_mutex_lock(&printmtx);
-		fprintf(stderr, "ERROR: %s: %s:%d", basename(file), func, line);
+		fprintf(stderr, "ERROR: %s:%d ", file, line);
 		va_start(ap, msg);
 		vfprintf(stderr, msg, ap);
 		va_end(ap);
@@ -84,7 +84,7 @@ dump_errmsg(const char *file, const char *func, int line, const char *msg, ...)
 }
 
 void
-dump_warnmsg(const char *file, const char *func, int line, const char *msg, ...)
+dump_warnmsg(const char *file, int line, const char *msg, ...)
 {
 	va_list ap;
 
@@ -93,7 +93,7 @@ dump_warnmsg(const char *file, const char *func, int line, const char *msg, ...)
 
 	if (msg) {
 		pthread_mutex_lock(&printmtx);
-		fprintf(stderr, "WARNING: %s: %s:%d", basename(file), func, line);
+		fprintf(stderr, "WARNING: %s:%d ", file, line);
 		va_start(ap, msg);
 		vfprintf(stderr, msg, ap);
 		va_end(ap);
@@ -109,7 +109,7 @@ dump_warnmsg(const char *file, const char *func, int line, const char *msg, ...)
 
 #ifdef DTRACED_DEBUG
 void
-dump_debugmsg(const char *file, const char *func, int line, const char *msg, ...)
+dump_debugmsg(const char *file, int line, const char *msg, ...)
 {
 	va_list ap;
 
@@ -118,7 +118,7 @@ dump_debugmsg(const char *file, const char *func, int line, const char *msg, ...
 
 	if (msg) {
 		pthread_mutex_lock(&printmtx);
-		fprintf(stdout, "DEBUG: %s: %s:%d", basename(file), func, line);
+		fprintf(stdout, "DEBUG: %s:%d ", file, line);
 		va_start(ap, msg);
 		vfprintf(stdout, msg, ap);
 		va_end(ap);
@@ -134,12 +134,12 @@ dump_debugmsg(const char *file, const char *func, int line, const char *msg, ...
 #endif /* DTRACED_DEBUG */
 
 void
-dump_logmsg(const char *file, const char *func, int line, const char *msg, ...)
+dump_logmsg(const char *file, int line, const char *msg, ...)
 {
 	va_list ap;
 	if (msg) {
 		pthread_mutex_lock(&printmtx);
-		fprintf(stdout, "ERROR: %s: %s:%d", basename(file), func, line);
+		fprintf(stdout, "LOG: %s:%d ", file, line);
 		va_start(ap, msg);
 		vfprintf(stdout, msg, ap);
 		va_end(ap);

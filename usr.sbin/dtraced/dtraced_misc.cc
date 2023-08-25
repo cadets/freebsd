@@ -97,8 +97,7 @@ cleanup_pidfile(struct pidfh **pfh)
 
 	if (*pfh)
 		if (pidfile_remove(*pfh))
-			ERR("%d: %s(): Could not remove pidfile: %m", __LINE__,
-			    __func__);
+			ERR("Could not remove pidfile: %m");
 }
 
 int
@@ -112,8 +111,7 @@ waitpid_timeout(pid_t pid, struct timespec *timeout)
 
 	kq = kqueue();
 	if (kq == -1) {
-		ERR("%d: %s(): kqueue() failed: %s", __LINE__, __func__,
-		    strerror(errno));
+		ERR("kqueue() failed: %s", strerror(errno));
 		abort();
 	}
 
@@ -122,12 +120,12 @@ waitpid_timeout(pid_t pid, struct timespec *timeout)
 
 	switch (ret) {
 	case -1:
-		ERR("%d: %s(): kevent() error %s (pid=%d)", __LINE__, __func__,
+		ERR("kevent() error %s (pid=%d)",
 		    strerror(errno), pid);
 		break;
 	case 0:
 		status = -1;
-		WARN("%d: %s(): dtrace timed out (pid=%d)", __LINE__, __func__,
+		WARN("dtrace timed out (pid=%d)",
 		    pid);
 		break;
 	case 1:

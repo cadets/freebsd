@@ -65,8 +65,7 @@ setup_threads(struct dtraced_state *s)
 
 	threads = (pthread_t *)malloc(sizeof(pthread_t) * s->threadpool_size);
 	if (threads == NULL) {
-		ERR("%d: %s(): Failed to allocate thread array", __LINE__,
-		    __func__);
+		ERR("Failed to allocate thread array");
 		return (-1);
 	}
 	memset(threads, 0, sizeof(pthread_t) * s->threadpool_size);
@@ -74,8 +73,7 @@ setup_threads(struct dtraced_state *s)
 	for (i = 0; i < s->threadpool_size; i++) {
 		err = pthread_create(&threads[i], NULL, process_joblist, s);
 		if (err != 0) {
-			ERR("%d: %s(): Failed to create a new thread: %m",
-			    __LINE__, __func__);
+			ERR("Failed to create a new thread: %m");
 			return (-1);
 		}
 	}
@@ -88,8 +86,7 @@ setup_threads(struct dtraced_state *s)
 		err = pthread_create(
 		    &s->dtt_listentd, NULL, listen_dttransport, s);
 		if (err != 0) {
-			ERR("%d: %s(): Failed to create the dttransport thread: %m",
-			    __LINE__, __func__);
+			ERR("Failed to create the dttransport thread: %m");
 			return (-1);
 		}
 
@@ -100,58 +97,50 @@ setup_threads(struct dtraced_state *s)
 		err = pthread_create(
 		    &s->dtt_writetd, NULL, write_dttransport, s);
 		if (err != 0) {
-			ERR("%d: %s(): Failed to create the dttransport thread: %m",
-			    __LINE__, __func__);
+			ERR("Failed to create the dttransport thread: %m");
 			return (-1);
 		}
 	}
 
 	err = pthread_create(&s->socktd, NULL, process_consumers, s);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to create the socket thread: %m",
-		    __LINE__, __func__);
+		ERR("Failed to create the socket thread: %m");
 		return (-1);
 	}
 
 	err = pthread_create(&s->inboundtd, NULL, listen_dir, s->inbounddir);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to create inbound listening thread: %m",
-		    __LINE__, __func__);
+		ERR("Failed to create inbound listening thread: %m");
 		return (-1);
 	}
 
 	err = pthread_create(&s->basetd, NULL, listen_dir, s->basedir);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to create base listening thread: %m",
-		    __LINE__, __func__);
+		ERR("Failed to create base listening thread: %m");
 		return (-1);
 	}
 
 	err = pthread_create(&s->killtd, NULL, manage_children, s);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to create a child management thread: %m",
-		    __LINE__, __func__);
+		ERR("Failed to create a child management thread: %m");
 		return (-1);
 	}
 
 	err = pthread_create(&s->reaptd, NULL, reap_children, s);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to create reaper thread: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create reaper thread: %m");
 		return (-1);
 	}
 
 	err = pthread_create(&s->closetd, NULL, close_filedescs, s);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to create filedesc closing thread: %m",
-		    __LINE__, __func__);
+		ERR("Failed to create filedesc closing thread: %m");
 		return (-1);
 	}
 
 	err = pthread_create(&s->jobcleantd, NULL, clean_jobs, s);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to create job cleaning thread: %m",
-		    __LINE__, __func__);
+		ERR("Failed to create job cleaning thread: %m");
 		return (-1);
 	}
 
@@ -171,68 +160,57 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 	s->threadpool_size = n_threads;
 
 	if (mutex_init(&s->socklistmtx, NULL, "socklist") != 0) {
-		ERR("%d: %s(): Failed to create sock list mutex: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create sock list mutex: %m");
 		return (-1);
 	}
 
 	if (mutex_init(&s->sockmtx, NULL, "socket") != 0) {
-		ERR("%d: %s(): Failed to create socket mutex: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create socket mutex: %m");
 		return (-1);
 	}
 
 	if (mutex_init(&s->joblistmtx, NULL, "joblist") != 0) {
-		ERR("%d: %s(): Failed to create joblist mutex: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create joblist mutex: %m");
 		return (-1);
 	}
 
 	if (mutex_init(&s->dispatched_jobsmtx, NULL, "joblist") != 0) {
-		ERR("%d: %s(): Failed to create joblist mutex: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create joblist mutex: %m");
 		return (-1);
 	}
 
 	if (mutex_init(&s->killmtx, NULL, "kill list") != 0) {
-		ERR("%d: %s(): Failed to create kill list mutex: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create kill list mutex: %m");
 		return (-1);
 	}
 
 	if (mutex_init(&s->pidlistmtx, NULL, "pidlist") != 0) {
-		ERR("%d: %s(): Failed to create pidlist mutex: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create pidlist mutex: %m");
 		return (-1);
 	}
 
 	if (mutex_init(&s->identlistmtx, NULL, "identlistmtx") != 0) {
-		ERR("%d: %s(): Failed to create identlist mutex: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create identlist mutex: %m");
 		return (-1);
 	}
 
 	if (mutex_init(&s->deadfdsmtx, NULL, "deadfdsmtx") != 0) {
-		ERR("%d: %s(): Failed to create deadfds mutex: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create deadfds mutex: %m");
 		return (-1);
 	}
 
 	if (pthread_cond_init(&s->killcv, NULL) != 0) {
-		ERR("%d: %s(): Failed to create kill list condvar: %m",
-		    __LINE__, __func__);
+		ERR("Failed to create kill list condvar: %m");
 		return (-1);
 	}
 
 	if (pthread_cond_init(&s->dispatched_jobscv, NULL) != 0) {
-		ERR("%d: %s(): Failed to create joblist condvar: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create joblist condvar: %m");
 		return (-1);
 	}
 
 	if (pthread_cond_init(&s->jobcleancv, NULL) != 0) {
-		ERR("%d: %s(): Failed to create jobclean condvar: %m", __LINE__,
-		    __func__);
+		ERR("Failed to create jobclean condvar: %m");
 		return (-1);
 	}
 
@@ -241,30 +219,26 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 		s->dtt_fd = open("/dev/dttransport",
 		    O_RDWR | O_CLOEXEC | O_NONBLOCK);
 		if (s->dtt_fd == -1) {
-			ERR("%d: %s(): Failed to open /dev/dttransport: %m",
-			    __LINE__, __func__);
+			ERR("Failed to open /dev/dttransport: %m");
 			return (-1);
 		}
 	}
 
 	s->outbounddir = dtd_mkdir(DTRACED_OUTBOUNDDIR, &process_outbound);
 	if (s->outbounddir == NULL) {
-		ERR("%d: %s(): Failed creating outbound directory: %m",
-		    __LINE__, __func__);
+		ERR("Failed creating outbound directory: %m");
 		return (-1);
 	}
 
 	s->inbounddir = dtd_mkdir(DTRACED_INBOUNDDIR, &process_inbound);
 	if (s->inbounddir == NULL) {
-		ERR("%d: %s(): Failed creating inbound directory: %m", __LINE__,
-		    __func__);
+		ERR("Failed creating inbound directory: %m");
 		return (-1);
 	}
 
 	s->basedir = dtd_mkdir(DTRACED_BASEDIR, &process_base);
 	if (s->basedir == NULL) {
-		ERR("%d: %s(): Failed creating base directory: %m", __LINE__,
-		    __func__);
+		ERR("Failed creating base directory: %m");
 		return (-1);
 	}
 
@@ -273,37 +247,33 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 	s->basedir->state = s;
 
 	if (setup_sockfd(s) != 0) {
-		ERR("%d: %s(): Failed to set up the socket", __LINE__,
-		    __func__);
+		ERR("Failed to set up the socket");
 		return (-1);
 	}
 
 	err = file_foreach(s->outbounddir->dir,
 	    populate_existing, s->outbounddir);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to populate outbound existing files",
-		    __LINE__, __func__);
+		ERR("Failed to populate outbound existing files");
 		return (-1);
 	}
 
 	err = file_foreach(s->inbounddir->dir,
 	    populate_existing, s->inbounddir);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to populate inbound existing files",
-		    __LINE__, __func__);
+		ERR("Failed to populate inbound existing files");
 		return (-1);
 	}
 
 	err = file_foreach(s->basedir->dir, populate_existing, s->basedir);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to populate base existing files",
-		    __LINE__, __func__);
+		ERR("Failed to populate base existing files");
 		return (-1);
 	}
 
 	err = setup_threads(s);
 	if (err != 0) {
-		ERR("%d: %s(): Failed to set up threads", __LINE__, __func__);
+		ERR("Failed to set up threads");
 		return (-1);
 	}
 
@@ -330,31 +300,25 @@ destroy_state(struct dtraced_state *s)
 	 */
 	err = pthread_join(s->socktd, NULL);
 	if (err)
-		ERR("%d: %s(): socktd join failed: %s", __LINE__, __func__,
-		    strerror(err));
+		ERR("socktd join failed: %s", strerror(err));
 
 	if (s->dtt_listentd) {
 		err = pthread_join(s->dtt_listentd, NULL);
 		if (err)
-			ERR("%d: %s(): dtt_listentd join failed: %s", __LINE__,
-			    __func__, strerror(err));
+			ERR("dtt_listentd join failed: %s", strerror(err));
 
 		err = pthread_join(s->dtt_writetd, NULL);
 		if (err)
-			ERR("%d: %s(): dtt_writetd join failed: %s", __LINE__,
-			    __func__, strerror(err));
-
+			ERR("dtt_writetd join failed: %s", strerror(err));
 	}
 
 	err = pthread_join(s->inboundtd, NULL);
 	if (err)
-		ERR("%d: %s(): inboundtd join failed: %s", __LINE__, __func__,
-		    strerror(err));
+		ERR("inboundtd join failed: %s", strerror(err));
 
 	err = pthread_join(s->basetd, NULL);
 	if (err)
-		ERR("%d: %s(): basetd join failed: %s", __LINE__, __func__,
-		    strerror(err));
+		ERR("basetd join failed: %s", strerror(err));
 
 	LOCK(&s->dispatched_jobsmtx);
 	BROADCAST(&s->dispatched_jobscv);
@@ -363,29 +327,25 @@ destroy_state(struct dtraced_state *s)
 	for (i = 0; i < s->threadpool_size; i++) {
 		err = pthread_join(s->workers[i], NULL);
 		if (err)
-			ERR("%d: %s(): worker %ju join failed: %s", __LINE__,
-			    __func__, (uintmax_t)i, strerror(err));
+			ERR("worker %ju join failed: %s", (uintmax_t)i,
+			    strerror(err));
 	}
 
 	err = pthread_join(s->killtd, NULL);
 	if (err)
-		ERR("%d: %s(): killtd join failed: %s", __LINE__, __func__,
-		    strerror(err));
+		ERR("killtd join failed: %s", strerror(err));
 
 	err = pthread_join(s->reaptd, NULL);
 	if (err)
-		ERR("%d: %s(): reaptd join timed out: %s", __LINE__, __func__,
-		    strerror(err));
+		ERR("reaptd join timed out: %s", strerror(err));
 
 	err = pthread_join(s->closetd, NULL);
 	if (err)
-		ERR("%d: %s(): closetd join failed: %s", __LINE__, __func__,
-		    strerror(err));
+		ERR("closetd join failed: %s", strerror(err));
 
 	err = pthread_join(s->jobcleantd, NULL);
 	if (err)
-		ERR("%d: %s(): jobcleantd join failed: %s", __LINE__, __func__,
-		    strerror(err));
+		ERR("jobcleantd join failed: %s", strerror(err));
 
 	LOCK(&s->joblistmtx);
 	for (; !s->joblist.empty(); s->joblist.pop_front())
@@ -424,12 +384,12 @@ destroy_state(struct dtraced_state *s)
 	}
 
 	return (0);
-	}
+}
 
 void
 _broadcast_shutdown(struct dtraced_state *s, const char *errfile, int errline)
 {
-	LOG("%s: %d: broadcasting shutdown", errfile, errline);
+	fprintf(stderr, "%s (line %d): broadcasting shutdown", errfile, errline);
 	s->shutdown.store(1);
 
 	LOCK(&s->dispatched_jobsmtx);

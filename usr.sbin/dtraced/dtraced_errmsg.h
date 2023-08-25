@@ -41,18 +41,18 @@
 #ifndef _DTRACED_ERRMSG_H_
 #define _DTRACED_ERRMSG_H_
 
-#define ERR(...) dump_errmsg(__FILE__, __func__, __LINE__, __VA_ARGS__)
-#define WARN(...) dump_warnmsg(__FILE__, __func__, __LINE__, __VA_ARGS__)
-#define DEBUG(...) dump_debugmsg(__FILE__, __func__, __LINE__, __VA_ARGS__)
-#define LOG(...) dump_logmsg(__FILE__, __func__, __LINE__, __VA_ARGS__)
+#define ERR(...) dump_errmsg(__FILE__, __LINE__, __VA_ARGS__)
+#define WARN(...) dump_warnmsg(__FILE__, __LINE__, __VA_ARGS__)
+#define DEBUG(...) dump_debugmsg(__FILE__, __LINE__, __VA_ARGS__)
+#define LOG(...) dump_logmsg(__FILE__, __LINE__, __VA_ARGS__)
 
 void be_quiet(void);
-void dump_errmsg(const char *, const char *, int, const char *, ...);
-void dump_warnmsg(const char *, const char *, int, const char *, ...);
-void dump_logmsg(const char *, const char *, int, const char *, ...);
+void dump_errmsg(const char *, int, const char *, ...);
+void dump_warnmsg(const char *, int, const char *, ...);
+void dump_logmsg(const char *, int, const char *, ...);
 
 #ifdef DTRACED_DEBUG
-void dump_debugmsg(const char *, const char *, int, const char *, ...);
+void dump_debugmsg(const char *, int, const char *, ...);
 #else
 #define dump_debugmsg(...)
 #endif /* DTRACED_DEBUG */

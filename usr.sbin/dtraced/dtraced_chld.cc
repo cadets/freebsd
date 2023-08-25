@@ -92,8 +92,7 @@ manage_children(void *_s)
 			assert(errno != EPERM);
 
 			if (errno == ESRCH)
-				ERR("%d: %s(): pid %d does not exist", __LINE__,
-				    __func__, pid);
+				ERR("pid %d does not exist", pid);
 		}
 	}
 
