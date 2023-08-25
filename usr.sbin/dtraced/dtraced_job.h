@@ -43,8 +43,6 @@
 
 #include <sys/event.h>
 
-#include <dt_list.h>
-
 #include "_dtraced_connection.h"
 #include "dtraced.h"
 #include "dtraced_directory.h"

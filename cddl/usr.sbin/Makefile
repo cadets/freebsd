@@ -3,8 +3,6 @@
 .include <src.opts.mk>
 
 SUBDIR.${MK_DTRACE}+= \
-	${_dtraced} \
-	${_dtracedctl} \
 	${_dtrace} \
 	${_dwatch} \
 	${_lockstat} \
@@ -22,8 +20,6 @@ _dtrace=	dtrace
 _dwatch=	dwatch
 _lockstat=	lockstat
 _plockstat=	plockstat
-_dtraced=	dtraced
-_dtracedctl=	dtracedctl
 .endif
 
 .if ${MACHINE_CPUARCH} == "aarch64" || ${MACHINE_CPUARCH} == "arm" || \

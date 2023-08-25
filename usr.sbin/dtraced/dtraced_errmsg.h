@@ -38,116 +38,23 @@
  * SUCH DAMAGE.
  */
 
-#include <err.h>
-#include <pthread.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <syslog.h>
-#include <unistd.h>
+#ifndef _DTRACED_ERRMSG_H_
+#define _DTRACED_ERRMSG_H_
 
-#include "dtraced_errmsg.h"
-#include "dtraced_misc.h"
+#define ERR(...) dump_errmsg(__FILE__, __func__, __LINE__, __VA_ARGS__)
+#define WARN(...) dump_warnmsg(__FILE__, __func__, __LINE__, __VA_ARGS__)
+#define DEBUG(...) dump_debugmsg(__FILE__, __func__, __LINE__, __VA_ARGS__)
+#define LOG(...) dump_logmsg(__FILE__, __func__, __LINE__, __VA_ARGS__)
 
-#define DTRACED_SYSLOG
-
-static int quiet;
-static pthread_mutex_t printmtx = PTHREAD_MUTEX_INITIALIZER;
-
-void
-be_quiet(void)
-{
-
-	quiet = 1;
-}
-
-void
-dump_errmsg(const char *msg, ...)
-{
-	va_list ap;
-	if (msg) {
-		pthread_mutex_lock(&printmtx);
-		fprintf(stderr, "ERROR: ");
-		va_start(ap, msg);
-		vfprintf(stderr, msg, ap);
-		va_end(ap);
-		fprintf(stderr, "\n");
-		pthread_mutex_unlock(&printmtx);
-#ifdef DTRACED_SYSLOG
-		va_start(ap, msg);
-		vsyslog(LOG_ERR, msg, ap);
-		va_end(ap);
-#endif /* DTRACED_SYSLOG */
-	}
-}
-
-void
-dump_warnmsg(const char *msg, ...)
-{
-	va_list ap;
-
-	if (quiet)
-		return;
-
-	if (msg) {
-		pthread_mutex_lock(&printmtx);
-		fprintf(stderr, "WARNING: ");
-		va_start(ap, msg);
-		vfprintf(stderr, msg, ap);
-		va_end(ap);
-		fprintf(stderr, "\n");
-		pthread_mutex_unlock(&printmtx);
-#ifdef DTRACED_SYSLOG
-		va_start(ap, msg);
-		vsyslog(LOG_WARNING, msg, ap);
-		va_end(ap);
-#endif /* DTRACED_SYSLOG */
-	}
-}
+void be_quiet(void);
+void dump_errmsg(const char *, const char *, int, const char *, ...);
+void dump_warnmsg(const char *, const char *, int, const char *, ...);
+void dump_logmsg(const char *, const char *, int, const char *, ...);
 
 #ifdef DTRACED_DEBUG
-void
-dump_debugmsg(const char *msg, ...)
-{
-	va_list ap;
-
-	if (quiet)
-		return;
-
-	if (msg) {
-		pthread_mutex_lock(&printmtx);
-		fprintf(stdout, "DEBUG: ");
-		va_start(ap, msg);
-		vfprintf(stdout, msg, ap);
-		va_end(ap);
-		fprintf(stdout, "\n");
-		pthread_mutex_unlock(&printmtx);
-#ifdef DTRACED_SYSLOG
-		va_start(ap, msg);
-		vsyslog(LOG_DEBUG, msg, ap);
-		va_end(ap);
-#endif /* DTRACED_SYSLOG */
-	}
-}
+void dump_debugmsg(const char *, const char *, int, const char *, ...);
+#else
+#define dump_debugmsg(...)
 #endif /* DTRACED_DEBUG */
 
-void
-dump_logmsg(const char *msg, ...)
-{
-	va_list ap;
-	if (msg) {
-		pthread_mutex_lock(&printmtx);
-		fprintf(stdout, "LOG: ");
-		va_start(ap, msg);
-		vfprintf(stdout, msg, ap);
-		va_end(ap);
-		fprintf(stdout, "\n");
-		pthread_mutex_unlock(&printmtx);
-#ifdef DTRACED_SYSLOG
-		va_start(ap, msg);
-		vsyslog(LOG_INFO, msg, ap);
-		va_end(ap);
-#endif /* DTRACED_SYSLOG */
-	}
-}
+#endif // _DTRACED_ERRMSG_H_

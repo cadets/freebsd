@@ -145,8 +145,8 @@ close_filedescs(void *_s)
 
 			it = s->deadfds.erase(it);
 			assert(dfd->__count.load() == 0);
-			LOG("%d: %s(): close(%p, %d)\n", __LINE__, __func__,
-			    dfd, dfd->fd);
+			LOG("%d: %s(): close(%p, %d-%s)\n", __LINE__, __func__,
+			    dfd, dfd->fd, dfd->ident);
 			close(dfd->fd);
 			free(dfd);
 		}

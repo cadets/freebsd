@@ -2,8 +2,6 @@
 
 .include <src.opts.mk>
 
-.PATH: ${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
-
 PROG_CXX=	dtraced
 SRCS=		dtraced.cc \
 		dtraced_chld.cc \
@@ -24,19 +22,9 @@ SRCS=		dtraced.cc \
 
 
 MAN=		dtraced.8
+WARNS?=		3
 
-BINDIR?=	/usr/sbin
-
-WARNS?=		1
-
-CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
-		-I${SRCTOP}/cddl/compat/opensolaris/include \
-		-I${OPENSOLARIS_USR_DISTDIR}/head \
-		-I${OPENSOLARIS_USR_DISTDIR}/lib/libdtrace/common \
-		-I${OPENSOLARIS_USR_DISTDIR}/lib/libproc/common \
-		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
-		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
-		-I${SRCTOP}/sys/dev/dttransport
+CFLAGS+=	-I${SRCTOP}/sys/dev/dttransport
 
 CFLAGS+=	-Wall -Wextra -Wno-c11-extensions
 CXXFLAGS+=	-Wall -Wextra -Wno-c11-extensions -Wno-gcc-compat -Wno-unknown-pragmas -Wno-c99-designator

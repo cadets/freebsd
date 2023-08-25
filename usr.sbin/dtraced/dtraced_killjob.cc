@@ -42,7 +42,6 @@
 #include <sys/param.h>
 #include <sys/socket.h>
 
-#include <dt_list.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>

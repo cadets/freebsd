@@ -41,7 +41,6 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
-#include <dt_list.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <openssl/sha.h>
