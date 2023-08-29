@@ -247,8 +247,6 @@ process_joblist(void *_s)
 			ERR("job %u[%s] out of bounds", curjob->job,
 			    dtraced_job_identifier(curjob));
 
-		DEBUG("%d: %s: job %s: processing (kind=%d)\n",
-		    dtraced_job_identifier(curjob), curjob->job);
 		switch (curjob->job) {
 		case READ_DATA:
 			handle_read_data(s, curjob);

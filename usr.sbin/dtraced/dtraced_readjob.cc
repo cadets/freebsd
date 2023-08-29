@@ -103,8 +103,6 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 {
 	struct dtraced_job *job;
 
-	DEBUG("KILL (%d)", DTRACED_MSG_KILLPID(*h));
-
 	/*
 	 * We enqueue a KILL message in the joblist
 	 * (another thread will simply pick this up). We
@@ -127,8 +125,6 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 		job->j.kill.pid = DTRACED_MSG_KILLPID(*h);
 		job->j.kill.vmid = DTRACED_MSG_KILLVMID(*h);
 
-		DEBUG("%d: %s: job %s: dispatch KILL on %d",
-		    dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
 		s->joblist.push_back(job);
 		UNLOCK(&s->joblistmtx);
@@ -227,8 +223,6 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 				abort();
 		}
 
-		DEBUG("%d: %s: job %s: dispatch CLEANUP on %d",
-		    dtraced_job_identifier(job), dfd->fd);
 		LOCK(&s->joblistmtx);
 		s->joblist.push_back(job);
 		UNLOCK(&s->joblistmtx);

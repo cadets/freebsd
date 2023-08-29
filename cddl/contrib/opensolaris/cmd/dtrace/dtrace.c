@@ -515,7 +515,7 @@ installsighands(void)
 	 * blocked. If the caller wishes to just block signals, one should call
 	 * block_signals() instead.
 	 */
-	if (g_sighandlertd == NULL)
+	if (g_sighandlertd != NULL)
 		return;
 
 	block_signals();
@@ -3608,7 +3608,6 @@ main(int argc, char *argv[])
 	if (g_total == 0 && !g_grabanon && !(g_cflags & DTRACE_C_ZDEFS))
 		dfatal("no probes %s\n", g_cmdc ? "matched" : "specified");
 
-	setup_tracing();
 	(void) dtc_work(NULL);
 	pthread_mutex_lock(&g_dtpmtx);
 	if (g_dtp)

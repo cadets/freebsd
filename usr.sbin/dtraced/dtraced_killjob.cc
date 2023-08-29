@@ -68,8 +68,6 @@ handle_kill(struct dtraced_state *s, struct dtraced_job *curjob)
 	pid = curjob->j.kill.pid;
 	vmid = curjob->j.kill.vmid;
 
-	DEBUG("kill pid %d to %d", pid, fd);
-
 	assert(fd != -1);
 	/*
 	 * If we end up with pid <= 1, something went wrong.

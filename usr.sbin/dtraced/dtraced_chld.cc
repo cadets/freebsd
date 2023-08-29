@@ -87,6 +87,7 @@ manage_children(void *_s)
 		s->pidlist.erase(pid);
 		UNLOCK(&s->pidlistmtx);
 
+		LOG("kill %d", pid);
 		if (kill(pid, SIGTERM)) {
 			assert(errno != EINVAL);
 			assert(errno != EPERM);
