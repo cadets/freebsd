@@ -57,8 +57,10 @@
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
+namespace dtraced {
+
 void
-handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
+handle_elfwrite(state *s, job *curjob)
 {
 	int fd, _nosha;
 	__cleanup(closefd_generic) int elffd = -1;
@@ -67,8 +69,8 @@ handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
 	unsigned char *contents;
 	size_t pathlen, elflen, msglen;
 	dtraced_hdr_t header;
-	dtd_dir_t *dir;
-	dtraced_fd_t *dfd = curjob->connsockfd;
+	dir *dir;
+	dtraced::fd *dfd = curjob->connsockfd;
 	struct stat stat;
 
 	fd = dfd->fd;
@@ -135,4 +137,6 @@ handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
 	DEBUG("Re-enabling %d", fd);
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))
 		ERR("reenable_fd() failed with: %m");
+}
+
 }

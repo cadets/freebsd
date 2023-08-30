@@ -53,6 +53,8 @@
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
+namespace dtraced {
+
 /*
  * Used for generating a random name of the outbound ELF file.
  */
@@ -139,7 +141,7 @@ waitpid_timeout(pid_t pid, struct timespec *timeout)
 }
 
 int
-dtraced_event(struct dtraced_state *s, int kq, const struct kevent *changelist,
+dtraced_event(state *s, int kq, const struct kevent *changelist,
     int nchanges, struct kevent *eventlist, int nevents,
     const struct timespec *timeout)
 {
@@ -154,4 +156,6 @@ dtraced_event(struct dtraced_state *s, int kq, const struct kevent *changelist,
 	}
 
 	return (new_events);
+}
+
 }

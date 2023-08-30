@@ -72,7 +72,7 @@ char version_str[128];
 /*
  * Awful global variable, but is here because of the signal handler.
  */
-static struct dtraced_state state;
+static dtraced::state state;
 static pthread_t sig_handletd;
 static const char *program_name;
 static unsigned long threadpool_size = 1;
@@ -162,7 +162,7 @@ int
 main(int argc, const char **argv)
 {
 	char elfpath[MAXPATHLEN] = "/var/ddtrace";
-	__cleanup(closefd_generic) int efd = -1;
+	__cleanup(dtraced::closefd_generic) int efd = -1;
 	int errval, retry, nosha = 0;
 	char ch;
 	char pidstr[256];
@@ -170,7 +170,7 @@ main(int argc, const char **argv)
 	int debug_mode = 0;
 	size_t len = sizeof(hypervisor);
 	size_t optlen;
-	__cleanup(cleanup_pidfile) struct pidfh *pfh = NULL;
+	__cleanup(dtraced::cleanup_pidfile) struct pidfh *pfh = NULL;
 	pid_t otherpid;
 	int ctrlmachine = 1; /* default to control machine (-O) */
 	char *end;
@@ -207,12 +207,12 @@ main(int argc, const char **argv)
 		case 'D':
 			optlen = strlen(optarg);
 			strcpy(elfpath, optarg);
-			strcpy(DTRACED_INBOUNDDIR, optarg);
-			strcpy(DTRACED_INBOUNDDIR + optlen, "/inbound/");
-			strcpy(DTRACED_OUTBOUNDDIR, optarg);
-			strcpy(DTRACED_OUTBOUNDDIR + optlen, "/outbound/");
-			strcpy(DTRACED_BASEDIR, optarg);
-			strcpy(DTRACED_BASEDIR + optlen, "/base/");
+			strcpy(dtraced::INBOUNDDIR, optarg);
+			strcpy(dtraced::INBOUNDDIR + optlen, "/inbound/");
+			strcpy(dtraced::OUTBOUNDDIR, optarg);
+			strcpy(dtraced::OUTBOUNDDIR + optlen, "/outbound/");
+			strcpy(dtraced::BASEDIR, optarg);
+			strcpy(dtraced::BASEDIR + optlen, "/base/");
 			break;
 
 		/*
@@ -334,19 +334,19 @@ againefd:
 
 	setup_sighdlrs();
 
-	errval = init_state(&state, ctrlmachine, nosha,
+	errval = dtraced::init_state(&state, ctrlmachine, nosha,
 	    threadpool_size, argv);
 	if (errval != 0) {
 		ERR("Failed to initialize the state");
 		return (EXIT_FAILURE);
 	}
 
-	if (listen_dir(state.outbounddir) == NULL) {
+	if (dtraced::listen_dir(state.outbounddir) == NULL) {
 		ERR("listen_dir() on %s failed", state.outbounddir->dirpath);
 		return (EXIT_FAILURE);
 	}
 
-	errval = destroy_state(&state);
+	errval = dtraced::destroy_state(&state);
 	if (errval != 0) {
 		ERR("Failed to clean up state");
 		return (EXIT_FAILURE);

@@ -32,6 +32,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define DTRACED_MAJOR                  0
 #define DTRACED_MINOR                  4
 #define DTRACED_PATCH                  0
@@ -111,5 +115,8 @@ typedef struct dtraced_infomsg {
 #define DTRACED_MSG_KILLVMID(m)        ((m).kill.vmid)
 #define DTRACED_MSG_NUMENTRIES(m)      ((m).cleanup.num_entries)
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif // __DTRACED_H_

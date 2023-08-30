@@ -47,7 +47,9 @@
 
 #define DTRACED_FDIDENTLEN             128ull
 
-typedef struct dtraced_fd {
+namespace dtraced {
+
+struct fd {
 	int         fd;                 /* the actual filedesc */
 	int         kind;               /* consumer/forwarder */
 	uint64_t    subs;               /* events that efd subscribed to */
@@ -55,6 +57,8 @@ typedef struct dtraced_fd {
 	char ident[DTRACED_FDIDENTLEN]; /* human-readable identifier */
 	uint64_t id;                    /* initiator id */
 	int cleaned_up;                 /* has this fd been cleaned up */
-} dtraced_fd_t;
+};
+
+}
 
 #endif // __DTRACED_CONNECTION_H_

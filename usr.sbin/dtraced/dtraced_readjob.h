@@ -42,9 +42,13 @@
 
 #include "dtraced.h"
 
-struct dtraced_state;
-struct dtraced_job;
+namespace dtraced {
 
-void handle_read_data(struct dtraced_state *, struct dtraced_job *);
+struct state;
+struct job;
+
+void handle_read_data(state *, job *);
+
+}
 
 #endif // __DTRACED_READJOB_H_

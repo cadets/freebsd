@@ -51,11 +51,13 @@
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
+namespace dtraced {
+
 void
-handle_sendinfo(struct dtraced_state *s, struct dtraced_job *curjob)
+handle_sendinfo(state *s, job *curjob)
 {
 	dtraced_hdr_t hdr = {};
-	dtraced_fd_t *dfd = curjob->connsockfd;
+	fd *dfd = curjob->connsockfd;
 	int fd = dfd->fd;
 	size_t info_count = 0;
 	__cleanup(freep) dtraced_infomsg_t *imsgs = NULL;
@@ -69,7 +71,7 @@ handle_sendinfo(struct dtraced_state *s, struct dtraced_job *curjob)
 	memset(imsgs, 0, info_count * sizeof(dtraced_infomsg_t));
 
 	i = 0;
-	for (dtraced_fd_t *client : s->sockfds) {
+	for (dtraced::fd *client : s->sockfds) {
 		imsgs[i].client_kind = client->kind;
 		memcpy(
 		    imsgs[i++].client_name, client->ident, DTRACED_FDIDENTLEN);
@@ -87,4 +89,6 @@ handle_sendinfo(struct dtraced_state *s, struct dtraced_job *curjob)
 		ERR("Failed to write imsgs to %d: %m", fd);
 		return;
 	}
+}
+
 }

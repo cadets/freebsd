@@ -43,7 +43,11 @@
 
 #include <sys/types.h>
 
+namespace dtraced {
+
 void *manage_children(void *);
 void *reap_children(void *);
+
+}
 
 #endif // _DTRACE_CHLD_H_

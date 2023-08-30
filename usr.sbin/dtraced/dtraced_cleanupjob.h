@@ -40,9 +40,13 @@
 #ifndef _DTRACED_CLEANUPJOB_H_
 #define _DTRACED_CLEANUPJOB_H_
 
-struct dtraced_state;
-struct dtraced_job;
+namespace dtraced {
 
-void handle_cleanup(struct dtraced_state *, struct dtraced_job *);
+struct state;
+struct job;
+
+void handle_cleanup(state *, dtraced::job *);
+
+}
 
 #endif // _DTRACED_CLEANUPJOB_H_

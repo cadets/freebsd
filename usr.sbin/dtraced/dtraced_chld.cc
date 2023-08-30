@@ -57,10 +57,12 @@
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
+namespace dtraced {
+
 void *
 manage_children(void *_s)
 {
-	struct dtraced_state *s = (struct dtraced_state *)_s;
+	state *s = (dtraced::state *)_s;
 	pid_t pid;
 	int shutdown = 0;
 
@@ -103,7 +105,7 @@ manage_children(void *_s)
 void *
 reap_children(void *_s)
 {
-	struct dtraced_state *s = (struct dtraced_state *)_s;
+	state *s = (dtraced::state *)_s;
 	int status, rv;
 
 	for (;;) {
@@ -117,3 +119,4 @@ reap_children(void *_s)
 	}
 }
 
+}

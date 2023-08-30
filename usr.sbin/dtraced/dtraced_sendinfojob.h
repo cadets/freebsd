@@ -42,9 +42,13 @@
 
 #include "dtraced.h"
 
-struct dtraced_state;
-struct dtraced_job;
+namespace dtraced {
 
-void handle_sendinfo(struct dtraced_state *, struct dtraced_job *);
+struct state;
+struct job;
+
+void handle_sendinfo(state *, dtraced::job *);
+
+}
 
 #endif // __DTRACED_SENDINFOJOB_H_

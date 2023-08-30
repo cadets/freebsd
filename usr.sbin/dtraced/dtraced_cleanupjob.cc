@@ -51,13 +51,15 @@
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
+namespace dtraced {
+
 void
-handle_cleanup(struct dtraced_state *s, struct dtraced_job *curjob)
+handle_cleanup(state *s, job *curjob)
 {
 	int fd;
 	dtraced_hdr_t header;
 	size_t buflen, i;
-	dtraced_fd_t *dfd = curjob->connsockfd;
+	dtraced::fd *dfd = curjob->connsockfd;
 	char **entries = curjob->j.cleanup.entries;
 	size_t n_entries = curjob->j.cleanup.n_entries;
 
@@ -92,4 +94,6 @@ handle_cleanup(struct dtraced_state *s, struct dtraced_job *curjob)
 
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))
 		ERR("reenable_fd() failed with: %m");
+}
+
 }

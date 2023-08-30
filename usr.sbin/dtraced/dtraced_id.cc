@@ -35,6 +35,8 @@
 #include "dtraced_id.h"
 #include "dtraced_job.h"
 
+namespace dtraced {
+
 static uint64_t
 dtraced_genid(void)
 {
@@ -44,7 +46,7 @@ dtraced_genid(void)
 }
 
 void
-dtraced_tag_job(uint64_t initiator_id, struct dtraced_job *j)
+dtraced_tag_job(uint64_t initiator_id, job *j)
 {
 	if (j == NULL)
 		return;
@@ -54,8 +56,10 @@ dtraced_tag_job(uint64_t initiator_id, struct dtraced_job *j)
 }
 
 void
-dtraced_tag_fd(dtraced_fd_t *dfd)
+dtraced_tag_fd(fd *dfd)
 {
 
 	dfd->id = dtraced_genid();
+}
+
 }

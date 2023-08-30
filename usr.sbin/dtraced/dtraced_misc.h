@@ -50,8 +50,6 @@
 
 #include "_dtraced_connection.h"
 
-struct dtraced_state;
-
 #if defined(__has_feature)
 #if __has_feature(thread_sanitizer)
 #define __NOSANITIZE_THREAD __attribute__((no_sanitize("thread")))
@@ -70,13 +68,19 @@ struct dtraced_state;
 #define DTRACED_CLOSEFD_SLEEPTIME	5	/* seconds */
 #define DTRACED_WAITPID_SLEEPTIME	10	/* seconds */
 
+namespace dtraced {
+
+struct state;
+
 void get_randname(char *, size_t);
 void freep(void *);
 void closefd_generic(int *);
 void closedir_generic(DIR **);
 void cleanup_pidfile(struct pidfh **);
 int  waitpid_timeout(pid_t, struct timespec *);
-int  dtraced_event(struct dtraced_state *, int, const struct kevent *, int,
+int  dtraced_event(state *, int, const struct kevent *, int,
     struct kevent *, int, const struct timespec *);
+
+}
 
 #endif // _DTRACED_MISC_H_

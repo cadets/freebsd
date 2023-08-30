@@ -34,15 +34,19 @@
 
 #include <stdint.h>
 
-typedef struct dtraced_id {
+namespace dtraced {
+
+struct id {
 	uint64_t job_initiator_id; /* who initiated this job? */
 	uint64_t job_id;
-} dtraced_id_t;
+};
 
-struct dtraced_job;
-struct dtraced_fd;
+struct job;
+struct fd;
 
-void dtraced_tag_job(uint64_t, struct dtraced_job *);
-void dtraced_tag_fd(struct dtraced_fd *);
+void dtraced_tag_job(uint64_t, job *);
+void dtraced_tag_fd(fd *);
+
+}
 
 #endif /* _DTRACED_ID_H_ */

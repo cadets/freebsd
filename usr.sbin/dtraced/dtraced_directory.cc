@@ -65,14 +65,16 @@
 
 #define SOCKFD_NAME "sub.sock"
 
-char DTRACED_INBOUNDDIR[MAXPATHLEN]  = "/var/ddtrace/inbound/";
-char DTRACED_OUTBOUNDDIR[MAXPATHLEN] = "/var/ddtrace/outbound/";
-char DTRACED_BASEDIR[MAXPATHLEN]     = "/var/ddtrace/base/";
+namespace dtraced {
+
+char INBOUNDDIR[MAXPATHLEN]  = "/var/ddtrace/inbound/";
+char OUTBOUNDDIR[MAXPATHLEN] = "/var/ddtrace/outbound/";
+char BASEDIR[MAXPATHLEN]     = "/var/ddtrace/base/";
 
 int
-write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
+write_data(dir *dir, unsigned char *data, size_t nbytes)
 {
-	struct dtraced_state *s;
+	state *s;
 	char donename[MAXPATHLEN];
 	size_t dirpathlen;
 	char tmpfile[MAXPATHLEN];
@@ -124,11 +126,11 @@ listen_dir(void *_dir)
 	int err, rval;
 	__cleanup(closefd_generic) int kq = -1;
 	struct kevent ev = {}, ev_data = {};
-	struct dtraced_state *s;
-	dtd_dir_t *dir;
+	state *s;
+	dir *dir;
 	struct timespec ts;
 
-	dir = (dtd_dir_t *)_dir;
+	dir = (dtraced::dir *)_dir;
 	s = dir->state;
 
 	if ((kq = kqueue()) == -1) {
@@ -175,7 +177,7 @@ listen_dir(void *_dir)
 }
 
 static int
-findpath(const char *p, dtd_dir_t *dir)
+findpath(const char *p, dir *dir)
 {
 	size_t i;
 
@@ -188,7 +190,7 @@ findpath(const char *p, dtd_dir_t *dir)
 }
 
 static int
-rmpath(const char *p, dtd_dir_t *dir)
+rmpath(const char *p, dir *dir)
 {
 	size_t i;
 
@@ -204,10 +206,10 @@ rmpath(const char *p, dtd_dir_t *dir)
 }
 
 static int
-expand_paths(dtd_dir_t *dir)
+expand_paths(dir *dir)
 {
 	char **newpaths;
-	struct dtraced_state *s;
+	state *s;
 
 	if (dir == NULL) {
 		ERR("Expand paths called with dir == NULL");
@@ -258,7 +260,7 @@ expand_paths(dtd_dir_t *dir)
 }
 
 int
-populate_existing(struct dirent *f, dtd_dir_t *dir)
+populate_existing(struct dirent *f, dir *dir)
 {
 	int err;
 
@@ -299,7 +301,7 @@ populate_existing(struct dirent *f, dtd_dir_t *dir)
 }
 
 int
-file_foreach(DIR *d, foreach_fn_t f, dtd_dir_t *dir)
+file_foreach(DIR *d, foreach_fn_t f, dir *dir)
 {
 	struct dirent *file;
 	int err;
@@ -315,19 +317,19 @@ file_foreach(DIR *d, foreach_fn_t f, dtd_dir_t *dir)
 	return (0);
 }
 
-dtd_dir_t *
+dir *
 dtd_mkdir(const char *path, foreach_fn_t fn)
 {
-	dtd_dir_t *dir;
+	dir *dir;
 	int retry;
 
-	dir = (dtd_dir_t *)malloc(sizeof(dtd_dir_t));
+	dir = (dtraced::dir *)malloc(sizeof(dtraced::dir));
 	if (dir == NULL) {
 		ERR("failed to allocate directory: %m");
 		abort();
 	}
 
-	memset(dir, 0, sizeof(dtd_dir_t));
+	memset(dir, 0, sizeof(dtraced::dir));
 
 	dir->dirpath = strdup(path);
 	if (dir->dirpath == NULL) {
@@ -378,7 +380,7 @@ againmkdir:
 }
 
 void
-dtd_closedir(dtd_dir_t *dir)
+dtd_closedir(dir *dir)
 {
 	size_t i;
 	int err;
@@ -406,11 +408,11 @@ dtd_closedir(dtd_dir_t *dir)
 
 
 int
-process_inbound(struct dirent *f, dtd_dir_t *dir)
+process_inbound(struct dirent *f, dir *dir)
 {
 	int err, jfd;
-	struct dtraced_job *job;
-	struct dtraced_state *s;
+	job *job;
+	state *s;
 	int idx;
 	pid_t pid;
 	char fullpath[MAXPATHLEN];
@@ -499,7 +501,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		 * want to process the same file in the future.
 		 */
 		LOCK(&s->socklistmtx);
-		for (dtraced_fd_t *dfd : s->sockfds) {
+		for (fd *dfd : s->sockfds) {
 			if (dfd->kind != DTRACED_KIND_CONSUMER)
 				continue;
 
@@ -861,9 +863,9 @@ dtraced_copyfile(const char *src, int fd_dst, const char *dst)
 }
 
 int
-process_base(struct dirent *f, dtd_dir_t *dir)
+process_base(struct dirent *f, dir *dir)
 {
-	struct dtraced_state *s;
+	state *s;
 	int idx, err;
 	char fullpath[MAXPATHLEN] = { 0 };
 	int status = 0, fd = -1;
@@ -1010,11 +1012,11 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 }
 
 int
-process_outbound(struct dirent *f, dtd_dir_t *dir)
+process_outbound(struct dirent *f, dir *dir)
 {
 	int err, jfd;
-	struct dtraced_job *job;
-	struct dtraced_state *s;
+	job *job;
+	state *s;
 	int idx;
 
 	if (dir == NULL) {
@@ -1061,7 +1063,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 
 	LOCK(&s->socklistmtx);
-	for (dtraced_fd_t *dfd : s->sockfds) {
+	for (fd *dfd : s->sockfds) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
 
@@ -1116,3 +1118,4 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	return (0);
 }
 
+}

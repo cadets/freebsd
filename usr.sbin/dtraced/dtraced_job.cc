@@ -59,20 +59,22 @@
 #include "dtraced_sendinfojob.h"
 #include "dtraced_state.h"
 
+namespace dtraced {
+
 /*
  * Allocates a new job and populates the fields used in all the jobs. The caller
  * is responsible for filling out kind-specific fields.
  */
-dtraced_job_t *
-dtraced_new_job(int job_kind, dtraced_fd_t *dfd)
+job *
+dtraced_new_job(int job_kind, fd *dfd)
 {
-	dtraced_job_t *j = NULL;
+	job *j = NULL;
 
-	j = (dtraced_job_t *)malloc(sizeof(dtraced_job_t));
+	j = (job *)malloc(sizeof(job));
 	if (j == NULL)
 		return (NULL);
 
-	memset(j, 0, sizeof(dtraced_job_t));
+	memset(j, 0, sizeof(job));
 
 	j->job = job_kind;
 	j->connsockfd = dfd;
@@ -88,14 +90,14 @@ dtraced_new_job(int job_kind, dtraced_fd_t *dfd)
 }
 
 static void
-free_elfwrite(dtraced_job_t *j)
+free_elfwrite(job *j)
 {
 
 	free(j->j.notify_elfwrite.path);
 }
 
 static void
-free_cleanup(dtraced_job_t *j)
+free_cleanup(job *j)
 {
 	size_t i;
 
@@ -107,7 +109,7 @@ free_cleanup(dtraced_job_t *j)
 }
 
 void
-dtraced_free_job(dtraced_job_t *j)
+dtraced_free_job(job *j)
 {
 	switch (j->job) {
 	case NOTIFY_ELFWRITE:
@@ -141,16 +143,16 @@ dtraced_free_job(dtraced_job_t *j)
  * the main loop.
  */
 int
-dispatch_event(struct dtraced_state *s, struct kevent *ev)
+dispatch_event(state *s, struct kevent *ev)
 {
-	dtraced_fd_t *dfd;
-	dtraced_job_t *job;
+	fd *dfd;
+	job *job;
 	int efd;
 
 	efd = (int)ev->ident;
 
 	if (ev->filter == EVFILT_READ) {
-		dfd = (dtraced_fd_t *)ev->udata;
+		dfd = (fd *)ev->udata;
 
 		/*
 		 * Read is a little bit more complicated than write, because we
@@ -209,8 +211,8 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 void *
 process_joblist(void *_s)
 {
-	struct dtraced_job *curjob;
-	struct dtraced_state *s = (struct dtraced_state *)_s;
+	job *curjob;
+	state *s = (state *)_s;
 #ifdef DTRACED_DEBUG
 	const char *jobname[] = {
 		[0]               = "NONE",
@@ -280,7 +282,7 @@ process_joblist(void *_s)
 }
 
 const char *
-dtraced_job_identifier(dtraced_job_t *j)
+dtraced_job_identifier(job *j)
 {
 
 	return ((const char *)j->ident_str);
@@ -289,7 +291,7 @@ dtraced_job_identifier(dtraced_job_t *j)
 void *
 clean_jobs(void *_s)
 {
-	struct dtraced_state *s = (struct dtraced_state *)_s;
+	state *s = (state *)_s;
 	int woken;
 
 	while (1) {
@@ -311,11 +313,11 @@ clean_jobs(void *_s)
 		 * We don't need to do anything with them, as the initiating
 		 * process is gone.
 		 */
-		for (dtraced_fd_t *dfd : s->deadfds) {
+		for (fd *dfd : s->deadfds) {
 			LOCK(&s->joblistmtx);
 			for (auto it = s->joblist.begin();
 			     it != s->joblist.end();) {
-				dtraced_job_t *j = *it;
+				job *j = *it;
 				if (j->identifier.job_initiator_id == dfd->id) {
 					it = s->joblist.erase(it);
 					dtraced_free_job(j);
@@ -330,4 +332,6 @@ clean_jobs(void *_s)
 	}
 
 	pthread_exit(_s);
+}
+
 }

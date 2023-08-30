@@ -55,14 +55,16 @@
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
+namespace dtraced {
+
 void
-handle_kill(struct dtraced_state *s, struct dtraced_job *curjob)
+handle_kill(state *s, job *curjob)
 {
 	int fd;
 	pid_t pid;
 	uint16_t vmid;
 	dtraced_hdr_t header;
-	dtraced_fd_t *dfd = curjob->connsockfd;
+	dtraced::fd *dfd = curjob->connsockfd;
 
 	fd = dfd->fd;
 	pid = curjob->j.kill.pid;
@@ -91,4 +93,6 @@ handle_kill(struct dtraced_state *s, struct dtraced_job *curjob)
 
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))
 		ERR("process_joblist: reenable_fd() failed with: %m");
+}
+
 }

@@ -53,11 +53,13 @@
 #include "dtraced_readjob.h"
 #include "dtraced_state.h"
 
+namespace dtraced {
+
 static int
-handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
+handle_elfmsg(state *s, dtraced_hdr_t *h,
     unsigned char *buf, size_t bsize)
 {
-	dtd_dir_t *dir;
+	dir *dir;
 
 	DEBUG("ELF file");
 
@@ -99,9 +101,9 @@ handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
 }
 
 static int
-handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
+handle_killmsg(state *s, dtraced_hdr_t *h)
 {
-	struct dtraced_job *job;
+	job *job;
 
 	/*
 	 * We enqueue a KILL message in the joblist
@@ -109,7 +111,7 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 	 * need to only do it for FORWARDERs.
 	 */
 	LOCK(&s->socklistmtx);
-	for (dtraced_fd_t *dfd : s->sockfds) {
+	for (fd *dfd : s->sockfds) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
 
@@ -140,12 +142,12 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 }
 
 static int
-handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
+handle_cleanupmsg(state *s, dtraced_hdr_t *h)
 {
 	size_t n_entries, nbytes, len, i, j;
 	ssize_t r;
 	char *buf, *_buf;
-	struct dtraced_job *job;
+	job *job;
 
 	/* XXX: Would be nice if __cleanup() did everything. */
 	__cleanup(freep) char **entries = NULL;
@@ -160,7 +162,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 	}
 
 	LOCK(&s->socklistmtx);
-	for (dtraced_fd_t *dfd : s->sockfds) {
+	for (fd *dfd : s->sockfds) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
 
@@ -241,10 +243,10 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 }
 
 void
-handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
+handle_read_data(state *s, job *curjob)
 {
 	int fd, err;
-	dtraced_fd_t *dfd = curjob->connsockfd;
+	dtraced::fd *dfd = curjob->connsockfd;
 	size_t nbytes, totalbytes;
 	ssize_t r;
 	unsigned char *_buf;
@@ -348,4 +350,6 @@ handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 	 */
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_READ))
 		ERR("reenable_fd() failed with: %m");
+}
+
 }

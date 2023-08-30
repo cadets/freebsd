@@ -45,17 +45,19 @@
 
 #include "dtraced_lock.h"
 
-extern char DTRACED_INBOUNDDIR[MAXPATHLEN];
-extern char DTRACED_OUTBOUNDDIR[MAXPATHLEN];
-extern char DTRACED_BASEDIR[MAXPATHLEN];
+namespace dtraced {
+
+extern char INBOUNDDIR[MAXPATHLEN];
+extern char OUTBOUNDDIR[MAXPATHLEN];
+extern char BASEDIR[MAXPATHLEN];
 
 
-struct dtd_dir;
-struct dtraced_state;
+struct dir;
+struct state;
 
-typedef int (*foreach_fn_t)(struct dirent *, struct dtd_dir *);
+typedef int (*foreach_fn_t)(struct dirent *, dir *);
 
-typedef struct dtd_dir {
+struct dir {
 	char *dirpath;		 /* directory path */
 	int dirfd;		 /* directory filedesc */
 	DIR *dir;		 /* directory pointer */
@@ -64,17 +66,19 @@ typedef struct dtd_dir {
 	size_t efile_len;	 /* number of elements */
 	mutex_t dirmtx;		 /* directory mutex */
 	foreach_fn_t processfn;	 /* function to process the dir */
-	struct dtraced_state *state; /* backpointer to state */
-} dtd_dir_t;
+	state *state; /* backpointer to state */
+};
 
-int         write_data(dtd_dir_t *, unsigned char *, size_t);
+int         write_data(dir *, unsigned char *, size_t);
 void        *listen_dir(void *);
-int         populate_existing(struct dirent *, dtd_dir_t *);
-int         file_foreach(DIR *, foreach_fn_t, dtd_dir_t *);
-dtd_dir_t   *dtd_mkdir(const char *, foreach_fn_t);
-void        dtd_closedir(dtd_dir_t *);
-int         process_inbound(struct dirent *, dtd_dir_t *);
-int         process_base(struct dirent *, dtd_dir_t *);
-int         process_outbound(struct dirent *, dtd_dir_t *);
+int         populate_existing(struct dirent *, dir *);
+int         file_foreach(DIR *, foreach_fn_t, dir *);
+dir   *dtd_mkdir(const char *, foreach_fn_t);
+void        dtd_closedir(dir *);
+int         process_inbound(struct dirent *, dir *);
+int         process_base(struct dirent *, dir *);
+int         process_outbound(struct dirent *, dir *);
+
+}
 
 #endif // _DTRACED_DIRECTORY_H_

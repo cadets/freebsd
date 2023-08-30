@@ -48,7 +48,9 @@
 #include "dtraced_directory.h"
 #include "dtraced_id.h"
 
-typedef struct dtraced_job {
+namespace dtraced {
+
+struct job {
 	int          job;        /* job kind */
 #define NOTIFY_ELFWRITE    1
 #define KILL               2
@@ -57,15 +59,15 @@ typedef struct dtraced_job {
 #define SEND_INFO          5
 #define JOB_LAST           5
 
-	dtraced_fd_t *connsockfd;    /* which socket do we send this on? */
-	dtraced_id_t identifier;     /* unique job identifier within this dtraced */
+	fd *connsockfd;    /* which socket do we send this on? */
+	id identifier;	   /* unique job identifier within this dtraced */
 	char         ident_str[256]; /* identifier string */
 
 	union {
 		struct {
 			size_t    pathlen; /* how long is path? */
 			char      *path;   /* path to file (based on dir) */
-			dtd_dir_t *dir;    /* base directory of path */
+			dir *dir;    /* base directory of path */
 			int       nosha;   /* do we want to checksum? */
 		} notify_elfwrite;
 
@@ -82,13 +84,15 @@ typedef struct dtraced_job {
 			size_t n_entries; /* number of entries */
 		} cleanup;
 	} j;
-} dtraced_job_t;
+};
 
-dtraced_job_t *dtraced_new_job(int, dtraced_fd_t *);
-void dtraced_free_job(dtraced_job_t *);
-int  dispatch_event(struct dtraced_state *, struct kevent *);
+job *dtraced_new_job(int, fd *);
+void dtraced_free_job(job *);
+int  dispatch_event(state *, struct kevent *);
 void *process_joblist(void *);
-const char *dtraced_job_identifier(dtraced_job_t *);
+const char *dtraced_job_identifier(job *);
 void *clean_jobs(void *);
+
+}
 
 #endif // _DTRACED_JOB_H_

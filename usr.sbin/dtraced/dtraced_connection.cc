@@ -64,6 +64,8 @@
 
 #define DTRACED_BACKLOG_SIZE 10000
 
+namespace dtraced {
+
 int
 send_ack(int fd)
 {
@@ -113,14 +115,14 @@ disable_fd(int kq, int fd, int filt)
 void *
 close_filedescs(void *_s)
 {
-	struct dtraced_state *s = (struct dtraced_state *)_s;
+	state *s = (dtraced::state *)_s;
 	int count;
 
 	while (s->shutdown.load() == 0) {
 		sleep(DTRACED_CLOSEFD_SLEEPTIME);
 		LOCK(&s->deadfdsmtx);
 		for (auto it = s->deadfds.begin(); it != s->deadfds.end();) {
-			dtraced_fd_t *dfd = *it;
+			fd *dfd = *it;
 			/*
 			 * If it's still referenced somewhere, we don't close
 			 * it. We'll pick it up on the next run.
@@ -155,9 +157,9 @@ close_filedescs(void *_s)
 }
 
 static void
-enqueue_info_message(struct dtraced_state *s, dtraced_fd_t *dfd)
+enqueue_info_message(state *s, dtraced::fd *dfd)
 {
-	struct dtraced_job *job;
+	job *job;
 
 	job = dtraced_new_job(SEND_INFO, dfd);
 	if (job == NULL)
@@ -169,11 +171,11 @@ enqueue_info_message(struct dtraced_state *s, dtraced_fd_t *dfd)
 }
 
 static int
-accept_new_connection(struct dtraced_state *s)
+accept_new_connection(state *s)
 {
 	int connsockfd;
 	int on = 1;
-	dtraced_fd_t *dfd;
+	fd *dfd;
 	dtd_initmsg_t initmsg;
 
 	memset(&initmsg, 0, sizeof(initmsg));
@@ -204,13 +206,13 @@ accept_new_connection(struct dtraced_state *s)
 		return (-1);
 	}
 
-	dfd = (dtraced_fd_t *)malloc(sizeof(dtraced_fd_t));
+	dfd = (fd *)malloc(sizeof(dtraced::fd));
 	if (dfd == NULL) {
 		ERR("malloc() failed with: %m");
 		abort();
 	}
 
-	memset(dfd, 0, sizeof(dtraced_fd_t));
+	memset(dfd, 0, sizeof(fd));
 	dfd->fd = connsockfd;
 	dfd->kind = initmsg.kind;
 	dfd->subs = initmsg.subs;
@@ -245,7 +247,7 @@ accept_new_connection(struct dtraced_state *s)
 }
 
 static void
-kill_socket(struct dtraced_state *s, dtraced_fd_t *dfd)
+kill_socket(state *s, dtraced::fd *dfd)
 {
 	/* Remove it from the socket list and shutdown */
 	LOCK(&s->socklistmtx);
@@ -278,11 +280,11 @@ process_consumers(void *_s)
 	int err;
 	int new_events;
 	__cleanup(closefd_generic) int kq = -1;
-	dtraced_fd_t *dfd;
+	fd *dfd;
 	int efd;
 	int dispatch;
 	int i;
-	struct dtraced_state *s = (struct dtraced_state *)_s;
+	state *s = (dtraced::state *)_s;
 	struct timespec ts;
 
 	struct kevent event[1] = { {} };
@@ -338,7 +340,7 @@ process_consumers(void *_s)
 		}
 
 		for (i = 0; i < new_events; i++) {
-			dfd = (dtraced_fd_t *)event[i].udata;
+			dfd = (fd *)event[i].udata;
 			efd = event[i].ident;
 
 			if (efd == s->sockfd && event[i].flags & EV_ERROR) {
@@ -427,7 +429,7 @@ process_consumers(void *_s)
 				dispatch = 0;
 
 				LOCK(&s->joblistmtx);
-				for (dtraced_job_t *job : s->joblist) {
+				for (job *job : s->joblist) {
 					if (job->connsockfd == dfd)
 						dispatch = 1;
 				}
@@ -454,7 +456,7 @@ process_consumers(void *_s)
 }
 
 int
-setup_sockfd(struct dtraced_state *s)
+setup_sockfd(state *s)
 {
 	int err;
 	struct sockaddr_un addr;
@@ -505,7 +507,7 @@ setup_sockfd(struct dtraced_state *s)
 }
 
 int
-destroy_sockfd(struct dtraced_state *s)
+destroy_sockfd(state *s)
 {
 	if (close(s->sockfd) != 0) {
 		ERR("Failed to close %d: %m", s->sockfd);
@@ -518,4 +520,6 @@ destroy_sockfd(struct dtraced_state *s)
 		ERR("Failed to remove %s: %m", DTRACED_SOCKPATH);
 
 	return (0);
+}
+
 }

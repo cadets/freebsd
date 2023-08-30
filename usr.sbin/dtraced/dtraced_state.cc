@@ -56,8 +56,10 @@
 #include "dtraced_lock.h"
 #include "dtraced_state.h"
 
+namespace dtraced {
+
 static int
-setup_threads(struct dtraced_state *s)
+setup_threads(state *s)
 {
 	int err;
 	pthread_t *threads;
@@ -83,8 +85,8 @@ setup_threads(struct dtraced_state *s)
 	sem_init(&s->socksema, 0, 0);
 
 	if (s->ctrlmachine == 0) {
-		err = pthread_create(
-		    &s->dtt_listentd, NULL, listen_dttransport, s);
+		err = pthread_create(&s->dtt_listentd, NULL,
+		    dtraced::listen_dttransport, s);
 		if (err != 0) {
 			ERR("Failed to create the dttransport thread: %m");
 			return (-1);
@@ -94,8 +96,8 @@ setup_threads(struct dtraced_state *s)
 		 * The socket can't be connected at this point because
 		 * accept_subs is not running. Need a semaphore.
 		 */
-		err = pthread_create(
-		    &s->dtt_writetd, NULL, write_dttransport, s);
+		err = pthread_create(&s->dtt_writetd, NULL,
+		    dtraced::write_dttransport, s);
 		if (err != 0) {
 			ERR("Failed to create the dttransport thread: %m");
 			return (-1);
@@ -148,7 +150,7 @@ setup_threads(struct dtraced_state *s)
 }
 
 int
-init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
+init_state(state *s, int ctrlmachine, int nosha, int n_threads,
     const char **argv)
 {
 	int err;
@@ -224,19 +226,19 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 		}
 	}
 
-	s->outbounddir = dtd_mkdir(DTRACED_OUTBOUNDDIR, &process_outbound);
+	s->outbounddir = dtd_mkdir(OUTBOUNDDIR, &process_outbound);
 	if (s->outbounddir == NULL) {
 		ERR("Failed creating outbound directory: %m");
 		return (-1);
 	}
 
-	s->inbounddir = dtd_mkdir(DTRACED_INBOUNDDIR, &process_inbound);
+	s->inbounddir = dtd_mkdir(INBOUNDDIR, &process_inbound);
 	if (s->inbounddir == NULL) {
 		ERR("Failed creating inbound directory: %m");
 		return (-1);
 	}
 
-	s->basedir = dtd_mkdir(DTRACED_BASEDIR, &process_base);
+	s->basedir = dtd_mkdir(BASEDIR, &process_base);
 	if (s->basedir == NULL) {
 		ERR("Failed creating base directory: %m");
 		return (-1);
@@ -281,7 +283,7 @@ init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
 }
 
 int
-destroy_state(struct dtraced_state *s)
+destroy_state(state *s)
 {
 	size_t i;
 	int err;
@@ -387,7 +389,7 @@ destroy_state(struct dtraced_state *s)
 }
 
 void
-_broadcast_shutdown(struct dtraced_state *s, const char *errfile, int errline)
+_broadcast_shutdown(state *s, const char *errfile, int errline)
 {
 	fprintf(stderr, "%s (line %d): broadcasting shutdown", errfile, errline);
 	s->shutdown.store(1);
@@ -403,4 +405,6 @@ _broadcast_shutdown(struct dtraced_state *s, const char *errfile, int errline)
 	LOCK(&s->deadfdsmtx);
 	SIGNAL(&s->jobcleancv);
 	UNLOCK(&s->deadfdsmtx);
+}
+
 }

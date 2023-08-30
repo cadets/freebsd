@@ -45,17 +45,19 @@
 
 #include "_dtraced_connection.h"
 
-struct dtraced_state;
+namespace dtraced {
+
+struct state;
 
 static __inline void
-fd_acquire(dtraced_fd_t *dfd)
+fd_acquire(fd *dfd)
 {
 
 	dfd->__count.fetch_add(1);
 }
 
 static __inline void
-fd_release(dtraced_fd_t *dfd)
+fd_release(fd *dfd)
 {
 	int count = dfd->__count.fetch_sub(1);
 	if (count < 0)
@@ -64,12 +66,14 @@ fd_release(dtraced_fd_t *dfd)
 
 void *close_filedescs(void *);
 void *process_consumers(void *);
-int  setup_sockfd(struct dtraced_state *);
-int  destroy_sockfd(struct dtraced_state *);
+int  setup_sockfd(state *);
+int  destroy_sockfd(state *);
 int  send_ack(int);
 int  send_nak(int);
 int  enable_fd(int, int, int, void *);
 int  reenable_fd(int, int, int);
 int  disable_fd(int, int, int);
+
+}
 
 #endif // _DTRACED_CONNECTION_H_

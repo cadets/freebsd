@@ -65,10 +65,12 @@
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
+namespace dtraced {
+
 static size_t dirlen;
 
 static void
-dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
+dtt_elf(state *s, dtt_entry_t *e)
 {
 	static char tmpfile[MAXPATHLEN];
 	static int fd = 0;
@@ -149,7 +151,7 @@ dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 }
 
 static void
-dtt_kill(struct dtraced_state *s, dtt_entry_t *e)
+dtt_kill(state *s, dtt_entry_t *e)
 {
 	LOCK(&s->killmtx);
 	s->pids_to_kill.push(e->u.kill.pid);
@@ -158,7 +160,7 @@ dtt_kill(struct dtraced_state *s, dtt_entry_t *e)
 }
 
 static void
-dtt_cleanup(struct dtraced_state *s)
+dtt_cleanup(state *s)
 {
 	LOCK(&s->pidlistmtx);
 	while (!s->pidlist.empty()) {
@@ -176,7 +178,7 @@ dtt_cleanup(struct dtraced_state *s)
 }
 
 static int
-setup_connection(struct dtraced_state *s)
+setup_connection(state *s)
 {
 	dtd_initmsg_t initmsg;
 	struct sockaddr_un addr;
@@ -242,7 +244,7 @@ setup_connection(struct dtraced_state *s)
 void *
 listen_dttransport(void *_s)
 {
-	struct dtraced_state *s = (struct dtraced_state *)_s;
+	state *s = (state *)_s;
 	dtt_entry_t e;
 	int rval;
 
@@ -304,7 +306,7 @@ void *
 write_dttransport(void *_s)
 {
 	__cleanup(closefd_generic) int sockfd = -1;
-	struct dtraced_state *s = (struct dtraced_state *)_s;
+	state *s = (state *)_s;
 	dtt_entry_t e;
 	size_t lentoread, len, totallen;
 	uint32_t identifier;
@@ -423,4 +425,6 @@ write_dttransport(void *_s)
 	}
 
 	pthread_exit(s);
+}
+
 }

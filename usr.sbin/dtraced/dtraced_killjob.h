@@ -41,9 +41,13 @@
 #ifndef __DTRACED_KILLJOB_H_
 #define __DTRACED_KILLJOB_H_
 
-struct dtraced_state;
-struct dtraced_job;
+namespace dtraced {
 
-void handle_kill(struct dtraced_state *, struct dtraced_job *);
+struct state;
+struct job;
+
+void handle_kill(state *, job *);
+
+}
 
 #endif // __DTRACED_KILLJOB_H_

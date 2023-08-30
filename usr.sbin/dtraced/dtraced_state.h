@@ -54,24 +54,25 @@
 
 #define unlikely(x) __predict_false(x)
 
-struct dtraced_job;
-typedef struct dtraced_job dtraced_job_t;
+namespace dtraced {
+
+struct job;
 
 /*
  * dtraced state structure. This contains everything relevant to dtraced's
  * state management, such as files that exist, connected sockets, etc.
  */
-struct dtraced_state {
-	const char **argv;      /* Needed in case we need to re-exec. */
-	int ctrlmachine;        /* is this a control machine? */
+struct state {
+	const char **argv;	/* Needed in case we need to re-exec. */
+	int ctrlmachine;	/* is this a control machine? */
 	size_t threadpool_size; /* size of the thread pool (workers) */
 
-	dtd_dir_t *inbounddir;  /* /var/ddtrace/inbound */
-	dtd_dir_t *outbounddir; /* /var/ddtrace/outbound */
-	dtd_dir_t *basedir;     /* /var/ddtrace/base */
+	dir *inbounddir;	/* /var/ddtrace/inbound */
+	dir *outbounddir; /* /var/ddtrace/outbound */
+	dir *basedir;	/* /var/ddtrace/base */
 
-	pthread_t inboundtd;    /* inbound monitoring thread */
-	pthread_t basetd;       /* base monitoring thread */
+	pthread_t inboundtd; /* inbound monitoring thread */
+	pthread_t basetd;    /* base monitoring thread */
 	/* the outbound monitoring thread is the main thread */
 
 	/*
@@ -80,57 +81,57 @@ struct dtraced_state {
 	mutex_t socklistmtx; /* mutex fos sockfds */
 
 	/* list of sockets we know about */
-	std::unordered_set<dtraced_fd_t *> sockfds;
+	std::unordered_set<fd *> sockfds;
 
 	/*
 	 * Configuration socket.
 	 */
 	mutex_t sockmtx;  /* config socket mutex */
 	pthread_t socktd; /* config socket thread */
-	int sockfd;       /* config socket filedesc */
-	sem_t socksema;   /* config socket semaphore */
+	int sockfd;	  /* config socket filedesc */
+	sem_t socksema;	  /* config socket semaphore */
 
 	/*
 	 * dttransport fd and threads
 	 */
-	int dtt_fd;             /* dttransport filedesc */
+	int dtt_fd;		/* dttransport filedesc */
 	pthread_t dtt_listentd; /* read() on dtt_fd */
-	pthread_t dtt_writetd;  /* write() on dtt_fd */
+	pthread_t dtt_writetd;	/* write() on dtt_fd */
 
 	/*
 	 * Thread pool management.
 	 */
-	pthread_t *workers;         /* thread pool for the joblist */
-	mutex_t joblistmtx;         /* joblist mutex */
-	std::list<dtraced_job_t *> joblist;
+	pthread_t *workers; /* thread pool for the joblist */
+	mutex_t joblistmtx; /* joblist mutex */
+	std::list<job *> joblist;
 	mutex_t dispatched_jobsmtx; /* dispatched joblist mutex */
 
 	/* jobs to be picked up by the workers */
-	std::list<dtraced_job_t *> dispatched_jobs;
-	pthread_cond_t dispatched_jobscv;   /* dispatched joblist condvar */
+	std::list<job *> dispatched_jobs;
+	pthread_cond_t dispatched_jobscv; /* dispatched joblist condvar */
 
 	/*
 	 * Children management.
 	 */
-	pthread_t killtd;      /* handle sending kill(SIGTERM) to the guest */
+	pthread_t killtd; /* handle sending kill(SIGTERM) to the guest */
 	mutex_t killmtx;  /* mutex of the kill list */
 	std::queue<pid_t> pids_to_kill; /* a list of pids to kill */
-	pthread_cond_t killcv; /* kill list condvar */
-	pthread_t reaptd;      /* handle reaping children */
+	pthread_cond_t killcv;		/* kill list condvar */
+	pthread_t reaptd;		/* handle reaping children */
 
 	std::unordered_set<pid_t> pidlist; /* a list of pids running */
-	mutex_t pidlistmtx;  /* mutex of the pidlist */
+	mutex_t pidlistmtx;		   /* mutex of the pidlist */
 
 	/*
 	 * filedesc management.
 	 */
-	 /* dead file descriptor list (to close) */
-	std::unordered_set<dtraced_fd_t *> deadfds;
+	/* dead file descriptor list (to close) */
+	std::unordered_set<fd *> deadfds;
 	mutex_t deadfdsmtx; /* mutex for deadfds */
 	pthread_t closetd;  /* file descriptor closing thread */
 
-	pthread_cond_t jobcleancv;  /* job cleaning thread condvar */
-	pthread_t jobcleantd;       /* job cleaning thread */
+	pthread_cond_t jobcleancv; /* job cleaning thread condvar */
+	pthread_t jobcleantd;	   /* job cleaning thread */
 
 	/*
 	 * Consumer threads
@@ -138,18 +139,20 @@ struct dtraced_state {
 	pthread_t consumer_listentd; /* handle consumer messages */
 	pthread_t consumer_writetd;  /* send messages to consumers */
 
-	std::atomic_int shutdown;    /* shutdown flag */
-	int nosha;                   /* do we want to checksum? */
-	int kq_hdl;                  /* event loop kqueue */
+	std::atomic_int shutdown; /* shutdown flag */
+	int nosha;		  /* do we want to checksum? */
+	int kq_hdl;		  /* event loop kqueue */
 
 	std::list<std::array<char, DTRACED_PROGIDENTLEN>> identlist;
-	mutex_t identlistmtx;        /* mutex protecting the ident list */
+	mutex_t identlistmtx; /* mutex protecting the ident list */
 };
 
-int init_state(struct dtraced_state *, int, int, int, const char **);
-int destroy_state(struct dtraced_state *);
-void _broadcast_shutdown(struct dtraced_state *, const char *, int);
+int init_state(state *, int, int, int, const char **);
+int destroy_state(state *);
 
-#define broadcast_shutdown(_a)	(_broadcast_shutdown(_a,__FILE__,__LINE__))
+void _broadcast_shutdown(state *, const char *, int);
+#define broadcast_shutdown(_a) (_broadcast_shutdown(_a, __FILE__, __LINE__))
+
+}
 
 #endif // _DTRACED_STATE_H_
