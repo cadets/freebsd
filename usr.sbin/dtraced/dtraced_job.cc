@@ -208,7 +208,7 @@ dispatch_event(state *s, struct kevent *ev)
 	return (0);
 }
 
-void *
+void
 process_joblist(void *_s)
 {
 	job *curjob;
@@ -278,7 +278,7 @@ process_joblist(void *_s)
 		dtraced_free_job(curjob);
 	}
 
-	pthread_exit(s);
+	return;
 }
 
 const char *
@@ -288,7 +288,7 @@ dtraced_job_identifier(job *j)
 	return ((const char *)j->ident_str);
 }
 
-void *
+void
 clean_jobs(void *_s)
 {
 	state *s = (state *)_s;
@@ -305,7 +305,7 @@ clean_jobs(void *_s)
 
 		if (unlikely(s->shutdown.load() == 1)) {
 			UNLOCK(&s->deadfdsmtx);
-			pthread_exit(_s);
+			return;
 		}
 
 		/*
@@ -331,7 +331,7 @@ clean_jobs(void *_s)
 		UNLOCK(&s->deadfdsmtx);
 	}
 
-	pthread_exit(_s);
+	return;
 }
 
 }

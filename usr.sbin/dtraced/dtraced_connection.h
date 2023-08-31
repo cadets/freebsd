@@ -64,8 +64,8 @@ fd_release(fd *dfd)
 		abort();
 }
 
-void *close_filedescs(void *);
-void *process_consumers(void *);
+void close_filedescs(void *);
+void process_consumers(void *);
 int  setup_sockfd(state *);
 int  destroy_sockfd(state *);
 int  send_ack(int);

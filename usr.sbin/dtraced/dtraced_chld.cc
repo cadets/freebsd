@@ -59,7 +59,7 @@
 
 namespace dtraced {
 
-void *
+void
 manage_children(void *_s)
 {
 	state *s = (dtraced::state *)_s;
@@ -78,7 +78,7 @@ manage_children(void *_s)
 
 		if (unlikely(shutdown == 1)) {
 			UNLOCK(&s->killmtx);
-			pthread_exit(_s);
+			return;
 		}
 
 		pid = s->pids_to_kill.front();
@@ -98,11 +98,9 @@ manage_children(void *_s)
 				ERR("pid %d does not exist", pid);
 		}
 	}
-
-	return (_s);
 }
 
-void *
+void
 reap_children(void *_s)
 {
 	state *s = (dtraced::state *)_s;
@@ -115,7 +113,7 @@ reap_children(void *_s)
 		} while (rv != -1 && rv != 0);
 
 		if (s->shutdown.load() != 0)
-			pthread_exit(_s);
+			return;
 	}
 }
 

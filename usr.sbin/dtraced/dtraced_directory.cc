@@ -120,7 +120,7 @@ write_data(dir *dir, unsigned char *data, size_t nbytes)
 	return (0);
 }
 
-void *
+void
 listen_dir(void *_dir)
 {
 	int err, rval;
@@ -135,7 +135,7 @@ listen_dir(void *_dir)
 
 	if ((kq = kqueue()) == -1) {
 		ERR("Failed to create a kqueue %m");
-		return (NULL);
+		return;
 	}
 
 	EV_SET(&ev, dir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR | EV_ENABLE,
@@ -153,7 +153,7 @@ listen_dir(void *_dir)
 			ERR("dtraced_event failed on %s: %m",
 			    dir->dirpath);
 			broadcast_shutdown(s);
-			return (NULL);
+			return;
 		}
 
 		if (ev_data.flags == EV_ERROR) {
@@ -168,12 +168,10 @@ listen_dir(void *_dir)
 				ERR("Failed to process new files in %s",
 				    dir->dirpath);
 				broadcast_shutdown(s);
-				return (NULL);
+				return;
 			}
 		}
 	}
-
-	return (s);
 }
 
 static int

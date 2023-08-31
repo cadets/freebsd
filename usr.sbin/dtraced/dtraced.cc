@@ -341,10 +341,7 @@ againefd:
 		return (EXIT_FAILURE);
 	}
 
-	if (dtraced::listen_dir(state.outbounddir) == NULL) {
-		ERR("listen_dir() on %s failed", state.outbounddir->dirpath);
-		return (EXIT_FAILURE);
-	}
+	dtraced::listen_dir(state.outbounddir);
 
 	errval = dtraced::destroy_state(&state);
 	if (errval != 0) {

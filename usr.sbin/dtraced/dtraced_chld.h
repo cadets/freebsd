@@ -45,8 +45,8 @@
 
 namespace dtraced {
 
-void *manage_children(void *);
-void *reap_children(void *);
+void manage_children(void *);
+void reap_children(void *);
 
 }
 

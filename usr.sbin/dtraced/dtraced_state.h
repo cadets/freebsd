@@ -50,7 +50,9 @@
 #include <array>
 #include <list>
 #include <queue>
+#include <thread>
 #include <unordered_set>
+#include <vector>
 
 #define unlikely(x) __predict_false(x)
 
@@ -67,12 +69,12 @@ struct state {
 	int ctrlmachine;	/* is this a control machine? */
 	size_t threadpool_size; /* size of the thread pool (workers) */
 
-	dir *inbounddir;	/* /var/ddtrace/inbound */
+	dir *inbounddir;  /* /var/ddtrace/inbound */
 	dir *outbounddir; /* /var/ddtrace/outbound */
-	dir *basedir;	/* /var/ddtrace/base */
+	dir *basedir;	  /* /var/ddtrace/base */
 
-	pthread_t inboundtd; /* inbound monitoring thread */
-	pthread_t basetd;    /* base monitoring thread */
+	std::thread inboundtd; /* inbound monitoring thread */
+	std::thread basetd;    /* base monitoring thread */
 	/* the outbound monitoring thread is the main thread */
 
 	/*
@@ -87,7 +89,7 @@ struct state {
 	 * Configuration socket.
 	 */
 	mutex_t sockmtx;  /* config socket mutex */
-	pthread_t socktd; /* config socket thread */
+	std::thread socktd; /* config socket thread */
 	int sockfd;	  /* config socket filedesc */
 	sem_t socksema;	  /* config socket semaphore */
 
@@ -95,13 +97,13 @@ struct state {
 	 * dttransport fd and threads
 	 */
 	int dtt_fd;		/* dttransport filedesc */
-	pthread_t dtt_listentd; /* read() on dtt_fd */
-	pthread_t dtt_writetd;	/* write() on dtt_fd */
+	std::thread dtt_listentd; /* read() on dtt_fd */
+	std::thread dtt_writetd;	/* write() on dtt_fd */
 
 	/*
 	 * Thread pool management.
 	 */
-	pthread_t *workers; /* thread pool for the joblist */
+	std::vector<std::thread> workers; /* thread pool for the joblist */
 	mutex_t joblistmtx; /* joblist mutex */
 	std::list<job *> joblist;
 	mutex_t dispatched_jobsmtx; /* dispatched joblist mutex */
@@ -113,11 +115,11 @@ struct state {
 	/*
 	 * Children management.
 	 */
-	pthread_t killtd; /* handle sending kill(SIGTERM) to the guest */
+	std::thread killtd; /* handle sending kill(SIGTERM) to the guest */
 	mutex_t killmtx;  /* mutex of the kill list */
 	std::queue<pid_t> pids_to_kill; /* a list of pids to kill */
 	pthread_cond_t killcv;		/* kill list condvar */
-	pthread_t reaptd;		/* handle reaping children */
+	std::thread reaptd;		/* handle reaping children */
 
 	std::unordered_set<pid_t> pidlist; /* a list of pids running */
 	mutex_t pidlistmtx;		   /* mutex of the pidlist */
@@ -128,16 +130,16 @@ struct state {
 	/* dead file descriptor list (to close) */
 	std::unordered_set<fd *> deadfds;
 	mutex_t deadfdsmtx; /* mutex for deadfds */
-	pthread_t closetd;  /* file descriptor closing thread */
+	std::thread closetd;  /* file descriptor closing thread */
 
 	pthread_cond_t jobcleancv; /* job cleaning thread condvar */
-	pthread_t jobcleantd;	   /* job cleaning thread */
+	std::thread jobcleantd;	   /* job cleaning thread */
 
 	/*
 	 * Consumer threads
 	 */
-	pthread_t consumer_listentd; /* handle consumer messages */
-	pthread_t consumer_writetd;  /* send messages to consumers */
+	std::thread consumer_listentd; /* handle consumer messages */
+	std::thread consumer_writetd;  /* send messages to consumers */
 
 	std::atomic_int shutdown; /* shutdown flag */
 	int nosha;		  /* do we want to checksum? */

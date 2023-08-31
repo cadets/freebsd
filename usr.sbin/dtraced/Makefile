@@ -27,7 +27,7 @@ WARNS?=		3
 CFLAGS+=	-I${SRCTOP}/sys/dev/dttransport
 
 CFLAGS+=	-Wall -Wextra -Wno-c11-extensions
-CXXFLAGS+=	-Wall -Wextra -Wno-c11-extensions -Wno-gcc-compat -Wno-unknown-pragmas -Wno-c99-designator
+CXXFLAGS+=	-Wno-c11-extensions -Wno-gcc-compat -Wno-gnu-anonymous-struct -Wno-zero-length-array -Wno-c99-designator
 CSTD:=c11
 CXXSTD:=c++17
 

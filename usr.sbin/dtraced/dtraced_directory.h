@@ -70,7 +70,7 @@ struct dir {
 };
 
 int         write_data(dir *, unsigned char *, size_t);
-void        *listen_dir(void *);
+void        listen_dir(void *);
 int         populate_existing(struct dirent *, dir *);
 int         file_foreach(DIR *, foreach_fn_t, dir *);
 dir   *dtd_mkdir(const char *, foreach_fn_t);

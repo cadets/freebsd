@@ -43,8 +43,8 @@
 
 namespace dtraced {
 
-void *listen_dttransport(void *);
-void *write_dttransport(void *);
+void listen_dttransport(void *);
+void write_dttransport(void *);
 
 }
 

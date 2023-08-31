@@ -112,7 +112,7 @@ disable_fd(int kq, int fd, int filt)
 	return (kevent(kq, change_event, 1, NULL, 0, NULL));
 }
 
-void *
+void
 close_filedescs(void *_s)
 {
 	state *s = (dtraced::state *)_s;
@@ -153,7 +153,7 @@ close_filedescs(void *_s)
 		UNLOCK(&s->deadfdsmtx);
 	}
 
-	pthread_exit(_s);
+	return;
 }
 
 static void
@@ -274,7 +274,7 @@ disable_rw(int kq, int fd)
 	    disable_fd(kq, fd, EVFILT_WRITE));
 }
 
-void *
+void
 process_consumers(void *_s)
 {
 	int err;
@@ -292,34 +292,28 @@ process_consumers(void *_s)
 	/*
 	 * Sanity checks on the state.
 	 */
-	if (s == NULL)
-		pthread_exit(NULL);
-
-	if (s->socktd == NULL)
-		pthread_exit(NULL);
-
-	if (s->sockfd == -1)
-		pthread_exit(NULL);
+	if (s == NULL || s->sockfd == -1)
+		return;
 
 	err = listen(s->sockfd, DTRACED_BACKLOG_SIZE);
 	if (err != 0) {
 		ERR("Failed to listen on %d: %m", s->sockfd);
 		broadcast_shutdown(s);
-		pthread_exit(NULL);
+		return;
 	}
 
 	kq = kqueue();
 	if (kq == -1) {
 		ERR("Failed to create dtraced socket kqueue: %m");
 		broadcast_shutdown(s);
-		pthread_exit(NULL);
+		return;
 	}
 
 	if (enable_fd(kq, s->sockfd, EVFILT_READ, NULL)) {
 		ERR("Failed to register listening socket kevent: %m");
 		close(kq);
 		broadcast_shutdown(s);
-		pthread_exit(NULL);
+		return;
 	}
 
 	s->kq_hdl = kq;
@@ -336,7 +330,7 @@ process_consumers(void *_s)
 		if (new_events == -1) {
 			ERR("dtraced_event failed: %m");
 			broadcast_shutdown(s);
-			pthread_exit(NULL);
+			return;
 		}
 
 		for (i = 0; i < new_events; i++) {
@@ -346,13 +340,13 @@ process_consumers(void *_s)
 			if (efd == s->sockfd && event[i].flags & EV_ERROR) {
 				ERR("error on %s: %m", DTRACED_SOCKPATH);
 				broadcast_shutdown(s);
-				pthread_exit(NULL);
+				return;
 			}
 
 			if (efd == s->sockfd && event[i].flags & EV_EOF) {
 				ERR("EOF on %s: %m", DTRACED_SOCKPATH);
 				broadcast_shutdown(s);
-				pthread_exit(NULL);
+				return;
 			}
 
 			if (event[i].flags & EV_ERROR ||
@@ -365,7 +359,7 @@ process_consumers(void *_s)
 				if (disable_rw(s->kq_hdl, efd)) {
 					ERR("disable_rw() failed: %m");
 					broadcast_shutdown(s);
-					pthread_exit(NULL);
+					return;
 				}
 
 				kill_socket(s, dfd);
@@ -393,7 +387,7 @@ process_consumers(void *_s)
 				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
 					ERR("disable_fd() failed with: %m");
 					broadcast_shutdown(s);
-					pthread_exit(NULL);
+					return;
 				}
 
 				/*
@@ -413,7 +407,7 @@ process_consumers(void *_s)
 				if (dispatch_event(s, &event[i])) {
 					ERR("dispatch_event() failed");
 					broadcast_shutdown(s);
-					pthread_exit(NULL);
+					return;
 				}
 			} else if (event[i].filter == EVFILT_WRITE) {
 				assert(dfd != NULL && "dfd should not be NULL");
@@ -423,7 +417,7 @@ process_consumers(void *_s)
 				if (disable_fd(kq, efd, EVFILT_WRITE)) {
 					ERR("disable_fd() failed with: %m");
 					broadcast_shutdown(s);
-					pthread_exit(NULL);
+					return;
 				}
 
 				dispatch = 0;
@@ -444,7 +438,7 @@ process_consumers(void *_s)
 					ERR("dispatch_event() failed");
 					UNLOCK(&s->joblistmtx);
 					broadcast_shutdown(s);
-					pthread_exit(NULL);
+					return;
 				}
 
 				UNLOCK(&s->joblistmtx);
@@ -452,7 +446,7 @@ process_consumers(void *_s)
 		}
 	}
 
-	pthread_exit(s);
+	return;
 }
 
 int

@@ -125,7 +125,7 @@ dtt_elf(state *s, dtt_entry_t *e)
 	if (e->u.elf.hasmore == 0) {
 		if (write(fd, elf, len) < 0) {
 			if (errno == EINTR)
-				pthread_exit(s);
+				return;
 
 			ERR("failed to write data to %s: %m", tmpfile);
 		}
@@ -241,7 +241,7 @@ setup_connection(state *s)
  * Runs in its own thread. Reads ELF files from dttransport and puts them in
  * the inbound directory.
  */
-void *
+void
 listen_dttransport(void *_s)
 {
 	state *s = (state *)_s;
@@ -265,7 +265,7 @@ listen_dttransport(void *_s)
 
 				ERR("failed to read event: %m");
 				broadcast_shutdown(s);
-				pthread_exit(NULL);
+				return;
 			}
 		}
 
@@ -276,7 +276,7 @@ listen_dttransport(void *_s)
 			ERR("expected to read size %zu, got %zu", sizeof(e),
 			    rval);
 			broadcast_shutdown(s);
-			pthread_exit(NULL);
+			return;
 		}
 
 		switch (e.event_kind) {
@@ -299,10 +299,10 @@ listen_dttransport(void *_s)
 		}
 	}
 
-	pthread_exit(s);
+	return;
 }
 
-void *
+void
 write_dttransport(void *_s)
 {
 	__cleanup(closefd_generic) int sockfd = -1;
@@ -320,7 +320,7 @@ write_dttransport(void *_s)
 	sockfd = setup_connection(s);
 	if (sockfd == -1) {
 		broadcast_shutdown(s);
-		pthread_exit(NULL);
+		return;
 	}
 
 	for (;;) {
@@ -341,27 +341,27 @@ write_dttransport(void *_s)
 
 				ERR("failed to recv from sub.sock: %m");
 				broadcast_shutdown(s);
-				pthread_exit(NULL);
+				return;
 			}
 		}
 
 		if (unlikely(s->shutdown.load())) {
 			broadcast_shutdown(s);
-			pthread_exit(s);
+			return;
 		}
 
 		if (unlikely(r != DTRACED_MSGHDRSIZE)) {
 			ERR("expected to read size %zu, got %zu",
 			    DTRACED_MSGHDRSIZE, r);
 			broadcast_shutdown(s);
-			pthread_exit(NULL);
+			return;
 		}
 
 		if (unlikely(DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF)) {
 			ERR("Received unknown message type: %lu",
 			    DTRACED_MSG_TYPE(header));
 			broadcast_shutdown(s);
-			pthread_exit(NULL);
+			return;
 		}
 
 		len = DTRACED_MSG_LEN(header);
@@ -379,7 +379,7 @@ write_dttransport(void *_s)
 			if (r < 0) {
 				ERR("exiting write_dttransport(): %m");
 				broadcast_shutdown(s);
-				pthread_exit(NULL);
+				return;
 			} else if ((size_t)r == len)
 				break;
 
@@ -409,7 +409,7 @@ write_dttransport(void *_s)
 				 * at some point.
 				 */
 				broadcast_shutdown(s);
-				pthread_exit(NULL);
+				return;
 			}
 
 			len -= lentoread;
@@ -424,7 +424,7 @@ write_dttransport(void *_s)
 		free((void *)msg_ptr);
 	}
 
-	pthread_exit(s);
+	return;
 }
 
 }

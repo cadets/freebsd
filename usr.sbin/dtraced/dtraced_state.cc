@@ -61,90 +61,27 @@ namespace dtraced {
 static int
 setup_threads(state *s)
 {
-	int err;
-	pthread_t *threads;
 	size_t i;
 
-	threads = (pthread_t *)malloc(sizeof(pthread_t) * s->threadpool_size);
-	if (threads == NULL) {
-		ERR("Failed to allocate thread array");
-		return (-1);
-	}
-	memset(threads, 0, sizeof(pthread_t) * s->threadpool_size);
-
+	s->workers.resize(s->threadpool_size);
 	for (i = 0; i < s->threadpool_size; i++) {
-		err = pthread_create(&threads[i], NULL, process_joblist, s);
-		if (err != 0) {
-			ERR("Failed to create a new thread: %m");
-			return (-1);
-		}
+		s->workers[i] = std::thread(process_joblist, s);
 	}
-
-	s->workers = threads;
 
 	sem_init(&s->socksema, 0, 0);
 
 	if (s->ctrlmachine == 0) {
-		err = pthread_create(&s->dtt_listentd, NULL,
-		    dtraced::listen_dttransport, s);
-		if (err != 0) {
-			ERR("Failed to create the dttransport thread: %m");
-			return (-1);
-		}
-
-		/*
-		 * The socket can't be connected at this point because
-		 * accept_subs is not running. Need a semaphore.
-		 */
-		err = pthread_create(&s->dtt_writetd, NULL,
-		    dtraced::write_dttransport, s);
-		if (err != 0) {
-			ERR("Failed to create the dttransport thread: %m");
-			return (-1);
-		}
+		s->dtt_listentd = std::thread(dtraced::listen_dttransport, s);
+		s->dtt_writetd = std::thread(dtraced::write_dttransport, s);
 	}
 
-	err = pthread_create(&s->socktd, NULL, process_consumers, s);
-	if (err != 0) {
-		ERR("Failed to create the socket thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->inboundtd, NULL, listen_dir, s->inbounddir);
-	if (err != 0) {
-		ERR("Failed to create inbound listening thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->basetd, NULL, listen_dir, s->basedir);
-	if (err != 0) {
-		ERR("Failed to create base listening thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->killtd, NULL, manage_children, s);
-	if (err != 0) {
-		ERR("Failed to create a child management thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->reaptd, NULL, reap_children, s);
-	if (err != 0) {
-		ERR("Failed to create reaper thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->closetd, NULL, close_filedescs, s);
-	if (err != 0) {
-		ERR("Failed to create filedesc closing thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->jobcleantd, NULL, clean_jobs, s);
-	if (err != 0) {
-		ERR("Failed to create job cleaning thread: %m");
-		return (-1);
-	}
+	s->socktd = std::thread(process_consumers, s);
+	s->inboundtd = std::thread(listen_dir, s->inbounddir);
+	s->basetd = std::thread(listen_dir, s->basedir);
+	s->killtd = std::thread(manage_children, s);
+	s->reaptd = std::thread(reap_children, s);
+	s->closetd = std::thread(close_filedescs, s);
+	s->jobcleantd = std::thread(clean_jobs, s);
 
 	return (0);
 }
@@ -286,68 +223,31 @@ int
 destroy_state(state *s)
 {
 	size_t i;
-	int err;
 
 	/*
-	 * Give all the threads a chance to stop, but we don't really care if
-	 * the call fails. We're simply going to exit anyway. pthread_kill() can
-	 * only give us an ESRCH (which means the thread's already gone and we
-	 * don't care), or EINVAL for an invalid signal, which we never send.
-	 * Therefore, we can safely just ignore all of the return codes and
-	 * expect the pthread_timedjoin_np() to behave sanely. If our thread is
-	 * stuck and doesn't join in time, we simply report the error and
-	 * continue destroying the other threads. We are exiting after this, so
-	 * it's unlikely that a stuck thread is going to cause more chaos than
-	 * it already has.
+	 * Give all the threads a chance to stop.
 	 */
-	err = pthread_join(s->socktd, NULL);
-	if (err)
-		ERR("socktd join failed: %s", strerror(err));
-
-	if (s->dtt_listentd) {
-		err = pthread_join(s->dtt_listentd, NULL);
-		if (err)
-			ERR("dtt_listentd join failed: %s", strerror(err));
-
-		err = pthread_join(s->dtt_writetd, NULL);
-		if (err)
-			ERR("dtt_writetd join failed: %s", strerror(err));
+	s->socktd.join();
+	if (s->ctrlmachine == 0) {
+		s->dtt_listentd.join();
+		s->dtt_writetd.join();
 	}
 
-	err = pthread_join(s->inboundtd, NULL);
-	if (err)
-		ERR("inboundtd join failed: %s", strerror(err));
-
-	err = pthread_join(s->basetd, NULL);
-	if (err)
-		ERR("basetd join failed: %s", strerror(err));
+	s->inboundtd.join();
+	s->basetd.join();
 
 	LOCK(&s->dispatched_jobsmtx);
 	BROADCAST(&s->dispatched_jobscv);
 	UNLOCK(&s->dispatched_jobsmtx);
 
 	for (i = 0; i < s->threadpool_size; i++) {
-		err = pthread_join(s->workers[i], NULL);
-		if (err)
-			ERR("worker %ju join failed: %s", (uintmax_t)i,
-			    strerror(err));
+		s->workers[i].join();
 	}
 
-	err = pthread_join(s->killtd, NULL);
-	if (err)
-		ERR("killtd join failed: %s", strerror(err));
-
-	err = pthread_join(s->reaptd, NULL);
-	if (err)
-		ERR("reaptd join timed out: %s", strerror(err));
-
-	err = pthread_join(s->closetd, NULL);
-	if (err)
-		ERR("closetd join failed: %s", strerror(err));
-
-	err = pthread_join(s->jobcleantd, NULL);
-	if (err)
-		ERR("jobcleantd join failed: %s", strerror(err));
+	s->killtd.join();
+	s->reaptd.join();
+	s->closetd.join();
+	s->jobcleantd.join();
 
 	LOCK(&s->joblistmtx);
 	for (; !s->joblist.empty(); s->joblist.pop_front())
@@ -377,8 +277,6 @@ destroy_state(state *s)
 
 	destroy_sockfd(s);
 	s->sockfd = -1;
-
-	free(s->workers);
 
 	if (s->ctrlmachine == 0) {
 		close(s->dtt_fd);
