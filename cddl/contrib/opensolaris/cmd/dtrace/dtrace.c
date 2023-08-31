@@ -1133,6 +1133,9 @@ listen_dtraced(void *arg)
 
 		assert(r > 0);
 
+		/*
+		 * "rcvpgp" -- create
+		 */
 		bench = __dt_bench_new_time(5);
 		if (dt_bench_start(bench) == -1)
 			fatal("failed to start bench: %s", __LINE__);
@@ -1144,6 +1147,9 @@ listen_dtraced(void *arg)
 		}
 
 		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
+			/*
+			 * "rcvpgp" -- destroy
+			 */
 			dt_bench_destroy(bench);
 
 			/*
@@ -1187,6 +1193,9 @@ listen_dtraced(void *arg)
 		}
 
 		if (atomic_load(&g_intr) || atomic_load(&g_stop)) {
+			/*
+			 * "rcvpgp" -- destroy
+			 */
 			dt_bench_destroy(bench);
 			done = 1;
 			break;
@@ -1200,6 +1209,9 @@ listen_dtraced(void *arg)
 		if (elf[0] == 0x7F && elf[1] == 'E' &&
 		    elf[2] == 'L'  && elf[3] == 'F') {
 			novm = 1;
+			/*
+			 * "rcvpgp" -- attach data = 0
+			 */
 			dt_bench_hdl_attach(bench, DT_BENCH_TOPLEVEL, 0);
 			goto process_prog;
 		}
@@ -1212,6 +1224,9 @@ listen_dtraced(void *arg)
 		assert(((uintptr_t)elf & 1) == 0);
 		vmid = *((uint16_t *)elf);
 		elf += sizeof(uint16_t) + 6;
+		/*
+		 * "rcvpgp" -- attach data = vmid
+		 */
 		dt_bench_hdl_attach(bench, DT_BENCH_TOPLEVEL, vmid);
 
 		/*
@@ -1250,9 +1265,15 @@ process_prog:
 		if (fsync(fd))
 			dabort("failed to sync file");
 
+		/*
+		 * "rcvpgp" -- snapshot "ELF parsing - start"
+		 */
 		cshdl = __dt_bench_snapshot_time(bench);
 		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
 		if (newprog == NULL && err != EAGAIN) {
+			/*
+			 * "rcvpgp" @ "ELF parsing - start" -- destroy
+			 */
 			dt_bench_destroy(bench);
 			close(fd);
 			continue;
@@ -1261,6 +1282,9 @@ process_prog:
 		if (newprog == NULL) {
 			char buf[DT_PROG_IDENTLEN];
 
+			/*
+			 * "rcvpgp" @ "ELF parsing - start" -- attach data = EAGAIN
+			 */
 			dt_bench_hdl_attach(bench, cshdl, CALL_EAGAIN);
 
 			(void) dt_get_srcident(buf);
@@ -1276,6 +1300,9 @@ process_prog:
 			 * particular entry. Report it and go back to sleep.
 			 */
 			if (found == 0) {
+				/*
+				 * "rcvpgp" @ "ELF parsing - start" -- destroy
+				 */
 				dt_bench_destroy(bench);
 				pthread_mutex_unlock(&g_pgplistmtx);
 				continue;
@@ -1283,6 +1310,9 @@ process_prog:
 				fprintf(stderr,
 				    "dtrace: found a valid pgpl, sleeping...");
 				pthread_mutex_unlock(&g_pgplistmtx);
+				/*
+				 * "rcvpgp" @ "ELF parsing - start" -- destroy
+				 */
 				dt_bench_destroy(bench);
 				continue;
 			}
@@ -1292,11 +1322,17 @@ process_prog:
 			if (newprog == NULL) {
 				close(fd);
 				pthread_mutex_unlock(&g_pgplistmtx);
+				/*
+				 * "rcvpgp" @ "ELF parsing - start" -- destroy
+				 */
 				dt_bench_destroy(bench);
 				continue;
 			}
 		}
 
+		/*
+		 * "rcvpgp" -- snapshot "ELF parsing - end"
+		 */
 		__dt_bench_snapshot_time(bench);
 
 		close(fd);
@@ -1322,6 +1358,9 @@ process_prog:
 			fprintf(stderr,
 			    "dtrace: found a valid pgpl, sleeping...");
 			pthread_mutex_unlock(&g_pgplistmtx);
+			/*
+			 * "rcvpgp" @ "ELF parsing - end" -- destroy
+			 */
 			dt_bench_destroy(bench);
 			continue;
 		}
@@ -1335,6 +1374,9 @@ process_prog:
 		 */
 		if (newpgpl->vmid != 0 && (newpgpl->vmid != vmid)) {
 			pthread_mutex_unlock(&g_pgplistmtx);
+			/*
+			 * "rcvpgp" @ "ELF parsing - end" -- destroy
+			 */
 			dt_bench_destroy(bench);
 			syslog(LOG_SECURITY, "vmid (%u) is claiming to be %u\n",
 			    vmid, newpgpl->vmid);
@@ -1352,6 +1394,9 @@ process_prog:
 				    vm_name == NULL ? "host" : vm_name, vmid);
 				free(newpgpl);
 				pthread_mutex_unlock(&g_pgplistmtx);
+				/*
+				 * "rcvpgp" @ "ELF parsing - end" -- destroy
+				 */
 				dt_bench_destroy(bench);
 				continue;
 			}
@@ -1361,7 +1406,13 @@ process_prog:
 		}
 
 		if (!found && novm == 0) {
+			/*
+			 * "rcvpgp" -- snapshot "Virtual program creation - start"
+			 */
 			cshdl = __dt_bench_snapshot_time(bench);
+			/*
+			 * "rcvpgp" @ "Virtual program creation - start" -- attach data = VPROG_CREATION
+			 */
 			dt_bench_hdl_attach(bench, cshdl, VPROG_CREATION);
 			guestpgp =
 			    dt_vprog_from(g_dtp, newprog, PGP_KIND_HYPERCALLS);
@@ -1394,6 +1445,9 @@ process_prog:
 				    strerror(errno));
 				dt_verictx_teardown(verictx);
 				pthread_mutex_unlock(&g_pgplistmtx);
+				/*
+				 * "rcvpgp" @ "Virtual program creation - start" -- destroy
+				 */
 				dt_bench_destroy(bench);
 				pthread_exit(NULL);
 			}
@@ -1403,9 +1457,15 @@ process_prog:
 				    strerror(errno));
 				dt_verictx_teardown(verictx);
 				pthread_mutex_unlock(&g_pgplistmtx);
+				/*
+				 * "rcvpgp" @ "Virtual program creation - start" -- destroy
+				 */
 				dt_bench_destroy(bench);
 				pthread_exit(NULL);
 			}
+			/*
+			 * "rcvpgp" -- snapshot "Virtual program creation - persisted"
+			 */
 			__dt_bench_snapshot_time(bench);
 
 			err = dtrace_send_elf_async(guestpgp, tmpfd,
@@ -1418,15 +1478,24 @@ process_prog:
 				    strerror(err));
 				dt_verictx_teardown(verictx);
 				pthread_mutex_unlock(&g_pgplistmtx);
+				/*
+				 * "rcvpgp" @ "Virtual program creation - persisted" -- destroy
+				 */
 				dt_bench_destroy(bench);
 				pthread_exit(NULL);
 			}
 
+			/*
+			 * "rcvpgp" -- snapshot "Virtual program creation - sent to dtraced"
+			 */
 			__dt_bench_snapshot_time(bench);
 
 			newpgpl->gpgp = guestpgp;
 		}
 
+		/*
+		 * "rcvpgp" -- stop ("ELF parsing - end" || "Virtual program creation - persisted")
+		 */
 		__dt_bench_stop_time(bench);
 		dt_bench_setinfo(bench, "rcvpgp",
 		    "Received program", DT_BENCHKIND_TIME);
