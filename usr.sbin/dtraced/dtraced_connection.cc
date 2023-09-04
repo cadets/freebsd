@@ -129,8 +129,6 @@ close_filedescs(void *_s)
 			 */
 			count = dfd->__count.load();
 			if (count != 0) {
-				DEBUG("fd %d (ident=%s, count=%d)", dfd->fd,
-				    dfd->ident, count);
 				++it;
 				continue;
 			}
