@@ -39,10 +39,10 @@ CFLAGS+=	-flto
 LDFLAGS+=	-flto
 .endif
 
-.if ${MK_DTRACE_DEBUG_ASAN} != "no"
+.if ${MK_DTRACED_ASAN} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
-.elif ${MK_DTRACE_DEBUG_TSAN} != "no"
+.elif ${MK_DTRACED_TSAN} != "no"
 CFLAGS+=	-fsanitize=thread
 LDFLAGS+=	-fsanitize=thread
 .endif
