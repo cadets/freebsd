@@ -146,7 +146,7 @@ close_filedescs(void *_s)
 
 			it = s->deadfds.erase(it);
 			assert(dfd->__count.load() == 0);
-			LOG("close(%p, %d-%s)\n", dfd, dfd->fd, dfd->ident);
+			LOG("close(%p, %d-%s)", dfd, dfd->fd, dfd->ident);
 			close(dfd->fd);
 			free(dfd);
 		}
