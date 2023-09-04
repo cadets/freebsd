@@ -84,11 +84,10 @@ handle_elfmsg(state *s, dtraced_hdr_t *h,
 			std::copy_n(std::begin(DTRACED_MSG_IDENT(*h)),
 			    DTRACED_PROGIDENTLEN, std::begin(ident));
 
-			LOCK(&s->identlistmtx);
+			std::lock_guard lk { s->identlistmtx };
 			DEBUG("identifier: insert %hhx%hhx%hhx\n", ident[0],
 			    ident[1], ident[2]);
 			s->identlist.push_back(std::move(ident));
-			UNLOCK(&s->identlistmtx);
 		}
 	}
 
@@ -110,7 +109,7 @@ handle_killmsg(state *s, dtraced_hdr_t *h)
 	 * (another thread will simply pick this up). We
 	 * need to only do it for FORWARDERs.
 	 */
-	LOCK(&s->socklistmtx);
+	std::lock_guard lk { s->socklistmtx };
 	for (fd *dfd : s->sockfds) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
@@ -127,16 +126,16 @@ handle_killmsg(state *s, dtraced_hdr_t *h)
 		job->j.kill.pid = DTRACED_MSG_KILLPID(*h);
 		job->j.kill.vmid = DTRACED_MSG_KILLVMID(*h);
 
-		LOCK(&s->joblistmtx);
-		s->joblist.push_back(job);
-		UNLOCK(&s->joblistmtx);
+		{
+			std::lock_guard lk { s->joblistmtx };
+			s->joblist.push_back(job);
+		}
 
 		if (reenable_fd(s->kq_hdl, dfd->fd, EVFILT_WRITE)) {
 			ERR("reenable_fd() failed with: %m");
 			return (-1);
 		}
 	}
-	UNLOCK(&s->socklistmtx);
 
 	return (0);
 }
@@ -161,7 +160,7 @@ handle_cleanupmsg(state *s, dtraced_hdr_t *h)
 		memset(entries, 0, sizeof(char *) * n_entries);
 	}
 
-	LOCK(&s->socklistmtx);
+	std::unique_lock lk { s->socklistmtx };
 	for (fd *dfd : s->sockfds) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
@@ -225,16 +224,17 @@ handle_cleanupmsg(state *s, dtraced_hdr_t *h)
 				abort();
 		}
 
-		LOCK(&s->joblistmtx);
-		s->joblist.push_back(job);
-		UNLOCK(&s->joblistmtx);
+		{
+			std::lock_guard lk { s->joblistmtx };
+			s->joblist.push_back(job);
+		}
 
 		if (reenable_fd(s->kq_hdl, dfd->fd, EVFILT_WRITE)) {
 			ERR("reenable_fd() failed with: %m");
 			return (-1);
 		}
 	}
-	UNLOCK(&s->socklistmtx);
+	lk.unlock();
 
 	for (i = 0; i < n_entries; i++)
 		free(entries[i]);

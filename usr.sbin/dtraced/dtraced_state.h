@@ -48,7 +48,9 @@
 #include "dtraced_lock.h"
 
 #include <array>
+#include <condition_variable>
 #include <list>
+#include <mutex>
 #include <queue>
 #include <thread>
 #include <unordered_set>
@@ -80,7 +82,7 @@ struct state {
 	/*
 	 * Sockets.
 	 */
-	mutex_t socklistmtx; /* mutex fos sockfds */
+	std::mutex socklistmtx; /* mutex fos sockfds */
 
 	/* list of sockets we know about */
 	std::unordered_set<fd *> sockfds;
@@ -88,7 +90,7 @@ struct state {
 	/*
 	 * Configuration socket.
 	 */
-	mutex_t sockmtx;  /* config socket mutex */
+	std::mutex sockmtx;  /* config socket mutex */
 	std::thread socktd; /* config socket thread */
 	int sockfd;	  /* config socket filedesc */
 	sem_t socksema;	  /* config socket semaphore */
@@ -104,35 +106,35 @@ struct state {
 	 * Thread pool management.
 	 */
 	std::vector<std::thread> workers; /* thread pool for the joblist */
-	mutex_t joblistmtx; /* joblist mutex */
+	std::mutex joblistmtx; /* joblist mutex */
 	std::list<job *> joblist;
-	mutex_t dispatched_jobsmtx; /* dispatched joblist mutex */
+	std::mutex dispatched_jobsmtx; /* dispatched joblist mutex */
 
 	/* jobs to be picked up by the workers */
 	std::list<job *> dispatched_jobs;
-	pthread_cond_t dispatched_jobscv; /* dispatched joblist condvar */
+	std::condition_variable dispatched_jobscv; /* dispatched joblist condvar */
 
 	/*
 	 * Children management.
 	 */
 	std::thread killtd; /* handle sending kill(SIGTERM) to the guest */
-	mutex_t killmtx;  /* mutex of the kill list */
+	std::mutex killmtx;  /* mutex of the kill list */
 	std::queue<pid_t> pids_to_kill; /* a list of pids to kill */
-	pthread_cond_t killcv;		/* kill list condvar */
+	std::condition_variable killcv;		/* kill list condvar */
 	std::thread reaptd;		/* handle reaping children */
 
 	std::unordered_set<pid_t> pidlist; /* a list of pids running */
-	mutex_t pidlistmtx;		   /* mutex of the pidlist */
+	std::mutex pidlistmtx;		   /* mutex of the pidlist */
 
 	/*
 	 * filedesc management.
 	 */
 	/* dead file descriptor list (to close) */
 	std::unordered_set<fd *> deadfds;
-	mutex_t deadfdsmtx; /* mutex for deadfds */
+	std::mutex deadfdsmtx; /* mutex for deadfds */
 	std::thread closetd;  /* file descriptor closing thread */
 
-	pthread_cond_t jobcleancv; /* job cleaning thread condvar */
+	std::condition_variable jobcleancv; /* job cleaning thread condvar */
 	std::thread jobcleantd;	   /* job cleaning thread */
 
 	/*
@@ -146,7 +148,7 @@ struct state {
 	int kq_hdl;		  /* event loop kqueue */
 
 	std::list<std::array<char, DTRACED_PROGIDENTLEN>> identlist;
-	mutex_t identlistmtx; /* mutex protecting the ident list */
+	std::mutex identlistmtx; /* mutex protecting the ident list */
 };
 
 int init_state(state *, int, int, int, const char **);

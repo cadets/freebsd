@@ -41,9 +41,11 @@
 #ifndef _DTRACED_DIRECTORY_H_
 #define _DTRACED_DIRECTORY_H_
 
+#include <sys/param.h>
+
 #include <dirent.h>
 
-#include "dtraced_lock.h"
+#include <mutex>
 
 namespace dtraced {
 
@@ -64,7 +66,7 @@ struct dir {
 	char **existing_files;	 /* files that exist in the dir */
 	size_t efile_size;	 /* vector size */
 	size_t efile_len;	 /* number of elements */
-	mutex_t dirmtx;		 /* directory mutex */
+	std::mutex dirmtx;	 /* directory mutex */
 	foreach_fn_t processfn;	 /* function to process the dir */
 	state *state; /* backpointer to state */
 };

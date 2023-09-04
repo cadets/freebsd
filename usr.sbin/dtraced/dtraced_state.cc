@@ -98,61 +98,6 @@ init_state(state *s, int ctrlmachine, int nosha, int n_threads,
 	s->nosha = nosha;
 	s->threadpool_size = n_threads;
 
-	if (mutex_init(&s->socklistmtx, NULL, "socklist") != 0) {
-		ERR("Failed to create sock list mutex: %m");
-		return (-1);
-	}
-
-	if (mutex_init(&s->sockmtx, NULL, "socket") != 0) {
-		ERR("Failed to create socket mutex: %m");
-		return (-1);
-	}
-
-	if (mutex_init(&s->joblistmtx, NULL, "joblist") != 0) {
-		ERR("Failed to create joblist mutex: %m");
-		return (-1);
-	}
-
-	if (mutex_init(&s->dispatched_jobsmtx, NULL, "joblist") != 0) {
-		ERR("Failed to create joblist mutex: %m");
-		return (-1);
-	}
-
-	if (mutex_init(&s->killmtx, NULL, "kill list") != 0) {
-		ERR("Failed to create kill list mutex: %m");
-		return (-1);
-	}
-
-	if (mutex_init(&s->pidlistmtx, NULL, "pidlist") != 0) {
-		ERR("Failed to create pidlist mutex: %m");
-		return (-1);
-	}
-
-	if (mutex_init(&s->identlistmtx, NULL, "identlistmtx") != 0) {
-		ERR("Failed to create identlist mutex: %m");
-		return (-1);
-	}
-
-	if (mutex_init(&s->deadfdsmtx, NULL, "deadfdsmtx") != 0) {
-		ERR("Failed to create deadfds mutex: %m");
-		return (-1);
-	}
-
-	if (pthread_cond_init(&s->killcv, NULL) != 0) {
-		ERR("Failed to create kill list condvar: %m");
-		return (-1);
-	}
-
-	if (pthread_cond_init(&s->dispatched_jobscv, NULL) != 0) {
-		ERR("Failed to create joblist condvar: %m");
-		return (-1);
-	}
-
-	if (pthread_cond_init(&s->jobcleancv, NULL) != 0) {
-		ERR("Failed to create jobclean condvar: %m");
-		return (-1);
-	}
-
 	if (s->ctrlmachine == 0) {
 		/* We close dttransport on exec. */
 		s->dtt_fd = open("/dev/dttransport",
@@ -236,9 +181,10 @@ destroy_state(state *s)
 	s->inboundtd.join();
 	s->basetd.join();
 
-	LOCK(&s->dispatched_jobsmtx);
-	BROADCAST(&s->dispatched_jobscv);
-	UNLOCK(&s->dispatched_jobsmtx);
+	{
+		std::lock_guard lk { s->dispatched_jobsmtx };
+		s->dispatched_jobscv.notify_all();
+	}
 
 	for (i = 0; i < s->threadpool_size; i++) {
 		s->workers[i].join();
@@ -249,25 +195,18 @@ destroy_state(state *s)
 	s->closetd.join();
 	s->jobcleantd.join();
 
-	LOCK(&s->joblistmtx);
-	for (; !s->joblist.empty(); s->joblist.pop_front())
-		dtraced_free_job(s->joblist.front());
-	UNLOCK(&s->joblistmtx);
+	{
+		std::lock_guard lk { s->joblistmtx };
+		for (; !s->joblist.empty(); s->joblist.pop_front())
+			dtraced_free_job(s->joblist.front());
+	}
 
-	LOCK(&s->dispatched_jobsmtx);
-	for (; !s->dispatched_jobs.empty(); s->dispatched_jobs.pop_front())
-		dtraced_free_job(s->dispatched_jobs.front());
-	UNLOCK(&s->dispatched_jobsmtx);
-
-	(void) mutex_destroy(&s->socklistmtx);
-	(void) mutex_destroy(&s->sockmtx);
-	(void) mutex_destroy(&s->joblistmtx);
-	(void) mutex_destroy(&s->killmtx);
-	(void) mutex_destroy(&s->deadfdsmtx);
-	(void) mutex_destroy(&s->dispatched_jobsmtx);
-	(void) pthread_cond_destroy(&s->killcv);
-	(void) pthread_cond_destroy(&s->dispatched_jobscv);
-	(void) pthread_cond_destroy(&s->jobcleancv);
+	{
+		std::lock_guard { s->dispatched_jobsmtx };
+		for (; !s->dispatched_jobs.empty();
+		     s->dispatched_jobs.pop_front())
+			dtraced_free_job(s->dispatched_jobs.front());
+	}
 
 	dtd_closedir(s->outbounddir);
 	dtd_closedir(s->inbounddir);
@@ -292,17 +231,20 @@ _broadcast_shutdown(state *s, const char *errfile, int errline)
 	fprintf(stderr, "%s (line %d): broadcasting shutdown", errfile, errline);
 	s->shutdown.store(1);
 
-	LOCK(&s->dispatched_jobsmtx);
-	SIGNAL(&s->dispatched_jobscv);
-	UNLOCK(&s->dispatched_jobsmtx);
+	{
+		std::lock_guard lk { s->dispatched_jobsmtx };
+		s->dispatched_jobscv.notify_all();
+	}
 
-	LOCK(&s->killmtx);
-	SIGNAL(&s->killcv);
-	UNLOCK(&s->killmtx);
+	{
+		std::lock_guard lk { s->killmtx };
+		s->killcv.notify_all();
+	}
 
-	LOCK(&s->deadfdsmtx);
-	SIGNAL(&s->jobcleancv);
-	UNLOCK(&s->deadfdsmtx);
+	{
+		std::lock_guard lk { s->deadfdsmtx };
+		s->jobcleancv.notify_all();
+	}
 }
 
 }

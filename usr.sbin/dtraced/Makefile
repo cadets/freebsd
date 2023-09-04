@@ -14,7 +14,6 @@ SRCS=		dtraced.cc \
 		dtraced_id.cc \
 		dtraced_job.cc \
 		dtraced_killjob.cc \
-		dtraced_lock.cc \
 		dtraced_misc.cc \
 		dtraced_readjob.cc \
 		dtraced_sendinfojob.cc \

@@ -85,19 +85,18 @@ write_data(dir *dir, unsigned char *data, size_t nbytes)
 		return (-1);
 	}
 
-	LOCK(&dir->dirmtx);
-	s = dir->state;
+	{
+		std::lock_guard lk { dir->dirmtx };
+		s = dir->state;
 
-	if (s == NULL) {
-		UNLOCK(&dir->dirmtx);
+		if (s == NULL) {
+			ERR("state is NULL in write_data()");
+			return (-1);
+		}
 
-		ERR("state is NULL in write_data()");
-		return (-1);
+		sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
+		dirpathlen = strlen(dir->dirpath);
 	}
-
-	sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
-	dirpathlen = strlen(dir->dirpath);
-	UNLOCK(&dir->dirmtx);
 
 	fd = mkstemp(tmpfile);
 	if (fd == -1) {
@@ -278,17 +277,17 @@ populate_existing(struct dirent *f, dir *dir)
 	if (f->d_name[0] == '.')
 		return (0);
 
-	LOCK(&dir->dirmtx);
-	err = expand_paths(dir);
-	if (err != 0) {
-		UNLOCK(&dir->dirmtx);
-		ERR("Failed to expand paths in initialization");
-		return (-1);
-	}
+	{
+		std::lock_guard lk { dir->dirmtx };
+		err = expand_paths(dir);
+		if (err != 0) {
+			ERR("Failed to expand paths in initialization");
+			return (-1);
+		}
 
-	assert(dir->efile_size > dir->efile_len);
-	dir->existing_files[dir->efile_len] = strdup(f->d_name);
-	UNLOCK(&dir->dirmtx);
+		assert(dir->efile_size > dir->efile_len);
+		dir->existing_files[dir->efile_len] = strdup(f->d_name);
+	}
 
 	if (dir->existing_files[dir->efile_len++] == NULL) {
 		ERR("failed to strdup f->d_name: %m");
@@ -335,11 +334,6 @@ dtd_mkdir(const char *path, foreach_fn_t fn)
 		abort();
 	}
 
-	if (mutex_init(&dir->dirmtx, NULL, dir->dirpath) != 0) {
-		ERR("Failed to create dir mutex: %m");
-		return (NULL);
-	}
-
 	retry = 0;
 againmkdir:
 	dir->dirfd = open(path, O_RDONLY | O_DIRECTORY);
@@ -381,25 +375,21 @@ void
 dtd_closedir(dir *dir)
 {
 	size_t i;
-	int err;
 
-	LOCK(&dir->dirmtx);
-	free(dir->dirpath);
-	close(dir->dirfd);
-	closedir(dir->dir);
+	{
+		std::lock_guard lk { dir->dirmtx };
+		free(dir->dirpath);
+		close(dir->dirfd);
+		closedir(dir->dir);
 
-	for (i = 0; i < dir->efile_len; i++)
-		free(dir->existing_files[i]);
+		for (i = 0; i < dir->efile_len; i++)
+			free(dir->existing_files[i]);
 
-	free(dir->existing_files);
+		free(dir->existing_files);
 
-	dir->efile_size = 0;
-	dir->efile_len = 0;
-	UNLOCK(&dir->dirmtx);
-
-	err = mutex_destroy(&dir->dirmtx);
-	if (err != 0)
-		ERR("Failed to destroy dirmtx: %m");
+		dir->efile_size = 0;
+		dir->efile_len = 0;
+	}
 
 	free(dir);
 }
@@ -445,35 +435,34 @@ process_inbound(struct dirent *f, dir *dir)
 	if (f->d_name[0] == '.')
 		return (0);
 
-	LOCK(&dir->dirmtx);
+	{
+		std::lock_guard lk { dir->dirmtx };
 
-	/*
-	 * Exit early if the file doesn't exist. There is definitely multiple
-	 * race conditions here, but it doesn't really matter as we don't expect
-	 * this to ever happen if communication happens through dtraced itself.
-	 */
-	if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
-		ERR("%s%s does not exist", dir->dirpath, f->d_name);
-		rmpath(f->d_name, dir);
-		UNLOCK(&dir->dirmtx);
-		return (-1);
+		/*
+		 * Exit early if the file doesn't exist. There is definitely
+		 * multiple race conditions here, but it doesn't really matter
+		 * as we don't expect this to ever happen if communication
+		 * happens through dtraced itself.
+		 */
+		if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
+			ERR("%s%s does not exist", dir->dirpath, f->d_name);
+			rmpath(f->d_name, dir);
+			return (-1);
+		}
+
+		idx = findpath(f->d_name, dir);
+		if (idx >= 0)
+			return (0);
+
+		l = strlcpy(fullpath, dir->dirpath, sizeof(fullpath));
+		if (l >= sizeof(fullpath)) {
+			ERR("Failed to copy %s into a path string",
+			    dir->dirpath);
+			return (-1);
+		}
+
+		dirpathlen = strlen(dir->dirpath);
 	}
-
-	idx = findpath(f->d_name, dir);
-	if (idx >= 0) {
-		UNLOCK(&dir->dirmtx);
-		return (0);
-	}
-
-	l = strlcpy(fullpath, dir->dirpath, sizeof(fullpath));
-	if (l >= sizeof(fullpath)) {
-		ERR("Failed to copy %s into a path string", dir->dirpath);
-		UNLOCK(&dir->dirmtx);
-		return (-1);
-	}
-
-	dirpathlen = strlen(dir->dirpath);
-	UNLOCK(&dir->dirmtx);
 
 	l = strlcpy(fullpath + dirpathlen, f->d_name,
 	    sizeof(fullpath) - dirpathlen);
@@ -498,7 +487,7 @@ process_inbound(struct dirent *f, dir *dir)
 		 * process. There may be more dtrace(1) instances that
 		 * want to process the same file in the future.
 		 */
-		LOCK(&s->socklistmtx);
+		std::lock_guard lk { s->socklistmtx };
 		for (fd *dfd : s->sockfds) {
 			if (dfd->kind != DTRACED_KIND_CONSUMER)
 				continue;
@@ -523,14 +512,14 @@ process_inbound(struct dirent *f, dir *dir)
 				abort();
 			}
 
-			LOCK(&s->joblistmtx);
-			s->joblist.push_back(job);
-			UNLOCK(&s->joblistmtx);
+			{
+				std::lock_guard lk { s->joblistmtx };
+				s->joblist.push_back(job);
+			}
 
 			if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))
 				ERR("process_inbound: kevent() failed with: %m");
 		}
-		UNLOCK(&s->socklistmtx);
 	} else {
 		int stdout_rdr[2];
 		int stdin_rdr[2];
@@ -550,9 +539,10 @@ process_inbound(struct dirent *f, dir *dir)
 		 * Count up how many identifiers we have. We will need to use
 		 * this both in the child and parent.
 		 */
-		LOCK(&s->identlistmtx);
-		num_idents = s->identlist.size();
-		UNLOCK(&s->identlistmtx);
+		{
+			std::lock_guard lk { s->identlistmtx };
+			num_idents = s->identlist.size();
+		}
 
 		pid = fork();
 
@@ -597,7 +587,7 @@ process_inbound(struct dirent *f, dir *dir)
 			 * sent and don't need to worry about snapshotting the
 			 * original state of the list in another list.
 			 */
-			LOCK(&s->identlistmtx);
+			std::unique_lock lk { s->identlistmtx };
 			current = 0;
 			for (auto it = s->identlist.begin();
 			     it != s->identlist.end() && current < num_idents;
@@ -611,7 +601,7 @@ process_inbound(struct dirent *f, dir *dir)
 					return (-1);
 				}
 			}
-			UNLOCK(&s->identlistmtx);
+			lk.unlock();
 
 			/*
 			 * This will give us the identifier that matched and
@@ -701,7 +691,7 @@ failmsg:
 			 * identlist.
 			 */
 			if (remove) {
-				LOCK(&s->identlistmtx);
+				std::lock_guard lk { s->identlistmtx };
 				for (auto it = s->identlist.begin();
 				     it != s->identlist.end();) {
 					auto ident = *it;
@@ -715,7 +705,6 @@ failmsg:
 					} else
 						++it;
 				}
-				UNLOCK(&s->identlistmtx);
 			}
 
 			/*
@@ -728,9 +717,8 @@ failmsg:
 				waitpid(pid, &status, 0);
 				LOG("joined %d, status %d", pid, status);
 			} else {
-				LOCK(&s->pidlistmtx);
+				std::lock_guard lk { s->pidlistmtx };
 				s->pidlist.insert(pid);
-				UNLOCK(&s->pidlistmtx);
 			}
 		} else if (num_idents == 0 && pid > 0) {
 			struct timespec timeout;
@@ -800,10 +788,9 @@ failmsg:
 		}
 	}
 
-	LOCK(&dir->dirmtx);
+	std::unique_lock lk{dir->dirmtx};
 	err = expand_paths(dir);
 	if (err != 0) {
-		UNLOCK(&dir->dirmtx);
 		ERR("Failed to expand paths after processing %s", f->d_name);
 		return (-1);
 	}
@@ -812,12 +799,10 @@ failmsg:
 	dir->existing_files[dir->efile_len] = strdup(f->d_name);
 
 	if (dir->existing_files[dir->efile_len++] == NULL) {
-		UNLOCK(&dir->dirmtx);
 		ERR("failed to strdup f->d_name: %m");
 		abort();
 	}
 
-	UNLOCK(&dir->dirmtx);
 	return (0);
 }
 
@@ -882,70 +867,64 @@ process_base(struct dirent *f, dir *dir)
 		return (-1);
 	}
 
-	LOCK(&dir->dirmtx);
-	s = dir->state;
+	{
+		std::lock_guard lk { dir->dirmtx };
+		s = dir->state;
 
-	if (s == NULL) {
-		UNLOCK(&dir->dirmtx);
-		ERR("state is NULL in base directory monitoring thread");
-		return (-1);
+		if (s == NULL) {
+			ERR("state is NULL in base directory monitoring thread");
+			return (-1);
+		}
+
+		if (f == NULL) {
+			ERR("dirent is NULL in base directory monitoring thread");
+			return (-1);
+		}
+
+		if (strcmp(f->d_name, SOCKFD_NAME) == 0)
+			return (0);
+
+		if (f->d_name[0] == '.')
+			return (0);
+
+		/*
+		 * Exit early if the file doesn't exist. There is definitely
+		 * multiple race conditions here, but it doesn't really matter
+		 * as we don't expect this to ever happen if communication
+		 * happens through dtraced itself.
+		 */
+		if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
+			ERR("%s%s does not exist", dir->dirpath, f->d_name);
+			rmpath(f->d_name, dir);
+			return (-1);
+		}
+
+		idx = findpath(f->d_name, dir);
+		if (idx >= 0)
+			return (0);
+
+		DEBUG("processing %s", f->d_name);
+
+		strcpy(fullpath, dir->dirpath);
 	}
-
-	if (f == NULL) {
-		UNLOCK(&dir->dirmtx);
-		ERR("dirent is NULL in base directory monitoring thread");
-		return (-1);
-	}
-
-	if (strcmp(f->d_name, SOCKFD_NAME) == 0) {
-		UNLOCK(&dir->dirmtx);
-		return (0);
-	}
-
-	if (f->d_name[0] == '.') {
-		UNLOCK(&dir->dirmtx);
-		return (0);
-	}
-
-	/*
-	 * Exit early if the file doesn't exist. There is definitely multiple
-	 * race conditions here, but it doesn't really matter as we don't expect
-	 * this to ever happen if communication happens through dtraced itself.
-	 */
-	if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
-		ERR("%s%s does not exist", dir->dirpath, f->d_name);
-		rmpath(f->d_name, dir);
-		UNLOCK(&dir->dirmtx);
-		return (-1);
-	}
-
-	idx = findpath(f->d_name, dir);
-	if (idx >= 0) {
-		UNLOCK(&dir->dirmtx);
-		return (0);
-	}
-
-	DEBUG("processing %s", f->d_name);
-
-	strcpy(fullpath, dir->dirpath);
-	UNLOCK(&dir->dirmtx);
 
 	strcpy(fullpath + strlen(fullpath), f->d_name);
 
-	LOCK(&s->outbounddir->dirmtx);
-	sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXXX", s->outbounddir->dirpath);
-	dirpathlen = strlen(s->outbounddir->dirpath);
+	{
+		std::lock_guard lk { s->outbounddir->dirmtx };
+		sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXXX",
+		    s->outbounddir->dirpath);
+		dirpathlen = strlen(s->outbounddir->dirpath);
 
-	fd = mkstemp(tmpfile);
-	if (fd == -1) {
-		UNLOCK(&s->outbounddir->dirmtx);
-		ERR("mkstemp(%s) failed: %m", tmpfile);
-		abort();
+		fd = mkstemp(tmpfile);
+		if (fd == -1) {
+			ERR("mkstemp(%s) failed: %m", tmpfile);
+			abort();
+		}
+
+		strncpy(donename, tmpfile, dirpathlen);
+		strcpy(donename + dirpathlen, tmpfile + dirpathlen + 1);
 	}
-
-	strncpy(donename, tmpfile, dirpathlen);
-	strcpy(donename + dirpathlen, tmpfile + dirpathlen + 1);
-	UNLOCK(&s->outbounddir->dirmtx);
 
 	dtraced_copyfile(fullpath, fd, tmpfile);
 
@@ -988,10 +967,9 @@ process_base(struct dirent *f, dir *dir)
 		exit(EXIT_FAILURE);
 	}
 
-	LOCK(&dir->dirmtx);
+	std::unique_lock lk{dir->dirmtx};
 	err = expand_paths(dir);
 	if (err != 0) {
-		UNLOCK(&dir->dirmtx);
 		ERR("Failed to expand paths after processing %s", f->d_name);
 		return (-1);
 	}
@@ -1000,12 +978,10 @@ process_base(struct dirent *f, dir *dir)
 	dir->existing_files[dir->efile_len] = strdup(f->d_name);
 
 	if (dir->existing_files[dir->efile_len++] == NULL) {
-		UNLOCK(&dir->dirmtx);
 		ERR("Failed to strdup f->d_name: %m");
 		abort();
 	}
 
-	UNLOCK(&dir->dirmtx);
 	return (0);
 }
 
@@ -1040,27 +1016,27 @@ process_outbound(struct dirent *f, dir *dir)
 	if (f->d_name[0] == '.')
 		return (0);
 
-	LOCK(&dir->dirmtx);
+	{
+		/*
+		 * Exit early if the file doesn't exist. There is definitely
+		 * multiple race conditions here, but it doesn't really matter
+		 * as we don't expect this to ever happen if communication
+		 * happens through dtraced itself.
+		 */
+		std::lock_guard lk { dir->dirmtx };
+		if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
+			ERR("%s%s does not exist", dir->dirpath, f->d_name);
+			rmpath(f->d_name, dir);
+			return (-1);
+		}
 
-	/*
-	 * Exit early if the file doesn't exist. There is definitely multiple
-	 * race conditions here, but it doesn't really matter as we don't expect
-	 * this to ever happen if communication happens through dtraced itself.
-	 */
-	if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
-		ERR("%s%s does not exist", dir->dirpath, f->d_name);
-		rmpath(f->d_name, dir);
-		UNLOCK(&dir->dirmtx);
-		return (-1);
+		idx = findpath(f->d_name, dir);
 	}
-
-	idx = findpath(f->d_name, dir);
-	UNLOCK(&dir->dirmtx);
 
 	if (idx >= 0)
 		return (0);
 
-	LOCK(&s->socklistmtx);
+	std::unique_lock lk { s->socklistmtx };
 	for (fd *dfd : s->sockfds) {
 		if (dfd->kind != DTRACED_KIND_FORWARDER)
 			continue;
@@ -1085,19 +1061,19 @@ process_outbound(struct dirent *f, dir *dir)
 			abort();
 		}
 
-		LOCK(&s->joblistmtx);
-		s->joblist.push_back(job);
-		UNLOCK(&s->joblistmtx);
+		{
+			std::lock_guard lk { s->joblistmtx };
+			s->joblist.push_back(job);
+		}
 
 		if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))
 			ERR("reenable_fd() failed with: %m");
 	}
-	UNLOCK(&s->socklistmtx);
+	lk.unlock();
 
-	LOCK(&dir->dirmtx);
+	std::lock_guard lg { dir->dirmtx };
 	err = expand_paths(dir);
 	if (err != 0) {
-		UNLOCK(&dir->dirmtx);
 		ERR("Failed to expand paths after processing %s",
 		    f->d_name);
 		return (-1);
@@ -1107,12 +1083,10 @@ process_outbound(struct dirent *f, dir *dir)
 	dir->existing_files[dir->efile_len] = strdup(f->d_name);
 
 	if (dir->existing_files[dir->efile_len++] == NULL) {
-		UNLOCK(&dir->dirmtx);
 		ERR("Failed to strdup f->d_name: %m");
 		abort();
 	}
 
-	UNLOCK(&dir->dirmtx);
 	return (0);
 }
 

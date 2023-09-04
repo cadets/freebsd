@@ -64,30 +64,30 @@ manage_children(void *_s)
 {
 	state *s = (dtraced::state *)_s;
 	pid_t pid;
-	int shutdown = 0;
 
 	while (1) {
 		/*
 		 * Wait for a notification that we need to kill a process
 		 */
-		LOCK(&s->killmtx);
-		while (s->pids_to_kill.empty() &&
-		    ((shutdown = s->shutdown.load()) == 0)) {
-			WAIT(&s->killcv, pmutex_of(&s->killmtx));
-		}
+		std::unique_lock lk { s->killmtx };
+		s->killcv.wait(lk, [s] {
+			return (!s->pids_to_kill.empty() || s->shutdown.load());
+		});
 
-		if (unlikely(shutdown == 1)) {
-			UNLOCK(&s->killmtx);
+		/*
+		 * No need to unlock here due to RAII.
+		 */
+		if (unlikely(s->shutdown.load()))
 			return;
-		}
 
 		pid = s->pids_to_kill.front();
 		s->pids_to_kill.pop();
-		UNLOCK(&s->killmtx);
+		lk.unlock();
 
-		LOCK(&s->pidlistmtx);
-		s->pidlist.erase(pid);
-		UNLOCK(&s->pidlistmtx);
+		{
+			std::lock_guard lk { s->pidlistmtx };
+			s->pidlist.erase(pid);
+		}
 
 		LOG("kill %d", pid);
 		if (kill(pid, SIGTERM)) {

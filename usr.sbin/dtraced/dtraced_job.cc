@@ -166,13 +166,9 @@ dispatch_event(state *s, struct kevent *ev)
 			abort();
 		}
 
-		LOCK(&s->dispatched_jobsmtx);
+		std::lock_guard lk { s->dispatched_jobsmtx };
 		s->dispatched_jobs.push_front(job);
-
-		DEBUG("job %p: dispatch EVFILT_READ on %d", job, dfd->fd);
-
-		SIGNAL(&s->dispatched_jobscv);
-		UNLOCK(&s->dispatched_jobsmtx);
+		s->dispatched_jobscv.notify_all();
 
 	} else if (ev->filter == EVFILT_WRITE) {
 		/*
@@ -181,21 +177,14 @@ dispatch_event(state *s, struct kevent *ev)
 		 * list.
 		 */
 
-		/*
-		 * Assert that the mutex is actually owned. For EVFILT_WRITE, we
-		 * expect to be called with the lock held because the caller
-		 * will be modifying the joblist regardless.
-		 */
-		mutex_assert_owned(&s->joblistmtx);
 		for (auto it = s->joblist.begin(); it != s->joblist.end();) {
 			job = *it;
 			dfd = job->connsockfd;
 			if (dfd->fd == efd) {
 				it = s->joblist.erase(it);
-				LOCK(&s->dispatched_jobsmtx);
+				std::lock_guard lk { s->dispatched_jobsmtx };
 				s->dispatched_jobs.push_back(job);
-				SIGNAL(&s->dispatched_jobscv);
-				UNLOCK(&s->dispatched_jobsmtx);
+				s->dispatched_jobscv.notify_all();
 			} else
 				++it;
 		}
@@ -213,41 +202,20 @@ process_joblist(void *_s)
 {
 	job *curjob;
 	state *s = (state *)_s;
-#ifdef DTRACED_DEBUG
-	const char *jobname[] = {
-		[0]               = "NONE",
-		[NOTIFY_ELFWRITE] = "NOTIFY_ELFWRITE",
-		[KILL]            = "KILL",
-		[READ_DATA]       = "READ_DATA",
-		[CLEANUP]         = "CLEANUP",
-		[SEND_INFO]       = "SEND_INFO"
-	};
-#endif /* DTRACED_DEBUG */
-	int _shutdown = 0;
 
 	while (1) {
-		LOCK(&s->dispatched_jobsmtx);
-		while (s->dispatched_jobs.empty() &&
-		    (_shutdown = s->shutdown.load()) == 0) {
-			WAIT(&s->dispatched_jobscv,
-			    pmutex_of(&s->dispatched_jobsmtx));
-		}
+		std::unique_lock lk { s->dispatched_jobsmtx };
+		s->dispatched_jobscv.wait(lk, [s] {
+			return (!s->dispatched_jobs.empty() ||
+			    s->shutdown.load() != 0);
+		});
 
-		if (unlikely(_shutdown == 1)) {
-			UNLOCK(&s->dispatched_jobsmtx);
+		if (unlikely(s->shutdown.load() != 0))
 			break;
-		}
 
 		curjob = s->dispatched_jobs.front();
 		s->dispatched_jobs.pop_front();
-		UNLOCK(&s->dispatched_jobsmtx);
-
-		if (curjob->job >= 0 && curjob->job <= JOB_LAST)
-			DEBUG("processing %s[%s]", jobname[curjob->job],
-			    dtraced_job_identifier(curjob));
-		else
-			ERR("job %u[%s] out of bounds", curjob->job,
-			    dtraced_job_identifier(curjob));
+		lk.unlock();
 
 		switch (curjob->job) {
 		case READ_DATA:
@@ -296,17 +264,15 @@ clean_jobs(void *_s)
 
 	while (1) {
 		woken = 0;
-		LOCK(&s->deadfdsmtx);
+		std::unique_lock lk { s->deadfdsmtx };
 		while (s->shutdown.load() == 0 &&
 		    (s->deadfds.empty() || woken == 0)) {
-			WAIT(&s->jobcleancv, pmutex_of(&s->deadfdsmtx));
+			s->jobcleancv.wait(lk);
 			woken = 1;
 		}
 
-		if (unlikely(s->shutdown.load() == 1)) {
-			UNLOCK(&s->deadfdsmtx);
+		if (unlikely(s->shutdown.load() != 0))
 			return;
-		}
 
 		/*
 		 * Delete any jobs that our dead file descriptors have started.
@@ -314,7 +280,7 @@ clean_jobs(void *_s)
 		 * process is gone.
 		 */
 		for (fd *dfd : s->deadfds) {
-			LOCK(&s->joblistmtx);
+			std::lock_guard lk { s->joblistmtx };
 			for (auto it = s->joblist.begin();
 			     it != s->joblist.end();) {
 				job *j = *it;
@@ -324,11 +290,8 @@ clean_jobs(void *_s)
 				} else
 					++it;
 			}
-			UNLOCK(&s->joblistmtx);
-
 			dfd->cleaned_up = 1;
 		}
-		UNLOCK(&s->deadfdsmtx);
 	}
 
 	return;

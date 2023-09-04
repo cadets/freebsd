@@ -120,7 +120,7 @@ close_filedescs(void *_s)
 
 	while (s->shutdown.load() == 0) {
 		sleep(DTRACED_CLOSEFD_SLEEPTIME);
-		LOCK(&s->deadfdsmtx);
+		std::lock_guard lk { s->deadfdsmtx };
 		for (auto it = s->deadfds.begin(); it != s->deadfds.end();) {
 			fd *dfd = *it;
 			/*
@@ -150,7 +150,6 @@ close_filedescs(void *_s)
 			close(dfd->fd);
 			free(dfd);
 		}
-		UNLOCK(&s->deadfdsmtx);
 	}
 
 	return;
@@ -165,9 +164,8 @@ enqueue_info_message(state *s, dtraced::fd *dfd)
 	if (job == NULL)
 		abort();
 
-	LOCK(&s->joblistmtx);
+	std::unique_lock lk { s->joblistmtx };
 	s->joblist.push_back(job);
-	UNLOCK(&s->joblistmtx);
 }
 
 static int
@@ -235,9 +233,11 @@ accept_new_connection(state *s)
 
 	LOG("accept(%d, %x, 0x%x, %s)", dfd->fd, dfd->kind, dfd->subs,
 	    dfd->ident);
-	LOCK(&s->socklistmtx);
-	s->sockfds.insert(dfd);
-	UNLOCK(&s->socklistmtx);
+
+	{
+		std::lock_guard lk { s->socklistmtx };
+		s->sockfds.insert(dfd);
+	}
 
 	if (dfd->subs & DTD_SUB_INFO) {
 		enqueue_info_message(s, dfd);
@@ -250,9 +250,10 @@ static void
 kill_socket(state *s, dtraced::fd *dfd)
 {
 	/* Remove it from the socket list and shutdown */
-	LOCK(&s->socklistmtx);
-	s->sockfds.erase(dfd);
-	UNLOCK(&s->socklistmtx);
+	{
+		std::lock_guard lk { s->socklistmtx };
+		s->sockfds.erase(dfd);
+	}
 
 	shutdown(dfd->fd, SHUT_RDWR);
 
@@ -260,10 +261,9 @@ kill_socket(state *s, dtraced::fd *dfd)
 	 * Add it to the deadfds list and let it get cleaned up by other
 	 * threads.
 	 */
-	LOCK(&s->deadfdsmtx);
+	std::unique_lock lk { s->deadfdsmtx };
 	s->deadfds.insert(dfd);
-	SIGNAL(&s->jobcleancv);
-	UNLOCK(&s->deadfdsmtx);
+	s->jobcleancv.notify_all();
 }
 
 static int
@@ -422,7 +422,7 @@ process_consumers(void *_s)
 
 				dispatch = 0;
 
-				LOCK(&s->joblistmtx);
+				std::unique_lock lk { s->joblistmtx };
 				for (job *job : s->joblist) {
 					if (job->connsockfd == dfd)
 						dispatch = 1;
@@ -436,12 +436,14 @@ process_consumers(void *_s)
 				if (dispatch != 0 &&
 				    dispatch_event(s, &event[i])) {
 					ERR("dispatch_event() failed");
-					UNLOCK(&s->joblistmtx);
+					/*
+					 * Necessary because broadcast_shutdown
+					 * acquires a few locks.
+					 */
+					lk.unlock();
 					broadcast_shutdown(s);
 					return;
 				}
-
-				UNLOCK(&s->joblistmtx);
 			}
 		}
 	}
@@ -471,7 +473,6 @@ setup_sockfd(state *s)
 		    l);
 		close(s->sockfd);
 		s->sockfd = -1;
-		err = mutex_destroy(&s->sockmtx);
 		if (err != 0)
 			ERR("Failed to destroy sockmtx: %m");
 
@@ -490,7 +491,6 @@ setup_sockfd(state *s)
 		ERR("Failed to bind to %d: %m", s->sockfd);
 		close(s->sockfd);
 		s->sockfd = -1;
-		err = mutex_destroy(&s->sockmtx);
 		if (err != 0)
 			ERR("Failed to destroy sockmtx: %m");
 

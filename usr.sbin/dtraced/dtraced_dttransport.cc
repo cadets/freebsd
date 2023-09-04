@@ -89,10 +89,11 @@ dtt_elf(state *s, dtt_entry_t *e)
 	 * directory does not exist.
 	 */
 	if (fd == 0) {
-		LOCK(&s->inbounddir->dirmtx);
-		sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXX",
-		    s->inbounddir->dirpath);
-		UNLOCK(&s->inbounddir->dirmtx);
+		{
+			std::lock_guard lk { s->inbounddir->dirmtx };
+			sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXX",
+			    s->inbounddir->dirpath);
+		}
 
 		fd = mkstemp(tmpfile);
 		if (fd == -1) {
@@ -143,34 +144,35 @@ dtt_elf(state *s, dtt_entry_t *e)
 		offs = 0;
 		len = 0;
 
-		LOCK(&s->inbounddir->dirmtx);
-		sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXX",
-		    s->inbounddir->dirpath);
-		UNLOCK(&s->inbounddir->dirmtx);
+		{
+			std::lock_guard lk { s->inbounddir->dirmtx };
+			sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXX",
+			    s->inbounddir->dirpath);
+		}
 	}
 }
 
 static void
 dtt_kill(state *s, dtt_entry_t *e)
 {
-	LOCK(&s->killmtx);
+	std::lock_guard lk { s->killmtx };
 	s->pids_to_kill.push(e->u.kill.pid);
-	SIGNAL(&s->killcv);
-	UNLOCK(&s->killmtx);
+	s->killcv.notify_all();
 }
 
 static void
 dtt_cleanup(state *s)
 {
-	LOCK(&s->pidlistmtx);
-	while (!s->pidlist.empty()) {
-		auto it = s->pidlist.begin();
-		pid_t pid = *it;
-		s->pidlist.erase(it);
-		WARN("SIGKILL %d", pid);
-		(void)kill(pid, SIGKILL);
+	{
+		std::lock_guard lk { s->pidlistmtx };
+		while (!s->pidlist.empty()) {
+			auto it = s->pidlist.begin();
+			pid_t pid = *it;
+			s->pidlist.erase(it);
+			WARN("SIGKILL %d", pid);
+			(void)kill(pid, SIGKILL);
+		}
 	}
-	UNLOCK(&s->pidlistmtx);
 
 	/* Re-exec ourselves to ensure full cleanup. */
 	WARN("re-execing");
@@ -248,9 +250,10 @@ listen_dttransport(void *_s)
 	dtt_entry_t e;
 	int rval;
 
-	LOCK(&s->inbounddir->dirmtx);
-	dirlen = strlen(s->inbounddir->dirpath);
-	UNLOCK(&s->inbounddir->dirmtx);
+	{
+		std::lock_guard lk { s->inbounddir->dirmtx };
+		dirlen = strlen(s->inbounddir->dirpath);
+	}
 
 	for (;;) {
 		rval = 0;
