@@ -44,7 +44,7 @@
 
 namespace dtraced {
 
-struct state;
+class state;
 struct job;
 
 void handle_sendinfo(state *, dtraced::job *);

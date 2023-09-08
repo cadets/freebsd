@@ -41,7 +41,9 @@
 #ifndef _DTRACED_STATE_H_
 #define _DTRACED_STATE_H_
 
-#include <pthread.h>
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/event.h>
 
 #include "dtraced.h"
 #include "dtraced_directory.h"
@@ -66,18 +68,36 @@ struct job;
  * dtraced state structure. This contains everything relevant to dtraced's
  * state management, such as files that exist, connected sockets, etc.
  */
-struct state {
-	const char **argv;	/* Needed in case we need to re-exec. */
-	int ctrlmachine;	/* is this a control machine? */
+class state {
+	const char **argv; /* needed in case we need to re-exec. */
+	int ctrlmachine;   /* is this a control machine? */
+
+	bool setup_threads(void);
+	bool setup_socket(void);
+
+	bool destroy_socket(void);
+
+	bool dispatch_read(dtraced::fd *, struct kevent &);
+	bool dispatch_write(dtraced::fd *, struct kevent &);
+	bool handle_event(struct kevent &);
+	bool dispatch_event(struct kevent &);
+
+	std::thread inboundtd; /* inbound monitoring thread */
+	std::thread basetd;    /* base monitoring thread */
+
 	size_t threadpool_size; /* size of the thread pool (workers) */
+	std::vector<std::thread> workers; /* thread pool for the joblist */
+
+	std::thread socktd; /* config socket thread */
+	int sockfd;	    /* config socket filedesc */
+
+	std::thread dtt_listentd; /* read() on dtt_fd */
+	std::thread dtt_writetd;  /* write() on dtt_fd */
+    public:
 
 	dir *inbounddir;  /* /var/ddtrace/inbound */
 	dir *outbounddir; /* /var/ddtrace/outbound */
 	dir *basedir;	  /* /var/ddtrace/base */
-
-	std::thread inboundtd; /* inbound monitoring thread */
-	std::thread basetd;    /* base monitoring thread */
-	/* the outbound monitoring thread is the main thread */
 
 	/*
 	 * Sockets.
@@ -90,37 +110,33 @@ struct state {
 	/*
 	 * Configuration socket.
 	 */
-	std::mutex sockmtx;  /* config socket mutex */
-	std::thread socktd; /* config socket thread */
-	int sockfd;	  /* config socket filedesc */
-	sem_t socksema;	  /* config socket semaphore */
+	std::mutex sockmtx; /* config socket mutex */
+	sem_t socksema;	    /* config socket semaphore */
 
 	/*
 	 * dttransport fd and threads
 	 */
-	int dtt_fd;		/* dttransport filedesc */
-	std::thread dtt_listentd; /* read() on dtt_fd */
-	std::thread dtt_writetd;	/* write() on dtt_fd */
+	int dtt_fd;		  /* dttransport filedesc */
 
 	/*
 	 * Thread pool management.
 	 */
-	std::vector<std::thread> workers; /* thread pool for the joblist */
 	std::mutex joblistmtx; /* joblist mutex */
 	std::list<job *> joblist;
 	std::mutex dispatched_jobsmtx; /* dispatched joblist mutex */
 
 	/* jobs to be picked up by the workers */
 	std::list<job *> dispatched_jobs;
-	std::condition_variable dispatched_jobscv; /* dispatched joblist condvar */
+	std::condition_variable
+	    dispatched_jobscv; /* dispatched joblist condvar */
 
 	/*
 	 * Children management.
 	 */
 	std::thread killtd; /* handle sending kill(SIGTERM) to the guest */
-	std::mutex killmtx;  /* mutex of the kill list */
+	std::mutex killmtx; /* mutex of the kill list */
 	std::queue<pid_t> pids_to_kill; /* a list of pids to kill */
-	std::condition_variable killcv;		/* kill list condvar */
+	std::condition_variable killcv; /* kill list condvar */
 	std::thread reaptd;		/* handle reaping children */
 
 	std::unordered_set<pid_t> pidlist; /* a list of pids running */
@@ -132,10 +148,10 @@ struct state {
 	/* dead file descriptor list (to close) */
 	std::unordered_set<fd *> deadfds;
 	std::mutex deadfdsmtx; /* mutex for deadfds */
-	std::thread closetd;  /* file descriptor closing thread */
+	std::thread closetd;   /* file descriptor closing thread */
 
 	std::condition_variable jobcleancv; /* job cleaning thread condvar */
-	std::thread jobcleantd;	   /* job cleaning thread */
+	std::thread jobcleantd;		    /* job cleaning thread */
 
 	/*
 	 * Consumer threads
@@ -149,13 +165,26 @@ struct state {
 
 	std::list<std::array<char, DTRACED_PROGIDENTLEN>> identlist;
 	std::mutex identlistmtx; /* mutex protecting the ident list */
+
+	state() = default;
+	~state() = default;
+
+	bool initialize(int, int, int, const char **);
+	bool finalize(void);
+	[[noreturn]] void re_exec(void);
+	bool is_control_machine(void);
+
+	bool accept_new_connection(void);
+	void process_consumers(void);
+	int socket(void);
+
+	void kill_socket(dtraced::fd *);
+
+	bool send_info_async(dtraced::fd *);
 };
 
-int init_state(state *, int, int, int, const char **);
-int destroy_state(state *);
-
-void _broadcast_shutdown(state *, const char *, int);
-#define broadcast_shutdown(_a) (_broadcast_shutdown(_a, __FILE__, __LINE__))
+void _broadcast_shutdown(state &, const char *, int);
+#define broadcast_shutdown(_a) _broadcast_shutdown((_a), __FILE__, __LINE__)
 
 }
 

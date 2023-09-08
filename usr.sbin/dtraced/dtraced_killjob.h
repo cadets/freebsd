@@ -43,7 +43,7 @@
 
 namespace dtraced {
 
-struct state;
+class state;
 struct job;
 
 void handle_kill(state *, job *);

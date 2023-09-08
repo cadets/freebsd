@@ -102,7 +102,7 @@ handle_signals(void *arg)
 		abort();
 	}
 
-	broadcast_shutdown(&state);
+	broadcast_shutdown(state);
 	return (NULL);
 }
 
@@ -163,7 +163,7 @@ main(int argc, const char **argv)
 {
 	char elfpath[MAXPATHLEN] = "/var/ddtrace";
 	__cleanup(dtraced::closefd_generic) int efd = -1;
-	int errval, retry, nosha = 0;
+	int retry, nosha = 0;
 	char ch;
 	char pidstr[256];
 	char hypervisor[128];
@@ -334,20 +334,13 @@ againefd:
 
 	setup_sighdlrs();
 
-	errval = dtraced::init_state(&state, ctrlmachine, nosha,
-	    threadpool_size, argv);
-	if (errval != 0) {
-		ERR("Failed to initialize the state");
+	if (!state.initialize(ctrlmachine, nosha, threadpool_size, argv))
 		return (EXIT_FAILURE);
-	}
 
 	dtraced::listen_dir(state.outbounddir);
 
-	errval = dtraced::destroy_state(&state);
-	if (errval != 0) {
-		ERR("Failed to clean up state");
+	if (!state.finalize())
 		return (EXIT_FAILURE);
-	}
 
 	return (0);
 }

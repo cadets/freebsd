@@ -88,7 +88,7 @@ struct job {
 
 job *dtraced_new_job(int, fd *);
 void dtraced_free_job(job *);
-int  dispatch_event(state *, struct kevent *);
+int  dispatch_event(state &, struct kevent *);
 void process_joblist(void *);
 const char *dtraced_job_identifier(job *);
 void clean_jobs(void *);

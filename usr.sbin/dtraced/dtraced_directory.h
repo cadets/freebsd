@@ -55,7 +55,7 @@ extern char BASEDIR[MAXPATHLEN];
 
 
 struct dir;
-struct state;
+class state;
 
 typedef int (*foreach_fn_t)(struct dirent *, dir *);
 

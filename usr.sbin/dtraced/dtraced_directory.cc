@@ -143,7 +143,7 @@ listen_dir(void *_dir)
 	ts.tv_sec = DTRACED_EVENTSLEEPTIME;
 	ts.tv_nsec = 0;
 	for (;;) {
-		rval = dtraced_event(s, kq, &ev, 1, &ev_data, 1, &ts);
+		rval = dtraced_event(*s, kq, &ev, 1, &ev_data, 1, &ts);
 
 		if (s->shutdown.load())
 			break;
@@ -151,7 +151,7 @@ listen_dir(void *_dir)
 		if (rval < 0) {
 			ERR("dtraced_event failed on %s: %m",
 			    dir->dirpath);
-			broadcast_shutdown(s);
+			broadcast_shutdown(*s);
 			return;
 		}
 
@@ -166,7 +166,7 @@ listen_dir(void *_dir)
 			if (err) {
 				ERR("Failed to process new files in %s",
 				    dir->dirpath);
-				broadcast_shutdown(s);
+				broadcast_shutdown(*s);
 				return;
 			}
 		}
@@ -473,8 +473,7 @@ process_inbound(struct dirent *f, dir *dir)
 
 	DEBUG("processing %s", fullpath);
 
-	assert(s->ctrlmachine == 1 || s->ctrlmachine == 0);
-	if (s->ctrlmachine == 1) {
+	if (s->is_control_machine()) {
 		/*
 		 * If we have a host configuration of dtraced
 		 * we simply send off the ELF file to dtrace(1).

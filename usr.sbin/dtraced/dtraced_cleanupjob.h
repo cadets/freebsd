@@ -42,7 +42,7 @@
 
 namespace dtraced {
 
-struct state;
+class state;
 struct job;
 
 void handle_cleanup(state *, dtraced::job *);

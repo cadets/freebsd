@@ -47,7 +47,7 @@
 
 namespace dtraced {
 
-struct state;
+class state;
 
 static __inline void
 fd_acquire(fd *dfd)
@@ -73,7 +73,7 @@ int  send_nak(int);
 int  enable_fd(int, int, int, void *);
 int  reenable_fd(int, int, int);
 int  disable_fd(int, int, int);
-
+int  disable_rw(int, int);
 }
 
 #endif // _DTRACED_CONNECTION_H_

@@ -176,7 +176,7 @@ dtt_cleanup(state *s)
 
 	/* Re-exec ourselves to ensure full cleanup. */
 	WARN("re-execing");
-	execve(s->argv[0], (char *const *)s->argv, NULL);
+	s->re_exec();
 }
 
 static int
@@ -267,7 +267,7 @@ listen_dttransport(void *_s)
 				}
 
 				ERR("failed to read event: %m");
-				broadcast_shutdown(s);
+				broadcast_shutdown(*s);
 				return;
 			}
 		}
@@ -278,7 +278,7 @@ listen_dttransport(void *_s)
 		if (unlikely(rval != sizeof(e))) {
 			ERR("expected to read size %zu, got %zu", sizeof(e),
 			    rval);
-			broadcast_shutdown(s);
+			broadcast_shutdown(*s);
 			return;
 		}
 
@@ -322,7 +322,7 @@ write_dttransport(void *_s)
 
 	sockfd = setup_connection(s);
 	if (sockfd == -1) {
-		broadcast_shutdown(s);
+		broadcast_shutdown(*s);
 		return;
 	}
 
@@ -343,27 +343,27 @@ write_dttransport(void *_s)
 				}
 
 				ERR("failed to recv from sub.sock: %m");
-				broadcast_shutdown(s);
+				broadcast_shutdown(*s);
 				return;
 			}
 		}
 
 		if (unlikely(s->shutdown.load())) {
-			broadcast_shutdown(s);
+			broadcast_shutdown(*s);
 			return;
 		}
 
 		if (unlikely(r != DTRACED_MSGHDRSIZE)) {
 			ERR("expected to read size %zu, got %zu",
 			    DTRACED_MSGHDRSIZE, r);
-			broadcast_shutdown(s);
+			broadcast_shutdown(*s);
 			return;
 		}
 
 		if (unlikely(DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF)) {
 			ERR("Received unknown message type: %lu",
 			    DTRACED_MSG_TYPE(header));
-			broadcast_shutdown(s);
+			broadcast_shutdown(*s);
 			return;
 		}
 
@@ -381,7 +381,7 @@ write_dttransport(void *_s)
 			r = recv(sockfd, (void *)msg_ptr, len, 0);
 			if (r < 0) {
 				ERR("exiting write_dttransport(): %m");
-				broadcast_shutdown(s);
+				broadcast_shutdown(*s);
 				return;
 			} else if ((size_t)r == len)
 				break;
@@ -411,7 +411,7 @@ write_dttransport(void *_s)
 				 * we just move on. It might get opened
 				 * at some point.
 				 */
-				broadcast_shutdown(s);
+				broadcast_shutdown(*s);
 				return;
 			}
 

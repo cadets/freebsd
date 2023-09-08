@@ -78,7 +78,7 @@ handle_elfmsg(state *s, dtraced_hdr_t *h,
 		return (-1);
 	}
 
-	if (s->ctrlmachine == 0) {
+	if (!s->is_control_machine()) {
 		if (DTRACED_MSG_IDENT_PRESENT(*h)) {
 			std::array<char, DTRACED_PROGIDENTLEN> ident;
 			std::copy_n(std::begin(DTRACED_MSG_IDENT(*h)),

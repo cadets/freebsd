@@ -138,65 +138,6 @@ dtraced_free_job(job *j)
 	free(j);
 }
 
-/*
- * NOTE: dispatch_event assumes that event has already been handled correctly in
- * the main loop.
- */
-int
-dispatch_event(state *s, struct kevent *ev)
-{
-	fd *dfd;
-	job *job;
-	int efd;
-
-	efd = (int)ev->ident;
-
-	if (ev->filter == EVFILT_READ) {
-		dfd = (fd *)ev->udata;
-
-		/*
-		 * Read is a little bit more complicated than write, because we
-		 * have to read in the actual event and put it in the
-		 * /var/ddtrace/base directory for the directory monitoring
-		 * kqueues to wake up and process it further.
-		 */
-		job = dtraced_new_job(READ_DATA, dfd);
-		if (job == NULL) {
-			ERR("dtraced_new_job() failed with: %m");
-			abort();
-		}
-
-		std::lock_guard lk { s->dispatched_jobsmtx };
-		s->dispatched_jobs.push_front(job);
-		s->dispatched_jobscv.notify_all();
-
-	} else if (ev->filter == EVFILT_WRITE) {
-		/*
-		 * Go through the joblist, and if we find a job which has our
-		 * file descriptor as the destination, we put it in the dispatch
-		 * list.
-		 */
-
-		for (auto it = s->joblist.begin(); it != s->joblist.end();) {
-			job = *it;
-			dfd = job->connsockfd;
-			if (dfd->fd == efd) {
-				it = s->joblist.erase(it);
-				std::lock_guard lk { s->dispatched_jobsmtx };
-				s->dispatched_jobs.push_back(job);
-				s->dispatched_jobscv.notify_all();
-			} else
-				++it;
-		}
-
-	} else {
-		ERR("Unexpected event flags: %d", ev->flags);
-		return (-1);
-	}
-
-	return (0);
-}
-
 void
 process_joblist(void *_s)
 {

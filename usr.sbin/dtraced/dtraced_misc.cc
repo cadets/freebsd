@@ -141,14 +141,14 @@ waitpid_timeout(pid_t pid, struct timespec *timeout)
 }
 
 int
-dtraced_event(state *s, int kq, const struct kevent *changelist,
+dtraced_event(state &s, int kq, const struct kevent *changelist,
     int nchanges, struct kevent *eventlist, int nevents,
     const struct timespec *timeout)
 {
 	int new_events;
 
 	new_events = 0;
-	while (s->shutdown.load() == 0 && new_events == 0) {
+	while (s.shutdown.load() == 0 && new_events == 0) {
 		new_events = kevent(kq, changelist, nchanges, eventlist,
 		    nevents, timeout);
 		if (new_events == -1)
