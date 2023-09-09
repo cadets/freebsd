@@ -40,6 +40,7 @@
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -51,13 +52,18 @@
 #include <unistd.h>
 
 #include "dtraced_chld.h"
+#include "dtraced_cleanupjob.h"
 #include "dtraced_connection.h"
 #include "dtraced_directory.h"
 #include "dtraced_dttransport.h"
+#include "dtraced_elfjob.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
+#include "dtraced_killjob.h"
 #include "dtraced_lock.h"
 #include "dtraced_misc.h"
+#include "dtraced_readjob.h"
+#include "dtraced_sendinfojob.h"
 #include "dtraced_state.h"
 
 namespace dtraced {
@@ -69,22 +75,22 @@ state::setup_threads(void)
 {
 	this->workers.resize(this->threadpool_size);
 	for (size_t i = 0; i < this->threadpool_size; i++)
-		this->workers[i] = std::thread(process_joblist, this);
+		this->workers[i] = std::thread(&state::process_joblist, this);
 
 	sem_init(&this->socksema, 0, 0);
 
 	if (this->ctrlmachine == 0) {
-		this->dtt_listentd = std::thread(dtraced::listen_dttransport, this);
-		this->dtt_writetd = std::thread(dtraced::write_dttransport, this);
+		this->dtt_listentd = std::thread(&dtraced::listen_dttransport, this);
+		this->dtt_writetd = std::thread(&dtraced::write_dttransport, this);
 	}
 
 	this->socktd = std::thread(&state::process_consumers, this);
-	this->inboundtd = std::thread(listen_dir, this->inbounddir);
-	this->basetd = std::thread(listen_dir, this->basedir);
-	this->killtd = std::thread(manage_children, this);
-	this->reaptd = std::thread(reap_children, this);
-	this->closetd = std::thread(close_filedescs, this);
-	this->jobcleantd = std::thread(clean_jobs, this);
+	this->inboundtd = std::thread(&listen_dir, this->inbounddir);
+	this->basetd = std::thread(&listen_dir, this->basedir);
+	this->killtd = std::thread(&state::manage_children, this);
+	this->reaptd = std::thread(&state::reap_children, this);
+	this->closetd = std::thread(&state::close_filedescs, this);
+	this->jobcleantd = std::thread(&state::clean_jobs, this);
 
 	return (true);
 }
@@ -319,7 +325,6 @@ state::accept_new_connection(void)
 {
 	int connsockfd;
 	int on = 1;
-	fd *dfd;
 	dtd_initmsg_t initmsg;
 
 	memset(&initmsg, 0, sizeof(initmsg));
@@ -327,97 +332,85 @@ state::accept_new_connection(void)
 	connsockfd = accept(this->sockfd, NULL, 0);
 	if (connsockfd == -1) {
 		ERR("accept() failed: %m");
-		return (-1);
+		return (false);
 	}
 
 	if (setsockopt(connsockfd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on))) {
 		close(connsockfd);
 		ERR("setsockopt() failed: %m");
-		return (-1);
+		return (false);
 	}
 
 	initmsg.kind = DTRACED_KIND_DTRACED;
 	if (send(connsockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		close(connsockfd);
 		ERR("send() initmsg to connsockfd failed: %m");
-		return (-1);
+		return (false);
 	}
 
 	memset(&initmsg, 0, sizeof(initmsg));
 	if (recv(connsockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		close(connsockfd);
 		ERR("recv() get initmsg failed: %m");
-		return (-1);
+		return (false);
 	}
 
-	dfd = (fd *)malloc(sizeof(dtraced::fd));
-	if (dfd == NULL) {
-		ERR("malloc() failed with: %m");
-		abort();
-	}
-
-	memset(dfd, 0, sizeof(fd));
-	dfd->fd = connsockfd;
-	dfd->kind = initmsg.kind;
-	dfd->subs = initmsg.subs;
-	memcpy(dfd->ident, initmsg.ident, DTRACED_FDIDENTLEN);
-	dtraced_tag_fd(dfd);
-
-	if (enable_fd(this->kq_hdl, connsockfd, EVFILT_READ, dfd) < 0) {
+	client_fd *dfdp = new client_fd(this->kq_hdl, connsockfd, initmsg);
+	if (dfdp == nullptr) {
+		LOG("new client_fd() failed");
 		close(connsockfd);
-		free(dfd);
-		ERR("kevent() adding new connection failed: %m");
-		return (-1);
+		return (false);
 	}
 
-	if (enable_fd(this->kq_hdl, connsockfd, EVFILT_WRITE, dfd) < 0) {
+	client_fd &dfd = *dfdp;
+	if (!dfd.enable_rw((void *)dfdp)) {
 		close(connsockfd);
-		free(dfd);
-		ERR("kevent() adding new connection failed: %m");
-		return (-1);
+		delete dfdp;
+		return (false);
 	}
 
-	LOG("accept(%d, %x, 0x%x, %s)", dfd->fd, dfd->kind, dfd->subs,
-	    dfd->ident);
+	LOG("accept(%d, %x, 0x%x, %s)", dfd.fd, dfd.kind, dfd.subs, dfd.ident);
 
 	{
 		std::lock_guard lk { this->socklistmtx };
-		this->sockfds.insert(dfd);
+		this->sockfds.insert(dfdp);
 	}
 
-	if (dfd->subs & DTD_SUB_INFO)
-		this->send_info_async(dfd);
+	if (dfd.is_subscribed(DTD_SUB_INFO))
+		this->send_info_async(dfdp);
 
-	return (0);
+	return (true);
 }
 
 void
-state::kill_socket(dtraced::fd *dfd)
+state::kill_socket(client_fd *dfdp)
 {
+	client_fd &dfd = *dfdp;
+
 	/* Remove it from the socket list and shutdown */
 	{
 		std::lock_guard lk { this->socklistmtx };
-		this->sockfds.erase(dfd);
+		this->sockfds.erase(dfdp);
 	}
 
-	::shutdown(dfd->fd, SHUT_RDWR);
+	dfd.shutdown();
 
 	/*
 	 * Add it to the deadfds list and let it get cleaned up by other
 	 * threads.
 	 */
 	std::unique_lock lk { this->deadfdsmtx };
-	this->deadfds.insert(dfd);
+	this->deadfds.insert(dfdp);
 	this->jobcleancv.notify_all();
 }
 
 bool
-state::send_info_async(dtraced::fd *dfd)
+state::send_info_async(client_fd *dfdp)
 {
 	job *job;
 
-	job = dtraced_new_job(SEND_INFO, dfd);
-	if (job == NULL)
+	job = dtraced_new_job(SEND_INFO, dfdp);
+	if (job == nullptr)
 		return (false);
 
 	std::unique_lock lk { this->joblistmtx };
@@ -450,7 +443,7 @@ state::re_exec(void)
 bool
 state::handle_event(struct kevent &event)
 {
-	dtraced::fd *dfd = (dtraced::fd *)event.udata;
+	client_fd *dfdp = (client_fd *)event.udata;
 	int efd = event.ident;
 
 	if (efd == sockfd && event.flags & EV_ERROR) {
@@ -464,16 +457,15 @@ state::handle_event(struct kevent &event)
 	}
 
 	if (event.flags & EV_ERROR || event.flags & EV_EOF) {
-		assert(dfd != NULL && "dfd should not be NULL");
 		assert(efd != sockfd && "EOF || ERROR on sockfd");
-		assert(efd == dfd->fd);
+		assert(efd == dfdp->fd);
 
 		if (disable_rw(this->kq_hdl, efd)) {
 			ERR("disable_rw() failed: %m");
 			return (false);
 		}
 
-		this->kill_socket(dfd);
+		this->kill_socket(dfdp);
 		if (event.flags & EV_ERROR)
 			ERR("event error: %m");
 	} else if (efd == sockfd) {
@@ -481,24 +473,21 @@ state::handle_event(struct kevent &event)
 		 * New connection incoming. dfd is NULL so we
 		 * don't have to release it.
 		 */
-		assert(dfd == NULL && "dfd must NULL");
 		assert(event.filter == EVFILT_READ);
 
 		if (!this->accept_new_connection())
 			return (true);
 	} else if (event.filter == EVFILT_READ) {
-		assert(dfd != NULL && "dfd should not be NULL");
 		assert(efd != sockfd && "read on sockfd");
-		assert(efd == dfd->fd);
+		assert(efd == dfdp->fd);
 
-		if (!this->dispatch_read(dfd, event))
+		if (!this->dispatch_read(dfdp, event))
 			return (false);
 	} else if (event.filter == EVFILT_WRITE) {
-		assert(dfd != NULL && "dfd should not be NULL");
 		assert(efd != sockfd && "write on sockfd");
-		assert(efd == dfd->fd);
+		assert(efd == dfdp->fd);
 
-		if (!this->dispatch_write(dfd, event))
+		if (!this->dispatch_write(dfdp, event))
 			return (false);
 	}
 
@@ -556,10 +545,8 @@ state::process_consumers(void)
 		}
 
 		for (int i = 0; i < new_events; i++) {
-			if (!this->handle_event(event[i])) {
-				broadcast_shutdown(*this);
-				return;
-			}
+			if (!this->handle_event(event[i]))
+				ERR("failed to handle event");
 		}
 	}
 
@@ -567,12 +554,12 @@ state::process_consumers(void)
 }
 
 bool
-state::dispatch_read(dtraced::fd *dfd, struct kevent &event)
+state::dispatch_read(client_fd *dfdp, struct kevent &event)
 {
 	/*
 	 * Disable the EVFILT_READ event so we don't get spammed by it.
 	 */
-	if (disable_fd(this->kq_hdl, dfd->fd, EVFILT_READ)) {
+	if (disable_fd(this->kq_hdl, dfdp->fd, EVFILT_READ)) {
 		ERR("disable_fd() failed with: %m");
 		return (false);
 	}
@@ -581,9 +568,9 @@ state::dispatch_read(dtraced::fd *dfd, struct kevent &event)
 	 * If the file descriptor did not state it ever wants READDATA to work
 	 * on dtraced, we will simply ignore it and report a warning.
 	 */
-	if ((dfd->subs & DTD_SUB_READDATA) == 0) {
+	if (!dfdp->is_subscribed(DTD_SUB_READDATA)) {
 		WARN("socket %d tried to READDATA, but is not subscribed (%lx)",
-		    dfd->fd, dfd->subs);
+		    dfdp->fd, dfdp->subs);
 		return (true);
 	}
 
@@ -596,9 +583,11 @@ state::dispatch_read(dtraced::fd *dfd, struct kevent &event)
 }
 
 bool
-state::dispatch_write(dtraced::fd *dfd, struct kevent &event)
+state::dispatch_write(client_fd *dfdp, struct kevent &event)
 {
-	if (disable_fd(this->kq_hdl, dfd->fd, EVFILT_WRITE)) {
+	client_fd &dfd = *dfdp;
+
+	if (disable_fd(this->kq_hdl, dfd.fd, EVFILT_WRITE)) {
 		ERR("disable_fd() failed with: %m");
 		return (false);
 	}
@@ -607,7 +596,7 @@ state::dispatch_write(dtraced::fd *dfd, struct kevent &event)
 
 	std::unique_lock lk { this->joblistmtx };
 	for (job *job : this->joblist) {
-		if (job->connsockfd == dfd)
+		if (job->connsockfd == dfdp)
 			dispatch = true;
 	}
 
@@ -630,14 +619,14 @@ state::dispatch_write(dtraced::fd *dfd, struct kevent &event)
 bool
 state::dispatch_event(struct kevent &event)
 {
-	fd *dfd;
+	client_fd *dfdp;
 	job *job;
 	int efd;
 
 	efd = (int)event.ident;
 
 	if (event.filter == EVFILT_READ) {
-		dfd = (fd *)event.udata;
+		dfdp = (client_fd *)event.udata;
 
 		/*
 		 * Read is a little bit more complicated than write, because we
@@ -645,8 +634,8 @@ state::dispatch_event(struct kevent &event)
 		 * /var/ddtrace/base directory for the directory monitoring
 		 * kqueues to wake up and process it further.
 		 */
-		job = dtraced_new_job(READ_DATA, dfd);
-		if (job == NULL) {
+		job = dtraced_new_job(READ_DATA, dfdp);
+		if (job == nullptr) {
 			ERR("dtraced_new_job() failed with: %m");
 			abort(); // Allocation failure
 		}
@@ -665,8 +654,8 @@ state::dispatch_event(struct kevent &event)
 		for (auto it = this->joblist.begin();
 		     it != this->joblist.end();) {
 			job = *it;
-			dfd = job->connsockfd;
-			if (dfd->fd == efd) {
+			client_fd &dfd = *job->connsockfd;
+			if (dfd.fd == efd) {
 				it = this->joblist.erase(it);
 				std::lock_guard lk { this->dispatched_jobsmtx };
 				this->dispatched_jobs.push_back(job);
@@ -683,4 +672,184 @@ state::dispatch_event(struct kevent &event)
 	return (true);
 }
 
+void
+state::close_filedescs(void)
+{
+	while (this->shutdown.load() == 0) {
+		sleep(DTRACED_CLOSEFD_SLEEPTIME);
+		std::lock_guard lk { this->deadfdsmtx };
+		for (auto it = this->deadfds.begin();
+		     it != this->deadfds.end();) {
+			client_fd *dfdp = *it;
+
+			/*
+			 * If it's still referenced somewhere, we don't close
+			 * it. We'll pick it up on the next run.
+			 */
+			if (dfdp->is_dead()) {
+				++it;
+				continue;
+			}
+
+			if (dfdp->cleaned_up) {
+				/*
+				 * We haven't cleaned our jobs up yet. Delay the
+				 * closing of this file descriptor until we do.
+				 */
+				++it;
+				continue;
+			}
+
+			it = this->deadfds.erase(it);
+			dfdp->close();
+			delete dfdp;
+		}
+	}
+}
+
+void
+state::manage_children(void)
+{
+	pid_t pid;
+
+	while (1) {
+		/*
+		 * Wait for a notification that we need to kill a process
+		 */
+		std::unique_lock lk { this->killmtx };
+		this->killcv.wait(lk, [this] {
+			return (!this->pids_to_kill.empty() ||
+			    this->shutdown.load());
+		});
+
+		/*
+		 * No need to unlock here due to RAII.
+		 */
+		if (unlikely(this->shutdown.load()))
+			return;
+
+		pid = this->pids_to_kill.front();
+		this->pids_to_kill.pop();
+		lk.unlock();
+
+		{
+			std::lock_guard lk { this->pidlistmtx };
+			this->pidlist.erase(pid);
+		}
+
+		LOG("kill %d", pid);
+		if (kill(pid, SIGTERM)) {
+			assert(errno != EINVAL);
+			assert(errno != EPERM);
+
+			if (errno == ESRCH)
+				ERR("pid %d does not exist", pid);
+		}
+	}
+}
+
+void
+state::reap_children(void)
+{
+	int status, rv;
+
+	for (;;) {
+		usleep(DTRACED_SLEEPTIME * 100);
+		do {
+			rv = waitpid(-1, &status, WNOHANG);
+		} while (rv != -1 && rv != 0);
+
+		if (this->shutdown.load() != 0)
+			return;
+	}
+}
+
+void
+state::clean_jobs(void)
+{
+	int woken;
+
+	while (1) {
+		woken = 0;
+		std::unique_lock lk { this->deadfdsmtx };
+		while (this->shutdown.load() == 0 &&
+		    (this->deadfds.empty() || woken == 0)) {
+			this->jobcleancv.wait(lk);
+			woken = 1;
+		}
+
+		if (unlikely(this->shutdown.load() != 0))
+			return;
+
+		/*
+		 * Delete any jobs that our dead file descriptors have started.
+		 * We don't need to do anything with them, as the initiating
+		 * process is gone.
+		 */
+		for (client_fd *dfdp : this->deadfds) {
+			client_fd &dfd = *dfdp;
+
+			std::lock_guard lk { this->joblistmtx };
+			for (auto it = this->joblist.begin();
+			     it != this->joblist.end();) {
+				job *j = *it;
+				if (j->identifier.job_initiator_id == dfd.id) {
+					it = this->joblist.erase(it);
+					dtraced_free_job(j);
+				} else
+					++it;
+			}
+			dfd.cleaned_up = true;
+		}
+	}
+}
+
+void
+state::process_joblist(void)
+{
+	job *curjob;
+
+	while (1) {
+		std::unique_lock lk { this->dispatched_jobsmtx };
+		this->dispatched_jobscv.wait(lk, [this] {
+			return (!this->dispatched_jobs.empty() ||
+			    this->shutdown.load() != 0);
+		});
+
+		if (unlikely(this->shutdown.load() != 0))
+			break;
+
+		curjob = this->dispatched_jobs.front();
+		this->dispatched_jobs.pop_front();
+		lk.unlock();
+
+		switch (curjob->job) {
+		case READ_DATA:
+			handle_read_data(this, curjob);
+			break;
+
+		case KILL:
+			handle_kill(this, curjob);
+			break;
+
+		case NOTIFY_ELFWRITE:
+			handle_elfwrite(this, curjob);
+			break;
+
+		case CLEANUP:
+			handle_cleanup(this, curjob);
+			break;
+
+		case SEND_INFO:
+			handle_sendinfo(this, curjob);
+			break;
+
+		default:
+			ERR("Unknown job: %d", curjob->job);
+			abort();
+		}
+
+		dtraced_free_job(curjob);
+	}
+}
 }

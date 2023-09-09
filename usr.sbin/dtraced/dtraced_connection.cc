@@ -64,6 +64,125 @@
 
 namespace dtraced {
 
+client_fd::client_fd(int _kq, int _fd, dtd_initmsg_t initmsg)
+    : kq(_kq)
+    , fd(_fd)
+    , subs(initmsg.subs)
+    , cleaned_up(false)
+    , id(0)
+    , kind(initmsg.kind)
+{
+	memcpy(this->ident, initmsg.ident, DTRACED_FDIDENTLEN);
+	this->id = dtraced_genid();
+}
+
+bool
+client_fd::enable_read(void *data)
+{
+	struct kevent change_event[1];
+
+	EV_SET(change_event, fd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, data);
+	return (kevent(this->kq, change_event, 1, NULL, 0, NULL) != -1);
+}
+
+bool
+client_fd::enable_write(void *data)
+{
+	struct kevent change_event[1];
+
+	EV_SET(change_event, fd, EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, 0, data);
+	return (kevent(this->kq, change_event, 1, NULL, 0, NULL) != -1);
+}
+
+bool
+client_fd::enable_rw(void *data)
+{
+
+	return (this->enable_read(data) && this->enable_write(data));
+}
+
+bool
+client_fd::re_enable_read(void)
+{
+	struct kevent change_event[1];
+
+	EV_SET(change_event, this->fd, EVFILT_READ,
+	    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+	return (kevent(this->kq, change_event, 1, NULL, 0, NULL) != -1);
+}
+
+bool
+client_fd::re_enable_write(void)
+{
+	struct kevent change_event[1];
+
+	EV_SET(change_event, this->fd, EVFILT_WRITE,
+	    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+	return (kevent(this->kq, change_event, 1, NULL, 0, NULL) != -1);
+}
+
+bool
+client_fd::re_enable_rw(void)
+{
+
+	return (this->re_enable_read() && this->re_enable_write());
+}
+
+bool
+client_fd::disable_read(void)
+{
+	struct kevent change_event[1];
+
+	EV_SET(change_event, this->fd, EVFILT_READ,
+	    EV_DISABLE | EV_KEEPUDATA, 0, 0, 0);
+	return (kevent(kq, change_event, 1, NULL, 0, NULL) != -1);
+}
+
+bool
+client_fd::disable_write(void)
+{
+	struct kevent change_event[1];
+
+	EV_SET(change_event, this->fd, EVFILT_WRITE,
+	    EV_DISABLE | EV_KEEPUDATA, 0, 0, 0);
+	return (kevent(kq, change_event, 1, NULL, 0, NULL) != -1);
+}
+
+bool
+client_fd::disable_rw(void)
+{
+
+	return (this->disable_read() && this->disable_write());
+}
+
+void
+client_fd::close(void)
+{
+
+	LOG("close(%s)", std::string(*this).c_str());
+	::close(this->fd);
+}
+
+void
+client_fd::shutdown(void)
+{
+
+	::shutdown(this->fd, SHUT_RDWR);
+}
+
+client_fd::operator std::string(void) const
+{
+
+	return (std::to_string(this->fd) + "-" + std::string(this->ident));
+}
+
+client_fd::~client_fd()
+{
+
+	LOG("close(%s)", std::string(*this).c_str());
+	::close(this->fd);
+}
+
 int
 send_ack(int fd)
 {
@@ -86,7 +205,6 @@ enable_fd(int kq, int fd, int filt, void *data)
 	struct kevent change_event[1];
 
 	EV_SET(change_event, fd, filt, EV_ADD | EV_ENABLE, 0, 0, data);
-	DEBUG("Enable %d", fd);
 	return (kevent(kq, change_event, 1, NULL, 0, NULL) < 0);
 }
 
@@ -96,7 +214,6 @@ reenable_fd(int kq, int fd, int filt)
 	struct kevent change_event[1];
 
 	EV_SET(change_event, fd, filt, EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
-	DEBUG("Re-enable %d", fd);
 	return (kevent(kq, change_event, 1, NULL, 0, NULL));
 }
 
@@ -106,49 +223,7 @@ disable_fd(int kq, int fd, int filt)
 	struct kevent change_event[1];
 
 	EV_SET(change_event, fd, filt, EV_DISABLE | EV_KEEPUDATA, 0, 0, 0);
-	DEBUG("Disable %d", fd);
 	return (kevent(kq, change_event, 1, NULL, 0, NULL));
-}
-
-void
-close_filedescs(void *_s)
-{
-	state *s = (dtraced::state *)_s;
-	int count;
-
-	while (s->shutdown.load() == 0) {
-		sleep(DTRACED_CLOSEFD_SLEEPTIME);
-		std::lock_guard lk { s->deadfdsmtx };
-		for (auto it = s->deadfds.begin(); it != s->deadfds.end();) {
-			fd *dfd = *it;
-			/*
-			 * If it's still referenced somewhere, we don't close
-			 * it. We'll pick it up on the next run.
-			 */
-			count = dfd->__count.load();
-			if (count != 0) {
-				++it;
-				continue;
-			}
-
-			if (dfd->cleaned_up == 0) {
-				/*
-				 * We haven't cleaned our jobs up yet. Delay the
-				 * closing of this file descriptor until we do.
-				 */
-				++it;
-				continue;
-			}
-
-			it = s->deadfds.erase(it);
-			assert(dfd->__count.load() == 0);
-			LOG("close(%p, %d-%s)", dfd, dfd->fd, dfd->ident);
-			close(dfd->fd);
-			free(dfd);
-		}
-	}
-
-	return;
 }
 
 int

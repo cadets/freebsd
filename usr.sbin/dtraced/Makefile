@@ -4,7 +4,6 @@
 
 PROG_CXX=	dtraced
 SRCS=		dtraced.cc \
-		dtraced_chld.cc \
 		dtraced_cleanupjob.cc \
 		dtraced_connection.cc \
 		dtraced_directory.cc \

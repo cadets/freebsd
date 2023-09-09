@@ -37,14 +37,6 @@
 
 namespace dtraced {
 
-static uint64_t
-dtraced_genid(void)
-{
-	uint64_t r;
-	arc4random_buf(&r, sizeof(r));
-	return (r);
-}
-
 void
 dtraced_tag_job(uint64_t initiator_id, job *j)
 {
@@ -53,13 +45,6 @@ dtraced_tag_job(uint64_t initiator_id, job *j)
 
 	j->identifier.job_initiator_id = initiator_id;
 	j->identifier.job_id = dtraced_genid();
-}
-
-void
-dtraced_tag_fd(fd *dfd)
-{
-
-	dfd->id = dtraced_genid();
 }
 
 }

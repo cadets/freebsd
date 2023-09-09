@@ -110,14 +110,16 @@ handle_killmsg(state *s, dtraced_hdr_t *h)
 	 * need to only do it for FORWARDERs.
 	 */
 	std::lock_guard lk { s->socklistmtx };
-	for (fd *dfd : s->sockfds) {
-		if (dfd->kind != DTRACED_KIND_FORWARDER)
+	for (client_fd *dfdp : s->sockfds) {
+		client_fd &dfd = *dfdp;
+
+		if (dfd.kind != DTRACED_KIND_FORWARDER)
 			continue;
 
-		if ((dfd->subs & DTD_SUB_KILL) == 0)
+		if (!dfd.is_subscribed(DTD_SUB_KILL))
 			continue;
 
-		job = dtraced_new_job(KILL, dfd);
+		job = dtraced_new_job(KILL, dfdp);
 		if (job == NULL) {
 			ERR("dtraced_new_job() failed: %m");
 			abort();
@@ -131,8 +133,8 @@ handle_killmsg(state *s, dtraced_hdr_t *h)
 			s->joblist.push_back(job);
 		}
 
-		if (reenable_fd(s->kq_hdl, dfd->fd, EVFILT_WRITE)) {
-			ERR("reenable_fd() failed with: %m");
+		if (!dfd.re_enable_write()) {
+			ERR("re_enable_write() failed with: %m");
 			return (-1);
 		}
 	}
@@ -161,15 +163,17 @@ handle_cleanupmsg(state *s, dtraced_hdr_t *h)
 	}
 
 	std::unique_lock lk { s->socklistmtx };
-	for (fd *dfd : s->sockfds) {
-		if (dfd->kind != DTRACED_KIND_FORWARDER)
+	for (client_fd *dfdp : s->sockfds) {
+		client_fd &dfd = *dfdp;
+
+		if (dfd.kind != DTRACED_KIND_FORWARDER)
 			continue;
 
-		if ((dfd->subs & DTD_SUB_CLEANUP) == 0)
+		if (!dfd.is_subscribed(DTD_SUB_CLEANUP))
 			continue;
 
 		for (i = 0; i < n_entries; i++) {
-			if (recv(dfd->fd, &len, sizeof(len), 0) < 0) {
+			if (recv(dfd.get_fd(), &len, sizeof(len), 0) < 0) {
 				ERR("recv() failed with: %m");
 				for (j = 0; j < i; j++)
 					free(entries[j]);
@@ -183,7 +187,7 @@ handle_cleanupmsg(state *s, dtraced_hdr_t *h)
 			_buf = buf;
 			nbytes = len;
 			for (;;) {
-				r = recv(dfd->fd, _buf, nbytes, 0);
+				r = recv(dfd.get_fd(), _buf, nbytes, 0);
 				if (r < 0) {
 					ERR("recv() failed with: %m");
 					for (j = 0; j < i; j++)
@@ -203,7 +207,7 @@ handle_cleanupmsg(state *s, dtraced_hdr_t *h)
 			entries[i] = buf;
 		}
 
-		job = dtraced_new_job(CLEANUP, dfd);
+		job = dtraced_new_job(CLEANUP, dfdp);
 		if (job == NULL)
 			abort();
 
@@ -229,8 +233,8 @@ handle_cleanupmsg(state *s, dtraced_hdr_t *h)
 			s->joblist.push_back(job);
 		}
 
-		if (reenable_fd(s->kq_hdl, dfd->fd, EVFILT_WRITE)) {
-			ERR("reenable_fd() failed with: %m");
+		if (!dfd.re_enable_write()) {
+			ERR("re_enable_write() failed with: %m");
 			return (-1);
 		}
 	}
@@ -246,14 +250,14 @@ void
 handle_read_data(state *s, job *curjob)
 {
 	int fd, err;
-	dtraced::fd *dfd = curjob->connsockfd;
+	client_fd &dfd = *curjob->connsockfd;
 	size_t nbytes, totalbytes;
 	ssize_t r;
 	unsigned char *_buf;
 	dtraced_hdr_t header;
 	__cleanup(freep) unsigned char *buf = NULL;
 
-	fd = dfd->fd;
+	fd = dfd.get_fd();
 	totalbytes = 0;
 
 	if ((r = recv(fd, &totalbytes, sizeof(totalbytes), 0)) < 0) {
@@ -295,8 +299,8 @@ handle_read_data(state *s, job *curjob)
 		 * We are done receiving the data and nothing
 		 * failed, re-enable the event and keep going.
 		 */
-		if (reenable_fd(s->kq_hdl, fd, EVFILT_READ)) {
-			ERR("reenable_fd() failed with: %m");
+		if (!dfd.re_enable_read()) {
+			ERR("re_enable_read() failed with: %m");
 			return;
 		}
 	}
@@ -348,8 +352,8 @@ handle_read_data(state *s, job *curjob)
 	 * We are done receiving the data and nothing failed, re-enable the
 	 * event and keep going.
 	 */
-	if (reenable_fd(s->kq_hdl, fd, EVFILT_READ))
-		ERR("reenable_fd() failed with: %m");
+	if (!dfd.re_enable_read())
+		ERR("re_enable_read() failed with: %m");
 }
 
 }

@@ -70,16 +70,16 @@ handle_elfwrite(state *s, job *curjob)
 	size_t pathlen, elflen, msglen;
 	dtraced_hdr_t header;
 	dir *dir;
-	dtraced::fd *dfd = curjob->connsockfd;
+	client_fd &dfd = *curjob->connsockfd;
 	struct stat stat;
 
-	fd = dfd->fd;
+	fd = dfd.get_fd();
 	path = curjob->j.notify_elfwrite.path;
 	pathlen = curjob->j.notify_elfwrite.pathlen;
 	dir = curjob->j.notify_elfwrite.dir;
 	_nosha = curjob->j.notify_elfwrite.nosha;
 
-	DEBUG("%s%s to %s", dir->dirpath, path, dfd->ident);
+	DEBUG("%s%s to %s", dir->dirpath, path, std::string(dfd).c_str());
 	/*
 	 * Sanity assertions.
 	 */
@@ -135,8 +135,8 @@ handle_elfwrite(state *s, job *curjob)
 	}
 
 	DEBUG("Re-enabling %d", fd);
-	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))
-		ERR("reenable_fd() failed with: %m");
+	if (!dfd.re_enable_write())
+		ERR("re_enable_write() failed with: %m");
 }
 
 }

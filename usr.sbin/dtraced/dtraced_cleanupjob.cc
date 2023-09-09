@@ -59,12 +59,12 @@ handle_cleanup(state *s, job *curjob)
 	int fd;
 	dtraced_hdr_t header;
 	size_t buflen, i;
-	dtraced::fd *dfd = curjob->connsockfd;
+	client_fd &dfd = *curjob->connsockfd;
 	char **entries = curjob->j.cleanup.entries;
 	size_t n_entries = curjob->j.cleanup.n_entries;
 
-	fd = dfd->fd;
-	DEBUG("CLEANUP to %s", dfd->ident);
+	fd = dfd.get_fd();
+	DEBUG("CLEANUP to %s", std::string(dfd).c_str());
 	assert(fd != -1);
 
 	DTRACED_MSG_TYPE(header) = DTRACED_MSG_CLEANUP;
@@ -92,8 +92,8 @@ handle_cleanup(state *s, job *curjob)
 		}
 	}
 
-	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))
-		ERR("reenable_fd() failed with: %m");
+	if (!dfd.re_enable_write())
+		ERR("re_enable_write() failed with: %m");
 }
 
 }

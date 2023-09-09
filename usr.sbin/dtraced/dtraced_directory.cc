@@ -398,7 +398,7 @@ dtd_closedir(dir *dir)
 int
 process_inbound(struct dirent *f, dir *dir)
 {
-	int err, jfd;
+	int err;
 	job *job;
 	state *s;
 	int idx;
@@ -487,15 +487,16 @@ process_inbound(struct dirent *f, dir *dir)
 		 * want to process the same file in the future.
 		 */
 		std::lock_guard lk { s->socklistmtx };
-		for (fd *dfd : s->sockfds) {
-			if (dfd->kind != DTRACED_KIND_CONSUMER)
+		for (client_fd *dfdp : s->sockfds) {
+			client_fd &dfd = *dfdp;
+
+			if (dfd.kind != DTRACED_KIND_CONSUMER)
 				continue;
 
-			if ((dfd->subs & DTD_SUB_ELFWRITE) == 0)
+			if (!dfd.is_subscribed(DTD_SUB_ELFWRITE))
 				continue;
 
-			jfd = dfd->fd;
-			job = dtraced_new_job(NOTIFY_ELFWRITE, dfd);
+			job = dtraced_new_job(NOTIFY_ELFWRITE, dfdp);
 			if (job == NULL) {
 				ERR("dtraced_new_job() failed: %m");
 				abort();
@@ -516,8 +517,8 @@ process_inbound(struct dirent *f, dir *dir)
 				s->joblist.push_back(job);
 			}
 
-			if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))
-				ERR("process_inbound: kevent() failed with: %m");
+			if (!dfd.re_enable_write())
+				ERR("re_enable_write() failed with: %m");
 		}
 	} else {
 		int stdout_rdr[2];
@@ -987,7 +988,7 @@ process_base(struct dirent *f, dir *dir)
 int
 process_outbound(struct dirent *f, dir *dir)
 {
-	int err, jfd;
+	int err;
 	job *job;
 	state *s;
 	int idx;
@@ -1036,15 +1037,16 @@ process_outbound(struct dirent *f, dir *dir)
 		return (0);
 
 	std::unique_lock lk { s->socklistmtx };
-	for (fd *dfd : s->sockfds) {
-		if (dfd->kind != DTRACED_KIND_FORWARDER)
+	for (client_fd *dfdp : s->sockfds) {
+		client_fd &dfd = *dfdp;
+
+		if (dfd.kind != DTRACED_KIND_FORWARDER)
 			continue;
 
-		if ((dfd->subs & DTD_SUB_ELFWRITE) == 0)
+		if (!dfd.is_subscribed(DTD_SUB_ELFWRITE))
 			continue;
 
-		jfd = dfd->fd;
-		job = dtraced_new_job(NOTIFY_ELFWRITE, dfd);
+		job = dtraced_new_job(NOTIFY_ELFWRITE, dfdp);
 		if (job == NULL) {
 			ERR("dtraced_new_job() failed: %m");
 			abort();
@@ -1065,8 +1067,8 @@ process_outbound(struct dirent *f, dir *dir)
 			s->joblist.push_back(job);
 		}
 
-		if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))
-			ERR("reenable_fd() failed with: %m");
+		if (!dfd.re_enable_write())
+			ERR("re_enable_write() failed with: %m");
 	}
 	lk.unlock();
 

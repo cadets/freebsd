@@ -50,6 +50,8 @@
 
 #include "_dtraced_connection.h"
 
+#define unlikely(x) __predict_false(x)
+
 #if defined(__has_feature)
 #if __has_feature(thread_sanitizer)
 #define __NOSANITIZE_THREAD __attribute__((no_sanitize("thread")))
@@ -80,7 +82,6 @@ void cleanup_pidfile(struct pidfh **);
 int  waitpid_timeout(pid_t, struct timespec *);
 int  dtraced_event(state &, int, const struct kevent *, int,
     struct kevent *, int, const struct timespec *);
-
 }
 
 #endif // _DTRACED_MISC_H_

@@ -51,42 +51,42 @@
 namespace dtraced {
 
 struct job {
-	int          job;        /* job kind */
-#define NOTIFY_ELFWRITE    1
-#define KILL               2
-#define READ_DATA          3
-#define CLEANUP            4
-#define SEND_INFO          5
-#define JOB_LAST           5
+	int job; /* job kind */
+#define NOTIFY_ELFWRITE 1
+#define KILL 2
+#define READ_DATA 3
+#define CLEANUP 4
+#define SEND_INFO 5
+#define JOB_LAST 5
 
-	fd *connsockfd;    /* which socket do we send this on? */
-	id identifier;	   /* unique job identifier within this dtraced */
-	char         ident_str[256]; /* identifier string */
+	client_fd *connsockfd; /* which socket do we send this on? */
+	id identifier;	       /* unique job identifier within this dtraced */
+	char ident_str[256];   /* identifier string */
 
 	union {
 		struct {
-			size_t    pathlen; /* how long is path? */
-			char      *path;   /* path to file (based on dir) */
-			dir *dir;    /* base directory of path */
-			int       nosha;   /* do we want to checksum? */
+			size_t pathlen; /* how long is path? */
+			char *path;	/* path to file (based on dir) */
+			dir *dir;	/* base directory of path */
+			int nosha;	/* do we want to checksum? */
 		} notify_elfwrite;
 
 		struct {
-			pid_t    pid;   /* pid to kill */
-			uint16_t vmid;  /* vmid to kill the pid on */
+			pid_t pid;     /* pid to kill */
+			uint16_t vmid; /* vmid to kill the pid on */
 		} kill;
 
 		struct {
 		} read;
 
 		struct {
-			char **entries;   /* each entry to cleanup */
+			char **entries;	  /* each entry to cleanup */
 			size_t n_entries; /* number of entries */
 		} cleanup;
 	} j;
 };
 
-job *dtraced_new_job(int, fd *);
+job *dtraced_new_job(int, client_fd *);
 void dtraced_free_job(job *);
 int  dispatch_event(state &, struct kevent *);
 void process_joblist(void *);

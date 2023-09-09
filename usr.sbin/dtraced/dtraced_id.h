@@ -42,10 +42,17 @@ struct id {
 };
 
 struct job;
-struct fd;
+
+static inline uint64_t
+dtraced_genid(void)
+{
+	uint64_t r;
+	arc4random_buf(&r, sizeof(r));
+	return (r);
+}
+
 
 void dtraced_tag_job(uint64_t, job *);
-void dtraced_tag_fd(fd *);
 
 }
 

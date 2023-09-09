@@ -41,33 +41,62 @@
 #ifndef _DTRACED_CONNECTION_H_
 #define _DTRACED_CONNECTION_H_
 
-#include <atomic>
+#include <sys/types.h>
+
+#include <execinfo.h>
+#include <unistd.h>
 
 #include "_dtraced_connection.h"
+#include "dtraced.h"
+#include "dtraced_errmsg.h"
+#include "dtraced_misc.h"
+
+#include <atomic>
+
+#define DTRACED_FDIDENTLEN             128ull
 
 namespace dtraced {
 
 class state;
 
-static __inline void
-fd_acquire(fd *dfd)
+inline void
+client_fd::acquire(void)
 {
 
-	dfd->__count.fetch_add(1);
+	this->count.fetch_add(1);
 }
 
-static __inline void
-fd_release(fd *dfd)
+inline void
+client_fd::release(void)
 {
-	int count = dfd->__count.fetch_sub(1);
-	if (count < 0)
+	int count = this->count.fetch_sub(1);
+	if (unlikely(count < 0)) {
+		ERR("%p count (= %d) < 0: aborting.", this, count);
 		abort();
+	}
 }
 
-void close_filedescs(void *);
-void process_consumers(void *);
-int  setup_sockfd(state *);
-int  destroy_sockfd(state *);
+inline bool
+client_fd::is_dead(void)
+{
+
+	return (this->count.load() == 0);
+}
+
+inline bool
+client_fd::is_subscribed(uint32_t which)
+{
+
+	return ((this->subs & which) != 0);
+}
+
+inline int
+client_fd::get_fd(void)
+{
+
+	return (this->fd);
+}
+
 int  send_ack(int);
 int  send_nak(int);
 int  enable_fd(int, int, int, void *);

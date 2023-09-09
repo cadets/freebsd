@@ -57,8 +57,8 @@ void
 handle_sendinfo(state *s, job *curjob)
 {
 	dtraced_hdr_t hdr = {};
-	fd *dfd = curjob->connsockfd;
-	int fd = dfd->fd;
+	client_fd &dfd = *curjob->connsockfd;
+	int fd = dfd.get_fd();
 	size_t info_count = 0;
 	__cleanup(freep) dtraced_infomsg_t *imsgs = NULL;
 	size_t i;
@@ -71,10 +71,12 @@ handle_sendinfo(state *s, job *curjob)
 	memset(imsgs, 0, info_count * sizeof(dtraced_infomsg_t));
 
 	i = 0;
-	for (dtraced::fd *client : s->sockfds) {
-		imsgs[i].client_kind = client->kind;
-		memcpy(
-		    imsgs[i++].client_name, client->ident, DTRACED_FDIDENTLEN);
+	for (client_fd *clientp : s->sockfds) {
+		client_fd &client = *clientp;
+
+		imsgs[i].client_kind = client.kind;
+		memcpy(imsgs[i++].client_name, client.ident,
+		    DTRACED_FDIDENTLEN);
 	}
 
 	hdr.msg_type = DTRACED_MSG_INFO;

@@ -66,20 +66,19 @@ namespace dtraced {
  * is responsible for filling out kind-specific fields.
  */
 job *
-dtraced_new_job(int job_kind, fd *dfd)
+dtraced_new_job(int job_kind, client_fd *dfdp)
 {
-	job *j = NULL;
+	job *j;
+	client_fd &dfd = *dfdp;
 
-	j = (job *)malloc(sizeof(job));
-	if (j == NULL)
-		return (NULL);
-
-	memset(j, 0, sizeof(job));
+	j = new job;
+	if (j == nullptr)
+		return (nullptr);
 
 	j->job = job_kind;
-	j->connsockfd = dfd;
-	fd_acquire(dfd);
-	dtraced_tag_job(dfd->id, j);
+	j->connsockfd = dfdp;
+	dfd.acquire();
+	dtraced_tag_job(dfd.id, j);
 
 	j->ident_str[sizeof(j->ident_str) - 1] = '\0';
 
@@ -114,80 +113,27 @@ dtraced_free_job(job *j)
 	switch (j->job) {
 	case NOTIFY_ELFWRITE:
 		free_elfwrite(j);
-		fd_release(j->connsockfd);
+		j->connsockfd->release();
 		break;
 
 	case KILL:
 	case READ_DATA:
-		fd_release(j->connsockfd);
+		j->connsockfd->release();
 		break;
 
 	case CLEANUP:
 		free_cleanup(j);
-		fd_release(j->connsockfd);
+		j->connsockfd->release();
 		break;
 
 	case SEND_INFO:
 		break;
 
 	default:
-		ERR("free of unknown job kind: %d", j->job);
 		break;
 	}
 
-	free(j);
-}
-
-void
-process_joblist(void *_s)
-{
-	job *curjob;
-	state *s = (state *)_s;
-
-	while (1) {
-		std::unique_lock lk { s->dispatched_jobsmtx };
-		s->dispatched_jobscv.wait(lk, [s] {
-			return (!s->dispatched_jobs.empty() ||
-			    s->shutdown.load() != 0);
-		});
-
-		if (unlikely(s->shutdown.load() != 0))
-			break;
-
-		curjob = s->dispatched_jobs.front();
-		s->dispatched_jobs.pop_front();
-		lk.unlock();
-
-		switch (curjob->job) {
-		case READ_DATA:
-			handle_read_data(s, curjob);
-			break;
-
-		case KILL:
-			handle_kill(s, curjob);
-			break;
-
-		case NOTIFY_ELFWRITE:
-			handle_elfwrite(s, curjob);
-			break;
-
-		case CLEANUP:
-			handle_cleanup(s, curjob);
-			break;
-
-		case SEND_INFO:
-			handle_sendinfo(s, curjob);
-			break;
-
-		default:
-			ERR("Unknown job: %d", curjob->job);
-			abort();
-		}
-
-		dtraced_free_job(curjob);
-	}
-
-	return;
+	delete j;
 }
 
 const char *
@@ -195,47 +141,6 @@ dtraced_job_identifier(job *j)
 {
 
 	return ((const char *)j->ident_str);
-}
-
-void
-clean_jobs(void *_s)
-{
-	state *s = (state *)_s;
-	int woken;
-
-	while (1) {
-		woken = 0;
-		std::unique_lock lk { s->deadfdsmtx };
-		while (s->shutdown.load() == 0 &&
-		    (s->deadfds.empty() || woken == 0)) {
-			s->jobcleancv.wait(lk);
-			woken = 1;
-		}
-
-		if (unlikely(s->shutdown.load() != 0))
-			return;
-
-		/*
-		 * Delete any jobs that our dead file descriptors have started.
-		 * We don't need to do anything with them, as the initiating
-		 * process is gone.
-		 */
-		for (fd *dfd : s->deadfds) {
-			std::lock_guard lk { s->joblistmtx };
-			for (auto it = s->joblist.begin();
-			     it != s->joblist.end();) {
-				job *j = *it;
-				if (j->identifier.job_initiator_id == dfd->id) {
-					it = s->joblist.erase(it);
-					dtraced_free_job(j);
-				} else
-					++it;
-			}
-			dfd->cleaned_up = 1;
-		}
-	}
-
-	return;
 }
 
 }

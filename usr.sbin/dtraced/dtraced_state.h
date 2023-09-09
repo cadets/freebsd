@@ -45,6 +45,7 @@
 #include <sys/param.h>
 #include <sys/event.h>
 
+#include "_dtraced_connection.h"
 #include "dtraced.h"
 #include "dtraced_directory.h"
 #include "dtraced_lock.h"
@@ -57,8 +58,6 @@
 #include <thread>
 #include <unordered_set>
 #include <vector>
-
-#define unlikely(x) __predict_false(x)
 
 namespace dtraced {
 
@@ -77,8 +76,8 @@ class state {
 
 	bool destroy_socket(void);
 
-	bool dispatch_read(dtraced::fd *, struct kevent &);
-	bool dispatch_write(dtraced::fd *, struct kevent &);
+	bool dispatch_read(client_fd *, struct kevent &);
+	bool dispatch_write(client_fd *, struct kevent &);
 	bool handle_event(struct kevent &);
 	bool dispatch_event(struct kevent &);
 
@@ -102,10 +101,8 @@ class state {
 	/*
 	 * Sockets.
 	 */
-	std::mutex socklistmtx; /* mutex fos sockfds */
-
-	/* list of sockets we know about */
-	std::unordered_set<fd *> sockfds;
+	std::mutex socklistmtx;
+	std::unordered_set<client_fd *> sockfds;
 
 	/*
 	 * Configuration socket.
@@ -146,7 +143,7 @@ class state {
 	 * filedesc management.
 	 */
 	/* dead file descriptor list (to close) */
-	std::unordered_set<fd *> deadfds;
+	std::unordered_set<client_fd *> deadfds;
 	std::mutex deadfdsmtx; /* mutex for deadfds */
 	std::thread closetd;   /* file descriptor closing thread */
 
@@ -176,11 +173,17 @@ class state {
 
 	bool accept_new_connection(void);
 	void process_consumers(void);
+	void process_joblist(void);
+	void close_filedescs(void);
+	void manage_children(void);
+	void reap_children(void);
+	void clean_jobs(void);
+
 	int socket(void);
 
-	void kill_socket(dtraced::fd *);
+	void kill_socket(client_fd *);
 
-	bool send_info_async(dtraced::fd *);
+	bool send_info_async(client_fd *);
 };
 
 void _broadcast_shutdown(state &, const char *, int);

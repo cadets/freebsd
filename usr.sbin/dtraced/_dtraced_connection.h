@@ -49,14 +49,44 @@
 
 namespace dtraced {
 
-struct fd {
-	int         fd;                 /* the actual filedesc */
-	int         kind;               /* consumer/forwarder */
-	uint64_t    subs;               /* events that efd subscribed to */
-	std::atomic_int __count;	/* reference count */
+class client_fd {
+	friend class state;
+
+    protected:
+	int kq;			  /* the kqueue this fd belongs to */
+	int fd;			  /* the actual filedesc */
+	uint64_t subs;		  /* events that efd subscribed to */
+	std::atomic_int count {}; /* reference count */
+    public:
+	client_fd() = delete;
+	client_fd(int, int, dtd_initmsg_t);
+	~client_fd();
+
+	bool cleaned_up;		/* has this fd been cleaned up */
+	uint64_t id;			/* initiator id */
+	int kind;			/* consumer/forwarder */
 	char ident[DTRACED_FDIDENTLEN]; /* human-readable identifier */
-	uint64_t id;                    /* initiator id */
-	int cleaned_up;                 /* has this fd been cleaned up */
+
+	void acquire(void);
+	void release(void);
+
+	bool enable_read(void *);
+	bool enable_write(void *);
+	bool enable_rw(void *);
+	bool re_enable_read(void);
+	bool re_enable_write(void);
+	bool re_enable_rw(void);
+	bool disable_read(void);
+	bool disable_write(void);
+	bool disable_rw(void);
+	void close(void);
+	void shutdown(void);
+
+	int get_fd(void);
+	bool is_dead(void);
+	bool is_subscribed(uint32_t);
+
+	operator std::string(void) const;
 };
 
 }

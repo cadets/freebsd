@@ -40,7 +40,6 @@
 
 #include <err.h>
 #include <libgen.h>
-#include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,10 +50,12 @@
 #include "dtraced_errmsg.h"
 #include "dtraced_misc.h"
 
+#include <mutex>
+
 #define DTRACED_SYSLOG
 
 static int quiet;
-static pthread_mutex_t printmtx = PTHREAD_MUTEX_INITIALIZER;
+static std::mutex io_mtx;
 
 void
 be_quiet(void)
@@ -68,13 +69,14 @@ dump_errmsg(const char *file, int line, const char *msg, ...)
 {
 	va_list ap;
 	if (msg) {
-		pthread_mutex_lock(&printmtx);
-		fprintf(stderr, "ERROR: %s:%d ", file, line);
-		va_start(ap, msg);
-		vfprintf(stderr, msg, ap);
-		va_end(ap);
-		fprintf(stderr, "\n");
-		pthread_mutex_unlock(&printmtx);
+		{
+			std::lock_guard lk { io_mtx };
+			fprintf(stderr, "ERROR: %s:%d ", file, line);
+			va_start(ap, msg);
+			vfprintf(stderr, msg, ap);
+			va_end(ap);
+			fprintf(stderr, "\n");
+		}
 #ifdef DTRACED_SYSLOG
 		va_start(ap, msg);
 		vsyslog(LOG_ERR, msg, ap);
@@ -92,13 +94,14 @@ dump_warnmsg(const char *file, int line, const char *msg, ...)
 		return;
 
 	if (msg) {
-		pthread_mutex_lock(&printmtx);
-		fprintf(stderr, "WARNING: %s:%d ", file, line);
-		va_start(ap, msg);
-		vfprintf(stderr, msg, ap);
-		va_end(ap);
-		fprintf(stderr, "\n");
-		pthread_mutex_unlock(&printmtx);
+		{
+			std::lock_guard lk { io_mtx };
+			fprintf(stderr, "WARNING: %s:%d ", file, line);
+			va_start(ap, msg);
+			vfprintf(stderr, msg, ap);
+			va_end(ap);
+			fprintf(stderr, "\n");
+		}
 #ifdef DTRACED_SYSLOG
 		va_start(ap, msg);
 		vsyslog(LOG_WARNING, msg, ap);
@@ -117,13 +120,14 @@ dump_debugmsg(const char *file, int line, const char *msg, ...)
 		return;
 
 	if (msg) {
-		pthread_mutex_lock(&printmtx);
-		fprintf(stdout, "DEBUG: %s:%d ", file, line);
-		va_start(ap, msg);
-		vfprintf(stdout, msg, ap);
-		va_end(ap);
-		fprintf(stdout, "\n");
-		pthread_mutex_unlock(&printmtx);
+		{
+			std::lock_guard lk { io_mtx };
+			fprintf(stdout, "DEBUG: %s:%d ", file, line);
+			va_start(ap, msg);
+			vfprintf(stdout, msg, ap);
+			va_end(ap);
+			fprintf(stdout, "\n");
+		}
 #ifdef DTRACED_SYSLOG
 		va_start(ap, msg);
 		vsyslog(LOG_DEBUG, msg, ap);
@@ -138,13 +142,14 @@ dump_logmsg(const char *file, int line, const char *msg, ...)
 {
 	va_list ap;
 	if (msg) {
-		pthread_mutex_lock(&printmtx);
-		fprintf(stdout, "LOG: %s:%d ", file, line);
-		va_start(ap, msg);
-		vfprintf(stdout, msg, ap);
-		va_end(ap);
-		fprintf(stdout, "\n");
-		pthread_mutex_unlock(&printmtx);
+		{
+			std::lock_guard lk { io_mtx };
+			fprintf(stdout, "LOG: %s:%d ", file, line);
+			va_start(ap, msg);
+			vfprintf(stdout, msg, ap);
+			va_end(ap);
+			fprintf(stdout, "\n");
+		}
 #ifdef DTRACED_SYSLOG
 		va_start(ap, msg);
 		vsyslog(LOG_INFO, msg, ap);

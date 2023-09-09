@@ -64,9 +64,9 @@ handle_kill(state *s, job *curjob)
 	pid_t pid;
 	uint16_t vmid;
 	dtraced_hdr_t header;
-	dtraced::fd *dfd = curjob->connsockfd;
+	client_fd &dfd = *curjob->connsockfd;
 
-	fd = dfd->fd;
+	fd = dfd.get_fd();
 	pid = curjob->j.kill.pid;
 	vmid = curjob->j.kill.vmid;
 
@@ -87,12 +87,12 @@ handle_kill(state *s, job *curjob)
 
 	if (send(fd, &header, DTRACED_MSGHDRSIZE, 0) < 0) {
 		if (errno == EPIPE)
-			ERR("Failed to write to %d: %m", fd);
+			ERR("failed to write to %d: %m", fd);
 		return;
 	}
 
-	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))
-		ERR("process_joblist: reenable_fd() failed with: %m");
+	if (!dfd.re_enable_write())
+		ERR("re_enable_write() failed with: %m");
 }
 
 }
