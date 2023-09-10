@@ -80,8 +80,8 @@ void closefd_generic(int *);
 void closedir_generic(DIR **);
 void cleanup_pidfile(struct pidfh **);
 int  waitpid_timeout(pid_t, struct timespec *);
-int  dtraced_event(state &, int, const struct kevent *, int,
-    struct kevent *, int, const struct timespec *);
+int event(state &, int, const struct kevent *, int, struct kevent *, int,
+    const struct timespec *);
 }
 
 #endif // _DTRACED_MISC_H_

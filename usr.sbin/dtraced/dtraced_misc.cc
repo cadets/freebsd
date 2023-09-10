@@ -141,9 +141,8 @@ waitpid_timeout(pid_t pid, struct timespec *timeout)
 }
 
 int
-dtraced_event(state &s, int kq, const struct kevent *changelist,
-    int nchanges, struct kevent *eventlist, int nevents,
-    const struct timespec *timeout)
+event(state &s, int kq, const struct kevent *changelist, int nchanges,
+    struct kevent *eventlist, int nevents, const struct timespec *timeout)
 {
 	int new_events;
 

@@ -143,20 +143,20 @@ listen_dir(void *_dir)
 	ts.tv_sec = DTRACED_EVENTSLEEPTIME;
 	ts.tv_nsec = 0;
 	for (;;) {
-		rval = dtraced_event(*s, kq, &ev, 1, &ev_data, 1, &ts);
+		rval = dtraced::event(*s, kq, &ev, 1, &ev_data, 1, &ts);
 
 		if (s->shutdown.load())
 			break;
 
 		if (rval < 0) {
-			ERR("dtraced_event failed on %s: %m",
+			ERR("dtraced::event failed on %s: %m",
 			    dir->dirpath);
 			broadcast_shutdown(*s);
 			return;
 		}
 
 		if (ev_data.flags == EV_ERROR) {
-			ERR("dtraced_event got EV_ERROR on %s: %m",
+			ERR("dtraced::event got EV_ERROR on %s: %m",
 			    dir->dirpath);
 			continue;
 		}

@@ -533,13 +533,13 @@ state::process_consumers(void)
 	ts.tv_sec = DTRACED_EVENTSLEEPTIME;
 	ts.tv_nsec = 0;
 	for (;;) {
-		new_events = dtraced_event(*this, kq, NULL, 0, event, 1, &ts);
+		new_events = dtraced::event(*this, kq, NULL, 0, event, 1, &ts);
 
 		if (this->shutdown.load())
 			break;
 
 		if (new_events == -1) {
-			ERR("dtraced_event failed: %m");
+			ERR("dtraced::event failed: %m");
 			broadcast_shutdown(*this);
 			return;
 		}
