@@ -66,7 +66,7 @@ namespace dtraced {
  * is responsible for filling out kind-specific fields.
  */
 job *
-dtraced_new_job(int job_kind, client_fd *dfdp)
+dtraced_new_job(job_kind job_kind, client_fd *dfdp)
 {
 	job *j;
 	client_fd &dfd = *dfdp;
@@ -75,7 +75,7 @@ dtraced_new_job(int job_kind, client_fd *dfdp)
 	if (j == nullptr)
 		return (nullptr);
 
-	j->job = job_kind;
+	j->kind = job_kind;
 	j->connsockfd = dfdp;
 	dfd.acquire();
 	dtraced_tag_job(dfd.id, j);
@@ -110,7 +110,7 @@ free_cleanup(job *j)
 void
 dtraced_free_job(job *j)
 {
-	switch (j->job) {
+	switch (j->kind) {
 	case NOTIFY_ELFWRITE:
 		free_elfwrite(j);
 		j->connsockfd->release();

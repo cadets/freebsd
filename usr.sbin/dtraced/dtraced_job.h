@@ -50,14 +50,17 @@
 
 namespace dtraced {
 
+enum job_kind {
+	NOTIFY_ELFWRITE = 1,
+	KILL,
+	READ_DATA,
+	CLEANUP,
+	SEND_INFO,
+	JOB_LAST
+};
+
 struct job {
-	int job; /* job kind */
-#define NOTIFY_ELFWRITE 1
-#define KILL 2
-#define READ_DATA 3
-#define CLEANUP 4
-#define SEND_INFO 5
-#define JOB_LAST 5
+	job_kind kind;
 
 	client_fd *connsockfd; /* which socket do we send this on? */
 	id identifier;	       /* unique job identifier within this dtraced */
@@ -86,7 +89,7 @@ struct job {
 	} j;
 };
 
-job *dtraced_new_job(int, client_fd *);
+job *dtraced_new_job(job_kind, client_fd *);
 void dtraced_free_job(job *);
 int  dispatch_event(state &, struct kevent *);
 void process_joblist(void *);

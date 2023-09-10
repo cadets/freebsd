@@ -823,7 +823,7 @@ state::process_joblist(void)
 		this->dispatched_jobs.pop_front();
 		lk.unlock();
 
-		switch (curjob->job) {
+		switch (curjob->kind) {
 		case READ_DATA:
 			handle_read_data(this, curjob);
 			break;
@@ -845,7 +845,7 @@ state::process_joblist(void)
 			break;
 
 		default:
-			ERR("Unknown job: %d", curjob->job);
+			ERR("Unknown job: %d", curjob->kind);
 			abort();
 		}
 
