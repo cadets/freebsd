@@ -58,7 +58,6 @@
 #include "dtraced_errmsg.h"
 #include "dtraced_id.h"
 #include "dtraced_job.h"
-#include "dtraced_lock.h"
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
@@ -183,20 +182,52 @@ client_fd::~client_fd()
 	::close(this->fd);
 }
 
-int
-send_ack(int fd)
+ssize_t
+client_fd::send_ack(void)
 {
 
 	unsigned char ack = 1;
-	return (send(fd, &ack, 1, 0) < 0);
+	return (::send(this->fd, &ack, 1, 0) < 0);
 }
 
-int
-send_nak(int fd)
+ssize_t
+client_fd::send_nak(void)
 {
 
 	unsigned char ack = 0;
-	return (send(fd, &ack, 1, 0) < 0);
+	return (::send(this->fd, &ack, 1, 0) < 0);
+}
+
+bool
+client_fd::send(void *b, size_t len)
+{
+
+	return (::send(this->fd, b, len, 0) == static_cast<ssize_t>(len));
+}
+
+bool
+client_fd::recv(void *b, size_t len)
+{
+	size_t nbytes = len;
+	char *_buf = (char *)b;
+
+	for (;;) {
+		ssize_t rval = ::recv(this->fd, _buf, nbytes, 0);
+		if (rval < 0) {
+			ERR("recv() failed on %s with: %m", this->ident);
+			return (false);
+		} else if ((size_t)rval == nbytes)
+			return (true);
+
+		if (rval == 0)
+			return (false);
+
+		_buf += rval;
+		nbytes -= rval;
+	}
+
+	// Should not be reachable.
+	return (false);
 }
 
 int

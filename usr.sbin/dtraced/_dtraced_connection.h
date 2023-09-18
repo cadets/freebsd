@@ -84,7 +84,12 @@ class client_fd {
 
 	int get_fd(void);
 	bool is_dead(void);
-	bool is_subscribed(uint32_t);
+	bool is_subscribed(unsigned long long);
+
+	bool recv(void *, size_t);
+	bool send(void *, size_t);
+	ssize_t send_ack(void);
+	ssize_t send_nak(void);
 
 	operator std::string(void) const;
 };

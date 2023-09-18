@@ -1,7 +1,5 @@
 /*-
- * Copyright (c) 2020 Domagoj Stolfa
- * Copyright (c) 2021 Domagoj Stolfa
- * All rights reserved.
+ * Copyright (c) 2023 Domagoj Stolfa
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
@@ -59,42 +57,90 @@ enum job_kind {
 	JOB_LAST
 };
 
-struct job {
-	job_kind kind;
-
-	client_fd *connsockfd; /* which socket do we send this on? */
-	id identifier;	       /* unique job identifier within this dtraced */
-	char ident_str[256];   /* identifier string */
-
-	union {
-		struct {
-			size_t pathlen; /* how long is path? */
-			char *path;	/* path to file (based on dir) */
-			dir *dir;	/* base directory of path */
-			int nosha;	/* do we want to checksum? */
-		} notify_elfwrite;
-
-		struct {
-			pid_t pid;     /* pid to kill */
-			uint16_t vmid; /* vmid to kill the pid on */
-		} kill;
-
-		struct {
-		} read;
-
-		struct {
-			char **entries;	  /* each entry to cleanup */
-			size_t n_entries; /* number of entries */
-		} cleanup;
-	} j;
+struct notify_elfwrite_job {
+	size_t pathlen; /* how long is path? */
+	char *path;	/* path to file (based on dir) */
+	dir *dir;	/* base directory of path */
+	bool nosha;	/* do we want to checksum? */
 };
 
-job *dtraced_new_job(job_kind, client_fd *);
-void dtraced_free_job(job *);
-int  dispatch_event(state &, struct kevent *);
-void process_joblist(void *);
-const char *dtraced_job_identifier(job *);
-void clean_jobs(void *);
+struct kill_job {
+	pid_t pid;     /* pid to kill */
+	uint16_t vmid; /* vmid to kill the pid on */
+};
+
+// XXX: this is a bit annoying because we can't use a std::vector in a union.
+using cleanup_job = std::vector<std::string>;
+
+class job {
+	union _job_union {
+		notify_elfwrite_job notif_elf;
+		kill_job kill;
+		cleanup_job *cleanup;
+	} j;
+
+	uint64_t init_id;
+	uint64_t id;
+	char ident_str[256];   /* identifier string */
+
+	void tag(void);
+
+    public:
+	job_kind kind;
+	client_fd *connsockfd; /* which socket do we send this on? */
+
+	job() = delete;
+	job(job_kind, client_fd *);
+	~job();
+
+	std::string ident(void);
+
+	notify_elfwrite_job &notify_elfwrite_get(void);
+	kill_job &kill_get(void);
+	cleanup_job *&cleanup_get(void);
+	uint64_t initiator(void) const;
+
+	bool send_elf(void);
+	bool send_kill(void);
+	bool send_info(state &);
+	bool send_cleanup(void);
+	bool read_data(state &);
+};
+
+inline uint64_t
+job::initiator(void) const
+{
+
+	return (this->init_id);
+}
+
+inline std::string
+job::ident(void)
+{
+
+	return (std::string(this->ident_str));
+}
+
+inline notify_elfwrite_job &
+job::notify_elfwrite_get(void)
+{
+
+	return (this->j.notif_elf);
+}
+
+inline kill_job &
+job::kill_get(void)
+{
+
+	return (this->j.kill);
+}
+
+inline cleanup_job *&
+job::cleanup_get(void)
+{
+
+	return (this->j.cleanup);
+}
 
 }
 

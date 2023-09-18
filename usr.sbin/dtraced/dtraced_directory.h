@@ -71,16 +71,15 @@ struct dir {
 	state *state; /* backpointer to state */
 };
 
-int         write_data(dir *, unsigned char *, size_t);
-void        listen_dir(void *);
-int         populate_existing(struct dirent *, dir *);
-int         file_foreach(DIR *, foreach_fn_t, dir *);
-dir   *dtd_mkdir(const char *, foreach_fn_t);
-void        dtd_closedir(dir *);
-int         process_inbound(struct dirent *, dir *);
-int         process_base(struct dirent *, dir *);
-int         process_outbound(struct dirent *, dir *);
-
+int write_data(dir *, unsigned char *, size_t);
+void listen_dir(void *);
+int populate_existing(struct dirent *, dir *);
+int file_foreach(DIR *, foreach_fn_t, dir *);
+dir *dtd_mkdir(const char *, foreach_fn_t);
+void dtd_closedir(dir *);
+int process_inbound(struct dirent *, dir *);
+int process_base(struct dirent *, dir *);
+int process_outbound(struct dirent *, dir *);
 }
 
 #endif // _DTRACED_DIRECTORY_H_

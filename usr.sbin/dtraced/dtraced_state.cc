@@ -42,6 +42,7 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -51,19 +52,12 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "dtraced_chld.h"
-#include "dtraced_cleanupjob.h"
 #include "dtraced_connection.h"
 #include "dtraced_directory.h"
 #include "dtraced_dttransport.h"
-#include "dtraced_elfjob.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
-#include "dtraced_killjob.h"
-#include "dtraced_lock.h"
 #include "dtraced_misc.h"
-#include "dtraced_readjob.h"
-#include "dtraced_sendinfojob.h"
 #include "dtraced_state.h"
 
 namespace dtraced {
@@ -255,7 +249,7 @@ state::finalize(void)
 	this->basetd.join();
 
 	{
-		std::lock_guard lk { this->dispatched_jobsmtx };
+		std::lock_guard lk(this->dispatched_jobsmtx);
 		this->dispatched_jobscv.notify_all();
 	}
 
@@ -269,16 +263,16 @@ state::finalize(void)
 	this->jobcleantd.join();
 
 	{
-		std::lock_guard lk { this->joblistmtx };
+		std::lock_guard lk(this->joblistmtx);
 		for (; !this->joblist.empty(); this->joblist.pop_front())
-			dtraced_free_job(this->joblist.front());
+			delete this->joblist.front();
 	}
 
 	{
-		std::lock_guard { this->dispatched_jobsmtx };
+		std::lock_guard lk(this->dispatched_jobsmtx);
 		for (; !this->dispatched_jobs.empty();
 		     this->dispatched_jobs.pop_front())
-			dtraced_free_job(this->dispatched_jobs.front());
+			delete this->dispatched_jobs.front();
 	}
 
 	dtd_closedir(this->outbounddir);
@@ -301,21 +295,22 @@ state::finalize(void)
 void
 _broadcast_shutdown(state &s, const char *errfile, int errline)
 {
-	fprintf(stderr, "%s (line %d): broadcasting shutdown", errfile, errline);
+	fprintf(stderr, "%s (line %d): broadcasting shutdown\n", errfile,
+	    errline);
 	s.shutdown.store(1);
 
 	{
-		std::lock_guard lk { s.dispatched_jobsmtx };
+		std::lock_guard lk(s.dispatched_jobsmtx);
 		s.dispatched_jobscv.notify_all();
 	}
 
 	{
-		std::lock_guard lk { s.killmtx };
+		std::lock_guard lk(s.killmtx);
 		s.killcv.notify_all();
 	}
 
 	{
-		std::lock_guard lk { s.deadfdsmtx };
+		std::lock_guard lk(s.deadfdsmtx);
 		s.jobcleancv.notify_all();
 	}
 }
@@ -372,7 +367,7 @@ state::accept_new_connection(void)
 	LOG("accept(%d, %x, 0x%x, %s)", dfd.fd, dfd.kind, dfd.subs, dfd.ident);
 
 	{
-		std::lock_guard lk { this->socklistmtx };
+		std::lock_guard lk(this->sockfdsmtx);
 		this->sockfds.insert(dfdp);
 	}
 
@@ -389,7 +384,7 @@ state::kill_socket(client_fd *dfdp)
 
 	/* Remove it from the socket list and shutdown */
 	{
-		std::lock_guard lk { this->socklistmtx };
+		std::lock_guard lk(this->sockfdsmtx);
 		this->sockfds.erase(dfdp);
 	}
 
@@ -399,7 +394,7 @@ state::kill_socket(client_fd *dfdp)
 	 * Add it to the deadfds list and let it get cleaned up by other
 	 * threads.
 	 */
-	std::unique_lock lk { this->deadfdsmtx };
+	std::unique_lock lk(this->deadfdsmtx);
 	this->deadfds.insert(dfdp);
 	this->jobcleancv.notify_all();
 }
@@ -407,14 +402,14 @@ state::kill_socket(client_fd *dfdp)
 bool
 state::send_info_async(client_fd *dfdp)
 {
-	job *job;
+	job *j;
 
-	job = dtraced_new_job(SEND_INFO, dfdp);
-	if (job == nullptr)
+	j = new job(SEND_INFO, dfdp);
+	if (j == nullptr)
 		return (false);
 
-	std::unique_lock lk { this->joblistmtx };
-	this->joblist.push_back(job);
+	std::unique_lock lk(this->joblistmtx);
+	this->joblist.push_back(j);
 	return (true);
 }
 
@@ -528,7 +523,7 @@ state::process_consumers(void)
 	}
 
 	this->kq_hdl = kq;
-	SEMPOST(&this->socksema);
+	(void) sem_post(&this->socksema);
 
 	ts.tv_sec = DTRACED_EVENTSLEEPTIME;
 	ts.tv_nsec = 0;
@@ -594,7 +589,7 @@ state::dispatch_write(client_fd *dfdp, struct kevent &event)
 
 	bool dispatch = false;
 
-	std::unique_lock lk { this->joblistmtx };
+	std::unique_lock lk(this->joblistmtx);
 	for (job *job : this->joblist) {
 		if (job->connsockfd == dfdp)
 			dispatch = true;
@@ -620,7 +615,7 @@ bool
 state::dispatch_event(struct kevent &event)
 {
 	client_fd *dfdp;
-	job *job;
+	job *j;
 	int efd;
 
 	efd = (int)event.ident;
@@ -634,14 +629,14 @@ state::dispatch_event(struct kevent &event)
 		 * /var/ddtrace/base directory for the directory monitoring
 		 * kqueues to wake up and process it further.
 		 */
-		job = dtraced_new_job(READ_DATA, dfdp);
-		if (job == nullptr) {
-			ERR("dtraced_new_job() failed with: %m");
+		j = new job(READ_DATA, dfdp);
+		if (j == nullptr) {
+			ERR("new job(READ_DATA, %s) failed with: %m", dfdp->ident);
 			abort(); // Allocation failure
 		}
 
-		std::lock_guard lk { this->dispatched_jobsmtx };
-		this->dispatched_jobs.push_front(job);
+		std::lock_guard lk(this->dispatched_jobsmtx);
+		this->dispatched_jobs.push_front(j);
 		this->dispatched_jobscv.notify_all();
 
 	} else if (event.filter == EVFILT_WRITE) {
@@ -653,12 +648,12 @@ state::dispatch_event(struct kevent &event)
 
 		for (auto it = this->joblist.begin();
 		     it != this->joblist.end();) {
-			job = *it;
-			client_fd &dfd = *job->connsockfd;
+			j = *it;
+			client_fd &dfd = *j->connsockfd;
 			if (dfd.fd == efd) {
 				it = this->joblist.erase(it);
-				std::lock_guard lk { this->dispatched_jobsmtx };
-				this->dispatched_jobs.push_back(job);
+				std::lock_guard lk(this->dispatched_jobsmtx);
+				this->dispatched_jobs.push_back(j);
 				this->dispatched_jobscv.notify_all();
 			} else
 				++it;
@@ -677,7 +672,7 @@ state::close_filedescs(void)
 {
 	while (this->shutdown.load() == 0) {
 		sleep(DTRACED_CLOSEFD_SLEEPTIME);
-		std::lock_guard lk { this->deadfdsmtx };
+		std::lock_guard lk(this->deadfdsmtx);
 		for (auto it = this->deadfds.begin();
 		     it != this->deadfds.end();) {
 			client_fd *dfdp = *it;
@@ -716,7 +711,7 @@ state::manage_children(void)
 		/*
 		 * Wait for a notification that we need to kill a process
 		 */
-		std::unique_lock lk { this->killmtx };
+		std::unique_lock lk(this->killmtx);
 		this->killcv.wait(lk, [this] {
 			return (!this->pids_to_kill.empty() ||
 			    this->shutdown.load());
@@ -733,7 +728,7 @@ state::manage_children(void)
 		lk.unlock();
 
 		{
-			std::lock_guard lk { this->pidlistmtx };
+			std::lock_guard lk(this->pidlistmtx);
 			this->pidlist.erase(pid);
 		}
 
@@ -771,7 +766,7 @@ state::clean_jobs(void)
 
 	while (1) {
 		woken = 0;
-		std::unique_lock lk { this->deadfdsmtx };
+		std::unique_lock lk(this->deadfdsmtx);
 		while (this->shutdown.load() == 0 &&
 		    (this->deadfds.empty() || woken == 0)) {
 			this->jobcleancv.wait(lk);
@@ -789,13 +784,13 @@ state::clean_jobs(void)
 		for (client_fd *dfdp : this->deadfds) {
 			client_fd &dfd = *dfdp;
 
-			std::lock_guard lk { this->joblistmtx };
+			std::lock_guard lk(this->joblistmtx);
 			for (auto it = this->joblist.begin();
 			     it != this->joblist.end();) {
 				job *j = *it;
-				if (j->identifier.job_initiator_id == dfd.id) {
+				if (j->initiator() == dfd.id) {
 					it = this->joblist.erase(it);
-					dtraced_free_job(j);
+					delete j;
 				} else
 					++it;
 			}
@@ -804,13 +799,42 @@ state::clean_jobs(void)
 	}
 }
 
+bool
+state::handle_job(job *j)
+{
+	switch (j->kind) {
+	case READ_DATA:
+		return (j->read_data(*this));
+
+	case KILL:
+		return (j->send_kill());
+
+	case NOTIFY_ELFWRITE:
+		return (j->send_elf());
+
+	case CLEANUP:
+		return (j->send_cleanup());
+
+	case SEND_INFO:
+		return (j->send_info(*this));
+
+	default:
+		ERR("unknown job: %d", j->kind);
+		abort();
+	}
+
+	// XXX: Waiting for C++23.
+	// std::unreachable();
+	return (false);
+}
+
 void
 state::process_joblist(void)
 {
 	job *curjob;
 
 	while (1) {
-		std::unique_lock lk { this->dispatched_jobsmtx };
+		std::unique_lock lk(this->dispatched_jobsmtx);
 		this->dispatched_jobscv.wait(lk, [this] {
 			return (!this->dispatched_jobs.empty() ||
 			    this->shutdown.load() != 0);
@@ -823,33 +847,10 @@ state::process_joblist(void)
 		this->dispatched_jobs.pop_front();
 		lk.unlock();
 
-		switch (curjob->kind) {
-		case READ_DATA:
-			handle_read_data(this, curjob);
-			break;
-
-		case KILL:
-			handle_kill(this, curjob);
-			break;
-
-		case NOTIFY_ELFWRITE:
-			handle_elfwrite(this, curjob);
-			break;
-
-		case CLEANUP:
-			handle_cleanup(this, curjob);
-			break;
-
-		case SEND_INFO:
-			handle_sendinfo(this, curjob);
-			break;
-
-		default:
-			ERR("Unknown job: %d", curjob->kind);
-			abort();
-		}
-
-		dtraced_free_job(curjob);
+		if (!this->handle_job(curjob))
+			ERR("failed to handle job kind %d", curjob->kind);
+		delete curjob;
 	}
 }
+
 }

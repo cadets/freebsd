@@ -125,7 +125,7 @@ hypertrace_init(struct vmctx *ctx)
 }
 
 static int
-dtraced_sockinit(int *sock, struct vmctx *ctx, uint64_t subs)
+dtraced_sockinit(int *sock, struct vmctx *ctx, unsigned long long subs)
 {
 	size_t l;
 	struct sockaddr_un addr;
@@ -190,14 +190,15 @@ dtraced_sockinit(int *sock, struct vmctx *ctx, uint64_t subs)
 static int
 dtraced_sockinit_rx(struct vmctx *ctx)
 {
-	uint64_t subs = DTD_SUB_ELFWRITE | DTD_SUB_KILL | DTD_SUB_CLEANUP;
+	unsigned long long subs = DTD_SUB_ELFWRITE | DTD_SUB_KILL |
+	    DTD_SUB_CLEANUP;
 	return (dtraced_sockinit(&rx_sockfd, ctx, subs));
 }
 
 static int
 dtraced_sockinit_wx(struct vmctx *ctx)
 {
-	uint64_t subs = DTD_SUB_READDATA;
+	unsigned long long subs = DTD_SUB_READDATA;
 	return (dtraced_sockinit(&wx_sockfd, ctx, subs));
 }
 

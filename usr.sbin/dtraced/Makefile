@@ -4,18 +4,14 @@
 
 PROG_CXX=	dtraced
 SRCS=		dtraced.cc \
-		dtraced_cleanupjob.cc \
+		dtraced_clientrequest.cc \
 		dtraced_connection.cc \
 		dtraced_directory.cc \
 		dtraced_dttransport.cc \
-		dtraced_elfjob.cc \
 		dtraced_errmsg.cc \
 		dtraced_id.cc \
 		dtraced_job.cc \
-		dtraced_killjob.cc \
 		dtraced_misc.cc \
-		dtraced_readjob.cc \
-		dtraced_sendinfojob.cc \
 		dtraced_state.cc
 
 

@@ -43,6 +43,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include <assert.h>
 #include <dttransport.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -52,18 +53,16 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <atomic>
-
 #include "dtraced.h"
-#include "dtraced_chld.h"
 #include "dtraced_connection.h"
 #include "dtraced_directory.h"
 #include "dtraced_dttransport.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
-#include "dtraced_lock.h"
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
+
+#include <atomic>
 
 namespace dtraced {
 
@@ -90,7 +89,7 @@ dtt_elf(state *s, dtt_entry_t *e)
 	 */
 	if (fd == 0) {
 		{
-			std::lock_guard lk { s->inbounddir->dirmtx };
+			std::lock_guard lk(s->inbounddir->dirmtx);
 			sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXX",
 			    s->inbounddir->dirpath);
 		}
@@ -145,7 +144,7 @@ dtt_elf(state *s, dtt_entry_t *e)
 		len = 0;
 
 		{
-			std::lock_guard lk { s->inbounddir->dirmtx };
+			std::lock_guard lk(s->inbounddir->dirmtx);
 			sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXX",
 			    s->inbounddir->dirpath);
 		}
@@ -155,7 +154,7 @@ dtt_elf(state *s, dtt_entry_t *e)
 static void
 dtt_kill(state *s, dtt_entry_t *e)
 {
-	std::lock_guard lk { s->killmtx };
+	std::lock_guard lk(s->killmtx);
 	s->pids_to_kill.push(e->u.kill.pid);
 	s->killcv.notify_all();
 }
@@ -164,7 +163,7 @@ static void
 dtt_cleanup(state *s)
 {
 	{
-		std::lock_guard lk { s->pidlistmtx };
+		std::lock_guard lk(s->pidlistmtx);
 		while (!s->pidlist.empty()) {
 			auto it = s->pidlist.begin();
 			pid_t pid = *it;
@@ -205,7 +204,7 @@ setup_connection(state *s)
 		return (-1);
 	}
 
-	SEMWAIT(&s->socksema);
+	(void) sem_wait(&s->socksema);
 
 	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		ERR("connect to /var/ddtrace/sub.sock failed: %m");
@@ -251,7 +250,7 @@ listen_dttransport(void *_s)
 	int rval;
 
 	{
-		std::lock_guard lk { s->inbounddir->dirmtx };
+		std::lock_guard lk(s->inbounddir->dirmtx);
 		dirlen = strlen(s->inbounddir->dirpath);
 	}
 

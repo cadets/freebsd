@@ -48,11 +48,11 @@ extern "C" {
 #define	DTRACED_KIND_FORWARDER         2
 #define	DTRACED_KIND_DTRACED           3
 
-#define DTD_SUB_READDATA               1
-#define DTD_SUB_ELFWRITE               (1 << 1)
-#define DTD_SUB_KILL                   (1 << 2)
-#define DTD_SUB_CLEANUP                (1 << 3)
-#define DTD_SUB_INFO                   (1 << 4)
+#define DTD_SUB_READDATA               1ull
+#define DTD_SUB_ELFWRITE               (1ull << 1)
+#define DTD_SUB_KILL                   (1ull << 2)
+#define DTD_SUB_CLEANUP                (1ull << 3)
+#define DTD_SUB_INFO                   (1ull << 4)
 
 #define DTRACED_LOCSIZE                64ul
 #define DTRACED_PROGIDENTLEN           128ull
@@ -86,7 +86,7 @@ typedef struct dtraced_hdr {
 
 typedef struct dtd_initmsg {
 	int kind;                       /* kind (see above) */
-	uint64_t subs;                  /* what are we subscribing to? */
+	unsigned long long subs;	/* what are we subscribing to? */
 	char ident[DTRACED_FDIDENTLEN]; /* human-readable string identifier */
 } dtd_initmsg_t;
 

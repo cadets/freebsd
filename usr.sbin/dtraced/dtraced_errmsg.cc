@@ -70,7 +70,7 @@ dump_errmsg(const char *file, int line, const char *msg, ...)
 	va_list ap;
 	if (msg) {
 		{
-			std::lock_guard lk { io_mtx };
+			std::lock_guard lk(io_mtx);
 			fprintf(stderr, "ERROR: %s:%d ", file, line);
 			va_start(ap, msg);
 			vfprintf(stderr, msg, ap);
@@ -95,7 +95,7 @@ dump_warnmsg(const char *file, int line, const char *msg, ...)
 
 	if (msg) {
 		{
-			std::lock_guard lk { io_mtx };
+			std::lock_guard lk(io_mtx);
 			fprintf(stderr, "WARNING: %s:%d ", file, line);
 			va_start(ap, msg);
 			vfprintf(stderr, msg, ap);
@@ -121,7 +121,7 @@ dump_debugmsg(const char *file, int line, const char *msg, ...)
 
 	if (msg) {
 		{
-			std::lock_guard lk { io_mtx };
+			std::lock_guard lk(io_mtx);
 			fprintf(stdout, "DEBUG: %s:%d ", file, line);
 			va_start(ap, msg);
 			vfprintf(stdout, msg, ap);
@@ -143,7 +143,7 @@ dump_logmsg(const char *file, int line, const char *msg, ...)
 	va_list ap;
 	if (msg) {
 		{
-			std::lock_guard lk { io_mtx };
+			std::lock_guard lk(io_mtx);
 			fprintf(stdout, "LOG: %s:%d ", file, line);
 			va_start(ap, msg);
 			vfprintf(stdout, msg, ap);

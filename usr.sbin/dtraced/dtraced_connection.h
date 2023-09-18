@@ -84,7 +84,7 @@ client_fd::is_dead(void)
 }
 
 inline bool
-client_fd::is_subscribed(uint32_t which)
+client_fd::is_subscribed(unsigned long long which)
 {
 
 	return ((this->subs & which) != 0);

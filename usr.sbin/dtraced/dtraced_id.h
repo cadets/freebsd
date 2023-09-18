@@ -1,6 +1,5 @@
 /*-
  * Copyright (c) 2023 Domagoj Stolfa
- * All rights reserved.
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
@@ -36,13 +35,6 @@
 
 namespace dtraced {
 
-struct id {
-	uint64_t job_initiator_id; /* who initiated this job? */
-	uint64_t job_id;
-};
-
-struct job;
-
 static inline uint64_t
 dtraced_genid(void)
 {
@@ -50,9 +42,6 @@ dtraced_genid(void)
 	arc4random_buf(&r, sizeof(r));
 	return (r);
 }
-
-
-void dtraced_tag_job(uint64_t, job *);
 
 }
 

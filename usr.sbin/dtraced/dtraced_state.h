@@ -45,10 +45,11 @@
 #include <sys/param.h>
 #include <sys/event.h>
 
+#include <semaphore.h>
+
 #include "_dtraced_connection.h"
 #include "dtraced.h"
 #include "dtraced_directory.h"
-#include "dtraced_lock.h"
 
 #include <array>
 #include <condition_variable>
@@ -61,7 +62,7 @@
 
 namespace dtraced {
 
-struct job;
+class job;
 
 /*
  * dtraced state structure. This contains everything relevant to dtraced's
@@ -80,6 +81,8 @@ class state {
 	bool dispatch_write(client_fd *, struct kevent &);
 	bool handle_event(struct kevent &);
 	bool dispatch_event(struct kevent &);
+
+	bool handle_job(job *);
 
 	std::thread inboundtd; /* inbound monitoring thread */
 	std::thread basetd;    /* base monitoring thread */
@@ -101,7 +104,7 @@ class state {
 	/*
 	 * Sockets.
 	 */
-	std::mutex socklistmtx;
+	std::mutex sockfdsmtx;
 	std::unordered_set<client_fd *> sockfds;
 
 	/*

@@ -44,6 +44,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -52,16 +53,14 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <atomic>
-
-#include "dtraced_chld.h"
 #include "dtraced_connection.h"
 #include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
-#include "dtraced_lock.h"
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
+
+#include <atomic>
 
 #define SOCKFD_NAME "sub.sock"
 
@@ -86,7 +85,7 @@ write_data(dir *dir, unsigned char *data, size_t nbytes)
 	}
 
 	{
-		std::lock_guard lk { dir->dirmtx };
+		std::lock_guard lk(dir->dirmtx);
 		s = dir->state;
 
 		if (s == NULL) {
@@ -278,7 +277,7 @@ populate_existing(struct dirent *f, dir *dir)
 		return (0);
 
 	{
-		std::lock_guard lk { dir->dirmtx };
+		std::lock_guard lk(dir->dirmtx);
 		err = expand_paths(dir);
 		if (err != 0) {
 			ERR("Failed to expand paths in initialization");
@@ -377,7 +376,7 @@ dtd_closedir(dir *dir)
 	size_t i;
 
 	{
-		std::lock_guard lk { dir->dirmtx };
+		std::lock_guard lk(dir->dirmtx);
 		free(dir->dirpath);
 		close(dir->dirfd);
 		closedir(dir->dir);
@@ -436,7 +435,7 @@ process_inbound(struct dirent *f, dir *dir)
 		return (0);
 
 	{
-		std::lock_guard lk { dir->dirmtx };
+		std::lock_guard lk(dir->dirmtx);
 
 		/*
 		 * Exit early if the file doesn't exist. There is definitely
@@ -486,7 +485,7 @@ process_inbound(struct dirent *f, dir *dir)
 		 * process. There may be more dtrace(1) instances that
 		 * want to process the same file in the future.
 		 */
-		std::lock_guard lk { s->socklistmtx };
+		std::lock_guard lk(s->sockfdsmtx);
 		for (client_fd *dfdp : s->sockfds) {
 			client_fd &dfd = *dfdp;
 
@@ -496,24 +495,26 @@ process_inbound(struct dirent *f, dir *dir)
 			if (!dfd.is_subscribed(DTD_SUB_ELFWRITE))
 				continue;
 
-			job = dtraced_new_job(NOTIFY_ELFWRITE, dfdp);
-			if (job == NULL) {
-				ERR("dtraced_new_job() failed: %m");
+			job = new dtraced::job(NOTIFY_ELFWRITE, dfdp);
+			if (job == nullptr) {
+				ERR("new job(NOTIFY_ELFWRITE, %s) failed: %m",
+				    dfdp->ident);
 				abort();
 			}
 
-			job->j.notify_elfwrite.path = strdup(f->d_name);
-			job->j.notify_elfwrite.pathlen = strlen(f->d_name);
-			job->j.notify_elfwrite.dir = dir;
-			job->j.notify_elfwrite.nosha = 1;
+			notify_elfwrite_job &ne = job->notify_elfwrite_get();
+			ne.path = strdup(f->d_name);
+			ne.pathlen = strlen(f->d_name);
+			ne.dir = dir;
+			ne.nosha = 1;
 
-			if (job->j.notify_elfwrite.path == NULL) {
+			if (ne.path == NULL) {
 				ERR("failed to strdup() f->d_name: %m");
 				abort();
 			}
 
 			{
-				std::lock_guard lk { s->joblistmtx };
+				std::lock_guard lk(s->joblistmtx);
 				s->joblist.push_back(job);
 			}
 
@@ -540,7 +541,7 @@ process_inbound(struct dirent *f, dir *dir)
 		 * this both in the child and parent.
 		 */
 		{
-			std::lock_guard lk { s->identlistmtx };
+			std::lock_guard lk(s->identlistmtx);
 			num_idents = s->identlist.size();
 		}
 
@@ -587,7 +588,7 @@ process_inbound(struct dirent *f, dir *dir)
 			 * sent and don't need to worry about snapshotting the
 			 * original state of the list in another list.
 			 */
-			std::unique_lock lk { s->identlistmtx };
+			std::unique_lock lk(s->identlistmtx);
 			current = 0;
 			for (auto it = s->identlist.begin();
 			     it != s->identlist.end() && current < num_idents;
@@ -691,7 +692,7 @@ failmsg:
 			 * identlist.
 			 */
 			if (remove) {
-				std::lock_guard lk { s->identlistmtx };
+				std::lock_guard lk(s->identlistmtx);
 				for (auto it = s->identlist.begin();
 				     it != s->identlist.end();) {
 					auto ident = *it;
@@ -717,7 +718,7 @@ failmsg:
 				waitpid(pid, &status, 0);
 				LOG("joined %d, status %d", pid, status);
 			} else {
-				std::lock_guard lk { s->pidlistmtx };
+				std::lock_guard lk(s->pidlistmtx);
 				s->pidlist.insert(pid);
 			}
 		} else if (num_idents == 0 && pid > 0) {
@@ -788,7 +789,7 @@ failmsg:
 		}
 	}
 
-	std::unique_lock lk{dir->dirmtx};
+	std::unique_lock lk(dir->dirmtx);
 	err = expand_paths(dir);
 	if (err != 0) {
 		ERR("Failed to expand paths after processing %s", f->d_name);
@@ -868,7 +869,7 @@ process_base(struct dirent *f, dir *dir)
 	}
 
 	{
-		std::lock_guard lk { dir->dirmtx };
+		std::lock_guard lk(dir->dirmtx);
 		s = dir->state;
 
 		if (s == NULL) {
@@ -911,7 +912,7 @@ process_base(struct dirent *f, dir *dir)
 	strcpy(fullpath + strlen(fullpath), f->d_name);
 
 	{
-		std::lock_guard lk { s->outbounddir->dirmtx };
+		std::lock_guard lk(s->outbounddir->dirmtx);
 		sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXXX",
 		    s->outbounddir->dirpath);
 		dirpathlen = strlen(s->outbounddir->dirpath);
@@ -928,6 +929,7 @@ process_base(struct dirent *f, dir *dir)
 
 	dtraced_copyfile(fullpath, fd, tmpfile);
 
+	LOG("create file %s", donename);
 	if (rename(tmpfile, donename))
 		ERR("failed to rename %s to %s: %m", tmpfile, donename);
 
@@ -963,11 +965,13 @@ process_base(struct dirent *f, dir *dir)
 			abort();
 
 		argv[4] = NULL;
+		LOG("spawn dtrace: %s %s %s %s", argv[0], argv[1], argv[2],
+		    argv[3]);
 		execve("/usr/sbin/dtrace", argv, NULL);
 		exit(EXIT_FAILURE);
 	}
 
-	std::unique_lock lk{dir->dirmtx};
+	std::unique_lock lk(dir->dirmtx);
 	err = expand_paths(dir);
 	if (err != 0) {
 		ERR("Failed to expand paths after processing %s", f->d_name);
@@ -1023,7 +1027,7 @@ process_outbound(struct dirent *f, dir *dir)
 		 * as we don't expect this to ever happen if communication
 		 * happens through dtraced itself.
 		 */
-		std::lock_guard lk { dir->dirmtx };
+		std::lock_guard lk(dir->dirmtx);
 		if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
 			ERR("%s%s does not exist", dir->dirpath, f->d_name);
 			rmpath(f->d_name, dir);
@@ -1036,7 +1040,7 @@ process_outbound(struct dirent *f, dir *dir)
 	if (idx >= 0)
 		return (0);
 
-	std::unique_lock lk { s->socklistmtx };
+	std::unique_lock lk(s->sockfdsmtx);
 	for (client_fd *dfdp : s->sockfds) {
 		client_fd &dfd = *dfdp;
 
@@ -1046,24 +1050,26 @@ process_outbound(struct dirent *f, dir *dir)
 		if (!dfd.is_subscribed(DTD_SUB_ELFWRITE))
 			continue;
 
-		job = dtraced_new_job(NOTIFY_ELFWRITE, dfdp);
+		job = new dtraced::job(NOTIFY_ELFWRITE, dfdp);
 		if (job == NULL) {
-			ERR("dtraced_new_job() failed: %m");
+			ERR("new job(NOTIFY_ELFWRITE, %s) failed: %m",
+			    dfdp->ident);
 			abort();
 		}
 
-		job->j.notify_elfwrite.path = strdup(f->d_name);
-		job->j.notify_elfwrite.pathlen = strlen(f->d_name);
-		job->j.notify_elfwrite.dir = dir;
-		job->j.notify_elfwrite.nosha = s->nosha;
+		notify_elfwrite_job &ne = job->notify_elfwrite_get();
+		ne.path = strdup(f->d_name);
+		ne.pathlen = strlen(f->d_name);
+		ne.dir = dir;
+		ne.nosha = s->nosha;
 
-		if (job->j.notify_elfwrite.path == NULL) {
+		if (ne.path == NULL) {
 			ERR("Failed to strdup() f->d_name: %m");
 			abort();
 		}
 
 		{
-			std::lock_guard lk { s->joblistmtx };
+			std::lock_guard lk(s->joblistmtx);
 			s->joblist.push_back(job);
 		}
 
@@ -1072,7 +1078,7 @@ process_outbound(struct dirent *f, dir *dir)
 	}
 	lk.unlock();
 
-	std::lock_guard lg { dir->dirmtx };
+	std::lock_guard lg(dir->dirmtx);
 	err = expand_paths(dir);
 	if (err != 0) {
 		ERR("Failed to expand paths after processing %s",

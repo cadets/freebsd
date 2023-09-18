@@ -57,7 +57,6 @@
 
 #include "dtraced.h"
 #include "dtraced_errmsg.h"
-#include "dtraced_lock.h"
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
@@ -190,9 +189,9 @@ main(int argc, const char **argv)
 		ctrlmachine = 0;
 
 	if (ctrlmachine == 0)
-		DEBUG("Running in minion mode.");
+		LOG("running in minion mode.");
 	else
-		DEBUG("Running in overlord mode.");
+		LOG("running in overlord mode.");
 
 	while ((ch = getopt(argc, (char *const *)argv, "D:Odhmvt:qZ")) != -1) {
 		switch (ch) {

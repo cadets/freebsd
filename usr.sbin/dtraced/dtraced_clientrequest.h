@@ -1,7 +1,5 @@
 /*-
- * Copyright (c) 2020 Domagoj Stolfa
- * Copyright (c) 2021 Domagoj Stolfa
- * All rights reserved.
+ * Copyright (c) 2023 Domagoj Stolfa
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
@@ -38,16 +36,37 @@
  * SUCH DAMAGE.
  */
 
-#ifndef __DTRACED_ELFJOB_H_
-#define __DTRACED_ELFJOB_H_
+#ifndef _DTRACED_CLIENTREQUEST_H_
+#define _DTRACED_CLIENTREQUEST_H_
+
+#include "dtraced.h"
+
+#include <vector>
 
 namespace dtraced {
 
 class state;
-struct job;
 
-void handle_elfwrite(state *, job *);
+class client_request {
+	using uchar = unsigned char;
+
+	state &s;
+	uchar *buf;
+	size_t buf_size;
+	dtraced_hdr_t &hdr;
+
+	bool handle_elfmsg(void);
+	bool handle_killmsg(void);
+	bool handle_cleanupmsg(void);
+
+    public:
+	client_request() = delete;
+	client_request(state &, dtraced_hdr_t &, uchar *, size_t);
+	~client_request() = default;
+
+	bool handle(void);
+};
 
 }
 
-#endif // __DTRACED_ELFJOB_H_
+#endif /* _DTRACED_CLIENTREQUEST_H_ */

@@ -2368,7 +2368,7 @@ dump_buf(const char *path, char *buf, size_t size)
 	if (fd == -1)
 		errx(EXIT_FAILURE, "failed to create %s: %s\n", dumppath,
 		    strerror(errno));
-	
+
 	if (write(fd, buf, size) < 0) {
 		close(fd);
 		errx(EXIT_FAILURE, "failed to write to %s (%d): %s\n", dumppath,
