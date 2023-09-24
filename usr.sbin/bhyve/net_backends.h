@@ -61,28 +61,28 @@ int	netbe_tagging_enable(net_backend_t *be);
  * Despite the name, these capabilities can be used by different frontents
  * (virtio-net, ptnet) and supported by different backends (netmap, tap, ...).
  */
-#define	VIRTIO_NET_F_CSUM	(1 <<  0) /* host handles partial cksum */
-#define	VIRTIO_NET_F_GUEST_CSUM	(1 <<  1) /* guest handles partial cksum */
-#define	VIRTIO_NET_F_MTU	(1 <<  3) /* initial MTU advice */
-#define	VIRTIO_NET_F_MAC	(1 <<  5) /* host supplies MAC */
-#define	VIRTIO_NET_F_GSO_DEPREC	(1 <<  6) /* deprecated: host handles GSO */
-#define	VIRTIO_NET_F_GUEST_TSO4	(1 <<  7) /* guest can rcv TSOv4 */
-#define	VIRTIO_NET_F_GUEST_TSO6	(1 <<  8) /* guest can rcv TSOv6 */
-#define	VIRTIO_NET_F_GUEST_ECN	(1 <<  9) /* guest can rcv TSO with ECN */
-#define	VIRTIO_NET_F_GUEST_UFO	(1 << 10) /* guest can rcv UFO */
-#define	VIRTIO_NET_F_HOST_TSO4	(1 << 11) /* host can rcv TSOv4 */
-#define	VIRTIO_NET_F_HOST_TSO6	(1 << 12) /* host can rcv TSOv6 */
-#define	VIRTIO_NET_F_HOST_ECN	(1 << 13) /* host can rcv TSO with ECN */
-#define	VIRTIO_NET_F_HOST_UFO	(1 << 14) /* host can rcv UFO */
-#define	VIRTIO_NET_F_MRG_RXBUF	(1 << 15) /* host can merge RX buffers */
-#define	VIRTIO_NET_F_STATUS	(1 << 16) /* config status field available */
-#define	VIRTIO_NET_F_CTRL_VQ	(1 << 17) /* control channel available */
-#define	VIRTIO_NET_F_CTRL_RX	(1 << 18) /* control channel RX mode support */
-#define	VIRTIO_NET_F_CTRL_VLAN	(1 << 19) /* control channel VLAN filtering */
+#define	VIRTIO_NET_F_CSUM	(1ULL <<  0) /* host handles partial cksum */
+#define	VIRTIO_NET_F_GUEST_CSUM	(1ULL <<  1) /* guest handles partial cksum */
+#define	VIRTIO_NET_F_MTU	(1ULL <<  3) /* initial MTU advice */
+#define	VIRTIO_NET_F_MAC	(1ULL <<  5) /* host supplies MAC */
+#define	VIRTIO_NET_F_GSO_DEPREC	(1ULL <<  6) /* deprecated: host handles GSO */
+#define	VIRTIO_NET_F_GUEST_TSO4	(1ULL <<  7) /* guest can rcv TSOv4 */
+#define	VIRTIO_NET_F_GUEST_TSO6	(1ULL <<  8) /* guest can rcv TSOv6 */
+#define	VIRTIO_NET_F_GUEST_ECN	(1ULL <<  9) /* guest can rcv TSO with ECN */
+#define	VIRTIO_NET_F_GUEST_UFO	(1ULL << 10) /* guest can rcv UFO */
+#define	VIRTIO_NET_F_HOST_TSO4	(1ULL << 11) /* host can rcv TSOv4 */
+#define	VIRTIO_NET_F_HOST_TSO6	(1ULL << 12) /* host can rcv TSOv6 */
+#define	VIRTIO_NET_F_HOST_ECN	(1ULL << 13) /* host can rcv TSO with ECN */
+#define	VIRTIO_NET_F_HOST_UFO	(1ULL << 14) /* host can rcv UFO */
+#define	VIRTIO_NET_F_MRG_RXBUF	(1ULL << 15) /* host can merge RX buffers */
+#define	VIRTIO_NET_F_STATUS	(1ULL << 16) /* config status field available */
+#define	VIRTIO_NET_F_CTRL_VQ	(1ULL << 17) /* control channel available */
+#define	VIRTIO_NET_F_CTRL_RX	(1ULL << 18) /* control channel RX mode support */
+#define	VIRTIO_NET_F_CTRL_VLAN	(1ULL << 19) /* control channel VLAN filtering */
 #define	VIRTIO_NET_F_GUEST_ANNOUNCE \
-				(1 << 21) /* guest can send gratuitous pkts */
-#define	VIRTIO_NET_F_MQ		(1 << 22) /* host supports multiple VQ pairs */
-#define VIRTIO_NET_F_TAGGING	(1 << 24) /* host supports tagging packets */
+				(1ULL << 21) /* guest can send gratuitous pkts */
+#define	VIRTIO_NET_F_MQ		(1ULL << 22) /* host supports multiple VQ pairs */
+#define VIRTIO_NET_F_TAGGING	(1ULL << 57) /* host supports tagging packets */
 
 /*
  * Fixed network header size

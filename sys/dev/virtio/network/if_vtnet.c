@@ -633,7 +633,7 @@ static int
 vtnet_tagging_enabled(struct vtnet_softc *sc)
 {
 
-	return (sc->vtnet_features & VIRTIO_NET_F_TAGGING);
+	return (sc->vtnet_features & VIRTIO_NET_F_TAGGING) != 0;
 }
 
 static int
@@ -719,8 +719,18 @@ vtnet_negotiate_features(struct vtnet_softc *sc)
 			sc->vtnet_flags |= VTNET_FLAG_LRO_NOMRG;
 	}
 
+	if (!virtio_with_feature(dev, VIRTIO_NET_F_TAGGING)) {
+		features &= ~VIRTIO_NET_F_TAGGING;
+		negotiated_features = virtio_negotiate_features(dev, features);
+	}
+
 	sc->vtnet_features = negotiated_features;
 	sc->vtnet_negotiated_features = negotiated_features;
+
+	if (vtnet_tagging_enabled(sc))
+		device_printf(dev, "tagging enabled\n");
+	else
+		device_printf(dev, "WARNING: host does not support tagging\n");
 
 	return (virtio_finalize_features(dev));
 }
@@ -1695,10 +1705,11 @@ vtnet_rxq_enqueue_buf(struct vtnet_rxq *rxq, struct mbuf *m)
 {
 	struct vtnet_softc *sc;
 	struct sglist *sg;
-	int header_inlined, error, mbuf_fail;
+	int header_inlined, error, retry_on_fail;
 
 	sc = rxq->vtnrx_sc;
 	sg = rxq->vtnrx_sg;
+	retry_on_fail = 0;
 
 	KASSERT(m->m_next == NULL || sc->vtnet_flags & VTNET_FLAG_LRO_NOMRG,
 	    ("%s: mbuf chain without LRO_NOMRG", __func__));
@@ -1717,7 +1728,8 @@ vtnet_rxq_enqueue_buf(struct vtnet_rxq *rxq, struct mbuf *m)
 		if (vtnet_tagging_enabled(sc) && m->m_flags & M_PKTHDR) {
 			SDT_PROBE1(vtnet, if_vtnet, rxq, enqueue,
 			    &m->m_pkthdr.mbufid);
-			error = sglist_append_mbuf_with_id(sg, m, &mbuf_fail);
+			error = sglist_append_mbuf_with_id(sg, m,
+			    &retry_on_fail);
 		} else {
 			error = sglist_append_mbuf(sg, m);
 		}
@@ -1740,8 +1752,8 @@ vtnet_rxq_enqueue_buf(struct vtnet_rxq *rxq, struct mbuf *m)
 			    m->m_next->m_flags & M_PKTHDR) {
 				SDT_PROBE1(vtnet, if_vtnet, rxq, enqueue,
 				    &m->m_next->m_pkthdr.mbufid);
-				error = sglist_append_mbuf_with_id(
-				    sg, m->m_next, &mbuf_fail);
+				error = sglist_append_mbuf_with_id(sg,
+				    m->m_next, &retry_on_fail);
 			} else {
 				error = sglist_append_mbuf(sg, m->m_next);
 			}
@@ -2547,11 +2559,12 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 	struct sglist *sg;
 	struct mbuf *m;
 	int error;
-	int mbuf_fail = 0;
+	int retry_on_fail;
 
 	sc = txq->vtntx_sc;
 	vq = txq->vtntx_vq;
 	sg = txq->vtntx_sg;
+	retry_on_fail = 0;
 	m = *m_head;
 
 	sglist_reset(sg);
@@ -2563,10 +2576,13 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 		goto fail;
 	}
 
-	if (m->m_flags & M_PKTHDR)
+	if (vtnet_tagging_enabled(sc) && m->m_flags & M_PKTHDR) {
 		SDT_PROBE1(vtnet, if_vtnet, txq, enqueue, &m->m_pkthdr.mbufid);
-	error = sglist_append_mbuf_with_id(sg, m, &mbuf_fail);
-	if (error && mbuf_fail != 0) {
+		error = sglist_append_mbuf_with_id(sg, m, &retry_on_fail);
+	} else
+		error = sglist_append_mbuf(sg, m);
+
+	if (error && retry_on_fail) {
 		m = m_defrag(m, M_NOWAIT);
 		if (m == NULL)
 			goto fail;
@@ -2577,7 +2593,7 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 		error = sglist_append_mbuf(sg, m);
 		if (error)
 			goto fail;
-	} else if (error && mbuf_fail == 0)
+	} else if (error && !retry_on_fail)
 		goto fail;
 
 	txhdr->vth_mbuf = m;
