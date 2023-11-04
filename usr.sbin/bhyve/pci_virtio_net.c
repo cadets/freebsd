@@ -733,7 +733,7 @@ pci_vtnet_neg_features(void *vsc, uint64_t negotiated_features)
 	sc->be_vhdrlen = netbe_get_vnet_hdr_len(sc->vsc_be);
 	assert(sc->be_vhdrlen == 0 || sc->be_vhdrlen == sc->vhdrlen);
 
-	if (sc->vsc_features & VIRTIO_NET_F_TAGGING)
+	if (negotiated_features & VIRTIO_NET_F_TAGGING)
 		netbe_tagging_enable(sc->vsc_be);
 
 	pthread_mutex_lock(&sc->rx_mtx);
