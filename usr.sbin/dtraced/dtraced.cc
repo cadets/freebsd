@@ -336,7 +336,7 @@ againefd:
 	if (!state.initialize(ctrlmachine, nosha, threadpool_size, argv))
 		return (EXIT_FAILURE);
 
-	dtraced::listen_dir(state.outbounddir);
+	state.outbounddir->listen();
 
 	if (!state.finalize())
 		return (EXIT_FAILURE);

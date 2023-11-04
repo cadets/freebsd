@@ -79,8 +79,8 @@ state::setup_threads(void)
 	}
 
 	this->socktd = std::thread(&state::process_consumers, this);
-	this->inboundtd = std::thread(&listen_dir, this->inbounddir);
-	this->basetd = std::thread(&listen_dir, this->basedir);
+	this->inboundtd = std::thread(&dir::listen, this->inbounddir);
+	this->basetd = std::thread(&dir::listen, this->basedir);
 	this->killtd = std::thread(&state::manage_children, this);
 	this->reaptd = std::thread(&state::reap_children, this);
 	this->closetd = std::thread(&state::close_filedescs, this);
@@ -141,8 +141,6 @@ state::setup_socket(void)
 bool
 state::initialize(int ctrlmachine, int nosha, int n_threads, const char **argv)
 {
-	int err;
-
 	this->ctrlmachine = ctrlmachine;
 	this->argv = argv;
 	this->nosha = nosha;
@@ -157,19 +155,19 @@ state::initialize(int ctrlmachine, int nosha, int n_threads, const char **argv)
 		}
 	}
 
-	this->outbounddir = dtd_mkdir(OUTBOUNDDIR, &process_outbound);
+	this->outbounddir = new dir(OUTBOUNDDIR, &process_outbound);
 	if (this->outbounddir == NULL) {
 		ERR("failed creating outbound directory: %m");
 		return (false);
 	}
 
-	this->inbounddir = dtd_mkdir(INBOUNDDIR, &process_inbound);
+	this->inbounddir = new dir(INBOUNDDIR, &process_inbound);
 	if (this->inbounddir == NULL) {
 		ERR("failed creating inbound directory: %m");
 		return (false);
 	}
 
-	this->basedir = dtd_mkdir(BASEDIR, &process_base);
+	this->basedir = new dir(BASEDIR, &process_base);
 	if (this->basedir == NULL) {
 		ERR("failed creating base directory: %m");
 		return (false);
@@ -184,23 +182,17 @@ state::initialize(int ctrlmachine, int nosha, int n_threads, const char **argv)
 		return (false);
 	}
 
-	err = file_foreach(this->outbounddir->dir, populate_existing,
-	    this->outbounddir);
-	if (err != 0) {
+	if (!this->outbounddir->populate_existing()) {
 		ERR("failed to populate outbound existing files");
 		return (false);
 	}
 
-	err = file_foreach(this->inbounddir->dir, populate_existing,
-	    this->inbounddir);
-	if (err != 0) {
-		ERR("Failed to populate inbound existing files");
+	if (!this->inbounddir->populate_existing()) {
+		ERR("failed to populate inbound existing files");
 		return (false);
 	}
 
-	err = file_foreach(this->basedir->dir, populate_existing,
-	    this->basedir);
-	if (err != 0) {
+	if (!this->basedir->populate_existing()) {
 		ERR("failed to populate base existing files");
 		return (false);
 	}
@@ -275,9 +267,9 @@ state::finalize(void)
 			delete this->dispatched_jobs.front();
 	}
 
-	dtd_closedir(this->outbounddir);
-	dtd_closedir(this->inbounddir);
-	dtd_closedir(this->basedir);
+	delete this->outbounddir;
+	delete this->inbounddir;
+	delete this->basedir;
 
 	sem_destroy(&this->socksema);
 

@@ -269,7 +269,7 @@ job::read_data(state &s)
 	/*
 	 * We now have our data (ELF file) in buf. Create an ELF
 	 * file in /var/ddtrace/base. This will kick off the
-	 * listen_dir thread for process_base.
+	 * listen thread for process_base.
 	 */
 	memcpy(&header, &buf[0], DTRACED_MSGHDRSIZE);
 

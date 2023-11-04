@@ -70,74 +70,84 @@ char INBOUNDDIR[MAXPATHLEN]  = "/var/ddtrace/inbound/";
 char OUTBOUNDDIR[MAXPATHLEN] = "/var/ddtrace/outbound/";
 char BASEDIR[MAXPATHLEN]     = "/var/ddtrace/base/";
 
-int
-write_data(dir *dir, unsigned char *data, size_t nbytes)
+bool
+dir::write_data(unsigned char *data, size_t nbytes)
 {
-	state *s;
+	dtraced::state *s;
 	char donename[MAXPATHLEN];
 	size_t dirpathlen;
 	char tmpfile[MAXPATHLEN];
 	__cleanup(closefd_generic) int fd = -1;
 
-	if (dir == NULL) {
-		ERR("dir is NULL in write_data()");
-		return (-1);
-	}
-
 	{
-		std::lock_guard lk(dir->dirmtx);
-		s = dir->state;
+		std::lock_guard lk(this->dirmtx);
+		s = this->state;
 
 		if (s == NULL) {
 			ERR("state is NULL in write_data()");
-			return (-1);
+			return (false);
 		}
 
-		sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXXX", dir->dirpath);
-		dirpathlen = strlen(dir->dirpath);
+		sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXXX",
+		    this->dirpath.c_str());
+		dirpathlen = this->dirpath.length();
 	}
 
 	fd = mkstemp(tmpfile);
 	if (fd == -1) {
 		ERR("mkstemp() failed with: %m");
-		return (-1);
+		return (false);
 	}
 
 	if (write(fd, data, nbytes) < 0) {
 		ERR("write() failed with: %m");
-		return (-1);
+		return (false);
 	}
 
 	strncpy(donename, tmpfile, dirpathlen);
 	strcpy(donename + dirpathlen, tmpfile + dirpathlen + 1);
 	if (rename(tmpfile, donename)) {
 		ERR("rename() failed %s -> %s: %m", tmpfile, donename);
-		return (-1);
+		return (false);
 	}
 
-	return (0);
+	return (true);
 }
 
-void
-listen_dir(void *_dir)
+bool
+dir::process(void)
 {
-	int err, rval;
-	__cleanup(closefd_generic) int kq = -1;
-	struct kevent ev = {}, ev_data = {};
-	state *s;
-	dir *dir;
-	struct timespec ts;
+	bool r;
+	struct dirent *file;
 
-	dir = (dtraced::dir *)_dir;
-	s = dir->state;
-
-	if ((kq = kqueue()) == -1) {
-		ERR("Failed to create a kqueue %m");
-		return;
+	while (file = readdir(this->dirp), file != NULL) {
+		r = this->processfn(*this, file);
+		if (!r)
+			break;
 	}
 
-	EV_SET(&ev, dir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR | EV_ENABLE,
-	    NOTE_WRITE, 0, (void *)dir);
+	rewinddir(this->dirp);
+	return (r);
+}
+
+bool
+dir::listen(void)
+{
+	int rval;
+	__cleanup(closefd_generic) int kq = -1;
+	struct kevent ev = {}, ev_data = {};
+	dtraced::state *s;
+	struct timespec ts;
+
+	s = this->state;
+
+	if ((kq = kqueue()) == -1) {
+		ERR("failed to create a kqueue %m");
+		return (false);
+	}
+
+	EV_SET(&ev, this->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR | EV_ENABLE,
+	    NOTE_WRITE, 0, (void *)this);
 
 	ts.tv_sec = DTRACED_EVENTSLEEPTIME;
 	ts.tv_nsec = 0;
@@ -149,293 +159,163 @@ listen_dir(void *_dir)
 
 		if (rval < 0) {
 			ERR("dtraced::event failed on %s: %m",
-			    dir->dirpath);
+			    this->dirpath.c_str());
 			broadcast_shutdown(*s);
-			return;
+			return (false);
 		}
 
 		if (ev_data.flags == EV_ERROR) {
 			ERR("dtraced::event got EV_ERROR on %s: %m",
-			    dir->dirpath);
+			    this->dirpath.c_str());
 			continue;
 		}
 
 		if (rval > 0) {
-			err = file_foreach(dir->dir, dir->processfn, dir);
-			if (err) {
-				ERR("Failed to process new files in %s",
-				    dir->dirpath);
+			if (!this->process()) {
+				ERR("failed to process new files in %s",
+				    this->dirpath.c_str());
 				broadcast_shutdown(*s);
-				return;
+				return (false);
 			}
 		}
 	}
+
+	return (true);
 }
 
-static int
-findpath(const char *p, dir *dir)
+bool
+dir::memorized(const std::string &p)
 {
-	size_t i;
 
-	for (i = 0; i < dir->efile_len; i++) {
-		if (strcmp(p, dir->existing_files[i]) == 0)
-			return (i);
-	}
-
-	return (-1);
+	return (this->existing_files.find(p) != this->existing_files.end());
 }
 
-static int
-rmpath(const char *p, dir *dir)
+bool
+dir::rmpath(const std::string &p)
 {
-	size_t i;
 
-	for (i = 0; i < dir->efile_len; i++) {
-		if (strcmp(p, dir->existing_files[i]) == 0) {
-			free(dir->existing_files[i]);
-			dir->existing_files[i] = NULL;
-			return (0);
-		}
-	}
-
-	return (-1);
+	return (this->existing_files.erase(p) > 0);
 }
 
-static int
-expand_paths(dir *dir)
+bool
+dir::memorize_file(struct dirent *f)
 {
-	char **newpaths;
-	state *s;
-
-	if (dir == NULL) {
-		ERR("Expand paths called with dir == NULL");
-		return (-1);
-	}
-
-	s = dir->state;
-
-	if (s == NULL) {
-		ERR("Expand paths called with state == NULL");
-		return (-1);
-	}
-
-	if (dir->efile_size <= dir->efile_len) {
-		dir->efile_size = dir->efile_size == 0 ?
-		    16 : (dir->efile_size << 1);
-
-		/*
-		 * Assert sanity after we multiply the size by two.
-		 */
-		if (dir->efile_size <= dir->efile_len) {
-			ERR("dir->efile_size <= dir->efile_len (%zu <= %zu)",
-			    dir->efile_size, dir->efile_len);
-			return (-1);
-		}
-
-		/*
-		 * Copy over the pointers to paths that were previously
-		 * allocated in the old array.
-		 */
-		newpaths = (char **)malloc(dir->efile_size * sizeof(char *));
-		if (newpaths == NULL) {
-			ERR("Failed to malloc newpaths");
-			abort();
-		}
-
-		memset(newpaths, 0, dir->efile_size * sizeof(char *));
-		if (dir->existing_files) {
-			memcpy(newpaths, dir->existing_files,
-			    dir->efile_len * sizeof(char *));
-			free(dir->existing_files);
-		}
-
-		dir->existing_files = newpaths;
-	}
-
-	return (0);
-}
-
-int
-populate_existing(struct dirent *f, dir *dir)
-{
-	int err;
-
-	if (dir == NULL) {
-		ERR("dir is NULL");
-		return (-1);
-	}
-
 	if (f == NULL) {
 		ERR("dirent is NULL");
-		return (-1);
+		return (false);
 	}
 
 	if (strcmp(f->d_name, SOCKFD_NAME) == 0)
-		return (0);
+		return (true);
 
 	if (f->d_name[0] == '.')
-		return (0);
+		return (true);
 
-	{
-		std::lock_guard lk(dir->dirmtx);
-		err = expand_paths(dir);
-		if (err != 0) {
-			ERR("Failed to expand paths in initialization");
-			return (-1);
-		}
-
-		assert(dir->efile_size > dir->efile_len);
-		dir->existing_files[dir->efile_len] = strdup(f->d_name);
-	}
-
-	if (dir->existing_files[dir->efile_len++] == NULL) {
-		ERR("failed to strdup f->d_name: %m");
-		abort();
-	}
-
-	return (0);
+	std::lock_guard lk(this->dirmtx);
+	this->existing_files.insert(std::string(f->d_name));
+	return (true);
 }
 
-int
-file_foreach(DIR *d, foreach_fn_t f, dir *dir)
+dir::dir(const char *path, foreach_fn_t fn)
+    : dirpath(path)
+    , processfn(fn)
 {
-	struct dirent *file;
-	int err;
+	bool retry;
 
-	while ((file = readdir(d)) != NULL) {
-		err = f(file, dir);
-		if (err)
-			return (err);
-	}
-
-	rewinddir(d);
-
-	return (0);
-}
-
-dir *
-dtd_mkdir(const char *path, foreach_fn_t fn)
-{
-	dir *dir;
-	int retry;
-
-	dir = (dtraced::dir *)malloc(sizeof(dtraced::dir));
-	if (dir == NULL) {
-		ERR("failed to allocate directory: %m");
-		abort();
-	}
-
-	memset(dir, 0, sizeof(dtraced::dir));
-
-	dir->dirpath = strdup(path);
-	if (dir->dirpath == NULL) {
-		ERR("failed to strdup() dirpath: %m");
-		abort();
-	}
-
-	retry = 0;
+	retry = true;
 againmkdir:
-	dir->dirfd = open(path, O_RDONLY | O_DIRECTORY);
-	if (dir->dirfd == -1) {
-		if (retry == 0 && errno == ENOENT) {
+	/*
+	 * XXX: This might be better handled with exceptions in the future, or
+	 * maybe a different way to structure the code so that RAII still works
+	 * with an optional return type, but for now let's just abort() on error
+	 * since this code was C.
+	 */
+	this->dirfd = open(path, O_RDONLY | O_DIRECTORY);
+	if (this->dirfd == -1) {
+		if (retry && errno == ENOENT) {
 			if (mkdir(path, 0700) != 0) {
-				ERR("Failed to mkdir %s: %m", path);
-				free(dir->dirpath);
-				free(dir);
-
-				return (NULL);
+				ERR("failed to mkdir %s: %m", path);
+				abort();
 			} else {
-				retry = 1;
+				retry = false;
 				goto againmkdir;
 			}
 		}
 
-		ERR("Failed to open %s: %m", path);
-		free(dir->dirpath);
-		free(dir);
-
-		return (NULL);
+		ERR("failed to open %s: %m", path);
+		abort();
 	}
 
-	dir->processfn = fn;
-	dir->dir = fdopendir(dir->dirfd);
-	if (dir->dir == NULL) {
-		(void)close(dir->dirfd);
-		free(dir->dirpath);
-		free(dir);
-
-		dir = NULL;
+	this->dirp = fdopendir(this->dirfd);
+	if (this->dirp == NULL) {
+		ERR("fdopendir(%d) failed for %s: %m", this->dirfd,
+		    this->dirpath.c_str());
+		(void)close(this->dirfd);
+		abort();
 	}
-
-	return (dir);
 }
 
-void
-dtd_closedir(dir *dir)
+dir::~dir()
 {
-	size_t i;
 
-	{
-		std::lock_guard lk(dir->dirmtx);
-		free(dir->dirpath);
-		close(dir->dirfd);
-		closedir(dir->dir);
-
-		for (i = 0; i < dir->efile_len; i++)
-			free(dir->existing_files[i]);
-
-		free(dir->existing_files);
-
-		dir->efile_size = 0;
-		dir->efile_len = 0;
-	}
-
-	free(dir);
+	(void)close(this->dirfd);
+	(void)closedir(this->dirp);
 }
 
-
-int
-process_inbound(struct dirent *f, dir *dir)
+bool
+dir::file_exists(const char *f)
 {
-	int err;
+
+	return (faccessat(this->dirfd, f, F_OK, 0) == 0);
+}
+
+bool
+dir::populate_existing(void)
+{
+	struct dirent *file;
+
+	while (file = readdir(this->dirp), file != NULL)
+		this->existing_files.insert(std::string(file->d_name));
+
+	rewinddir(this->dirp);
+	return (true);
+}
+
+bool
+process_inbound(dir &dir, struct dirent *f)
+{
 	job *job;
-	state *s;
-	int idx;
+	dtraced::state *s;
 	pid_t pid;
-	char fullpath[MAXPATHLEN];
 	int status;
-	size_t l, dirpathlen;
 	char *argv[7] = { 0 };
 	unsigned char ident_to_delete[DTRACED_PROGIDENTLEN];
+	std::string d_name_s, fullpath;
 
 	memset(ident_to_delete, 0, sizeof(ident_to_delete));
 
 	status = 0;
-	if (dir == NULL) {
-		ERR("dir is NULL");
-		return (-1);
-	}
-
-	s = dir->state;
+	s = dir.state;
 
 	if (s == NULL) {
 		ERR("state is NULL");
-		return (-1);
+		return (false);
 	}
 
 	if (f == NULL) {
 		ERR("dirent is NULL");
-		return (-1);
+		return (false);
 	}
 
 	if (strcmp(f->d_name, SOCKFD_NAME) == 0)
-		return (0);
+		return (true);
 
 	if (f->d_name[0] == '.')
-		return (0);
+		return (true);
 
+	d_name_s = std::string(f->d_name);
 	{
-		std::lock_guard lk(dir->dirmtx);
+		std::lock_guard lk(dir.dirmtx);
 
 		/*
 		 * Exit early if the file doesn't exist. There is definitely
@@ -443,34 +323,21 @@ process_inbound(struct dirent *f, dir *dir)
 		 * as we don't expect this to ever happen if communication
 		 * happens through dtraced itself.
 		 */
-		if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
-			ERR("%s%s does not exist", dir->dirpath, f->d_name);
-			rmpath(f->d_name, dir);
-			return (-1);
+		if (!dir.file_exists(f->d_name)) {
+			ERR("%s%s does not exist", dir.full_path().c_str(),
+			    f->d_name);
+			(void)dir.rmpath(d_name_s);
+			return (false);
 		}
 
-		idx = findpath(f->d_name, dir);
-		if (idx >= 0)
-			return (0);
+		if (dir.memorized(d_name_s))
+			return (true);
 
-		l = strlcpy(fullpath, dir->dirpath, sizeof(fullpath));
-		if (l >= sizeof(fullpath)) {
-			ERR("Failed to copy %s into a path string",
-			    dir->dirpath);
-			return (-1);
-		}
-
-		dirpathlen = strlen(dir->dirpath);
+		fullpath = dir.full_path();
 	}
 
-	l = strlcpy(fullpath + dirpathlen, f->d_name,
-	    sizeof(fullpath) - dirpathlen);
-	if (l >= sizeof(fullpath) - dirpathlen) {
-		ERR("Failed to copy %s into a path string", f->d_name);
-		return (-1);
-	}
-
-	DEBUG("processing %s", fullpath);
+	fullpath += d_name_s;
+	DEBUG("processing %s", fullpath.c_str());
 
 	if (s->is_control_machine()) {
 		/*
@@ -505,7 +372,7 @@ process_inbound(struct dirent *f, dir *dir)
 			notify_elfwrite_job &ne = job->notify_elfwrite_get();
 			ne.path = strdup(f->d_name);
 			ne.pathlen = strlen(f->d_name);
-			ne.dir = dir;
+			ne.dir = &dir;
 			ne.nosha = 1;
 
 			if (ne.path == NULL) {
@@ -528,12 +395,12 @@ process_inbound(struct dirent *f, dir *dir)
 
 		if (pipe(stdout_rdr) != 0) {
 			ERR("pipe(stdout) failed: %m");
-			return (-1);
+			return (false);
 		}
 
 		if (pipe(stdin_rdr) != 0) {
 			ERR("pipe(stdin) failed: %m");
-			return (-1);
+			return (false);
 		}
 
 		/*
@@ -553,8 +420,8 @@ process_inbound(struct dirent *f, dir *dir)
 		 * a message arrives to do so.
 		 */
 		if (pid == -1) {
-			ERR("Failed to fork: %m");
-			return (-1);
+			ERR("fork() failed: %m");
+			return (false);
 		} else if (num_idents > 0 && pid > 0) {
 			size_t current;
 			int wait_for_pid = 0;
@@ -566,7 +433,7 @@ process_inbound(struct dirent *f, dir *dir)
 
 			if (kq == -1) {
 				ERR("Failed to create timeout kq");
-				return (-1);
+				return (false);
 			}
 
 			close(stdin_rdr[0]);
@@ -576,7 +443,7 @@ process_inbound(struct dirent *f, dir *dir)
 			if (write(stdin_rdr[1], &num_idents,
 			    sizeof(num_idents)) == -1) {
 				ERR("write(%zu) failed: %m", num_idents);
-				return (-1);
+				return (false);
 			}
 
 			/*
@@ -599,7 +466,7 @@ process_inbound(struct dirent *f, dir *dir)
 				if (write(stdin_rdr[1], ident.data(),
 				    DTRACED_PROGIDENTLEN) == -1) {
 					ERR("write(stdin) failed: %m");
-					return (-1);
+					return (false);
 				}
 			}
 			lk.unlock();
@@ -621,13 +488,13 @@ process_inbound(struct dirent *f, dir *dir)
 
 			if (rv < 0) {
 				ERR("kevent() failed: %m");
-				return (-1);
+				return (false);
 			} else if (rv == 0) {
 				/* Timeout */
 				ERR("killing %d", pid);
 				kill(pid, SIGKILL);
 				waitpid(pid, &status, 0);
-				return (0);
+				return (true);
 			}
 
 			/*
@@ -760,7 +627,7 @@ failmsg:
 			if (argv[last++] == NULL)
 				abort();
 
-			argv[last] = strdup(fullpath);
+			argv[last] = (char *)fullpath.c_str();
 			if (argv[last++] == NULL)
 				abort();
 
@@ -789,22 +656,7 @@ failmsg:
 		}
 	}
 
-	std::unique_lock lk(dir->dirmtx);
-	err = expand_paths(dir);
-	if (err != 0) {
-		ERR("Failed to expand paths after processing %s", f->d_name);
-		return (-1);
-	}
-
-	assert(dir->efile_size > dir->efile_len);
-	dir->existing_files[dir->efile_len] = strdup(f->d_name);
-
-	if (dir->existing_files[dir->efile_len++] == NULL) {
-		ERR("failed to strdup f->d_name: %m");
-		abort();
-	}
-
-	return (0);
+	return (dir.memorize_file(f));
 }
 
 static void
@@ -846,12 +698,10 @@ dtraced_copyfile(const char *src, int fd_dst, const char *dst)
 	}
 }
 
-int
-process_base(struct dirent *f, dir *dir)
+bool
+process_base(dir &dir, struct dirent *f)
 {
 	state *s;
-	int idx, err;
-	char fullpath[MAXPATHLEN] = { 0 };
 	int status = 0, fd = -1;
 	pid_t pid;
 	char *argv[5];
@@ -860,33 +710,30 @@ process_base(struct dirent *f, dir *dir)
 	char donename[MAXPATHLEN] = { 0 };
 	char tmpfile[MAXPATHLEN];
 	size_t dirpathlen = 0;
+	std::string d_name_s, fullpath;
 
 	__maybe_unused(status);
 
-	if (dir == NULL) {
-		ERR("dir is NULL in base directory monitoring thread");
-		return (-1);
-	}
-
 	{
-		std::lock_guard lk(dir->dirmtx);
-		s = dir->state;
+		std::lock_guard lk(dir.dirmtx);
+		s = dir.state;
 
 		if (s == NULL) {
 			ERR("state is NULL in base directory monitoring thread");
-			return (-1);
+			return (false);
 		}
 
 		if (f == NULL) {
 			ERR("dirent is NULL in base directory monitoring thread");
-			return (-1);
+			return (false);
 		}
 
 		if (strcmp(f->d_name, SOCKFD_NAME) == 0)
-			return (0);
+			return (true);
 
 		if (f->d_name[0] == '.')
-			return (0);
+			return (true);
+
 
 		/*
 		 * Exit early if the file doesn't exist. There is definitely
@@ -894,28 +741,28 @@ process_base(struct dirent *f, dir *dir)
 		 * as we don't expect this to ever happen if communication
 		 * happens through dtraced itself.
 		 */
-		if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
-			ERR("%s%s does not exist", dir->dirpath, f->d_name);
-			rmpath(f->d_name, dir);
+		d_name_s = std::string(f->d_name);
+		if (!dir.file_exists(f->d_name)) {
+			ERR("%s%s does not exist", dir.full_path().c_str(),
+			    f->d_name);
+			(void)dir.rmpath(d_name_s);
 			return (-1);
 		}
 
-		idx = findpath(f->d_name, dir);
-		if (idx >= 0)
+		if (dir.memorized(d_name_s))
 			return (0);
 
 		DEBUG("processing %s", f->d_name);
-
-		strcpy(fullpath, dir->dirpath);
+		fullpath = dir.full_path();
 	}
 
-	strcpy(fullpath + strlen(fullpath), f->d_name);
+	fullpath += d_name_s;
 
 	{
 		std::lock_guard lk(s->outbounddir->dirmtx);
 		sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXXX",
-		    s->outbounddir->dirpath);
-		dirpathlen = strlen(s->outbounddir->dirpath);
+		    s->outbounddir->full_path().c_str());
+		dirpathlen = strlen(s->outbounddir->full_path().c_str());
 
 		fd = mkstemp(tmpfile);
 		if (fd == -1) {
@@ -927,7 +774,7 @@ process_base(struct dirent *f, dir *dir)
 		strcpy(donename + dirpathlen, tmpfile + dirpathlen + 1);
 	}
 
-	dtraced_copyfile(fullpath, fd, tmpfile);
+	dtraced_copyfile(fullpath.c_str(), fd, tmpfile);
 
 	LOG("create file %s", donename);
 	if (rename(tmpfile, donename))
@@ -936,8 +783,8 @@ process_base(struct dirent *f, dir *dir)
 	pid = fork();
 
 	if (pid == -1) {
-		ERR("Failed to fork: %m");
-		return (-1);
+		ERR("fork() failed: %m");
+		return (false);
 	} else if (pid > 0) {
 		struct timespec ts;
 
@@ -957,7 +804,7 @@ process_base(struct dirent *f, dir *dir)
 		if (argv[2] == NULL)
 			abort();
 
-		strcpy(fullarg, fullpath);
+		strcpy(fullarg, fullpath.c_str());
 		offset = strlen(fullarg);
 		strcpy(fullarg + offset, ",host");
 		argv[3] = strdup(fullarg);
@@ -971,54 +818,32 @@ process_base(struct dirent *f, dir *dir)
 		exit(EXIT_FAILURE);
 	}
 
-	std::unique_lock lk(dir->dirmtx);
-	err = expand_paths(dir);
-	if (err != 0) {
-		ERR("Failed to expand paths after processing %s", f->d_name);
-		return (-1);
-	}
-
-	assert(dir->efile_size > dir->efile_len);
-	dir->existing_files[dir->efile_len] = strdup(f->d_name);
-
-	if (dir->existing_files[dir->efile_len++] == NULL) {
-		ERR("Failed to strdup f->d_name: %m");
-		abort();
-	}
-
-	return (0);
+	return (dir.memorize_file(f));
 }
 
-int
-process_outbound(struct dirent *f, dir *dir)
+bool
+process_outbound(dir &dir, struct dirent *f)
 {
-	int err;
 	job *job;
 	state *s;
-	int idx;
+	std::string d_name_s;
 
-	if (dir == NULL) {
-		ERR("dir is NULL");
-		return (-1);
-	}
-
-	s = dir->state;
-
+	s = dir.state;
 	if (s == NULL) {
 		ERR("state is NULL");
-		return (-1);
+		return (false);
 	}
 
 	if (f == NULL) {
 		ERR("dirent is NULL");
-		return (-1);
+		return (false);
 	}
 
 	if (strcmp(f->d_name, SOCKFD_NAME) == 0)
-		return (0);
+		return (true);
 
 	if (f->d_name[0] == '.')
-		return (0);
+		return (true);
 
 	{
 		/*
@@ -1027,18 +852,18 @@ process_outbound(struct dirent *f, dir *dir)
 		 * as we don't expect this to ever happen if communication
 		 * happens through dtraced itself.
 		 */
-		std::lock_guard lk(dir->dirmtx);
-		if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
-			ERR("%s%s does not exist", dir->dirpath, f->d_name);
-			rmpath(f->d_name, dir);
-			return (-1);
+		d_name_s = std::string(f->d_name);
+		std::lock_guard lk(dir.dirmtx);
+		if (!dir.file_exists(f->d_name)) {
+			ERR("%s%s does not exist", dir.full_path().c_str(),
+			    f->d_name);
+			dir.rmpath(d_name_s);
+			return (false);
 		}
 
-		idx = findpath(f->d_name, dir);
+		if (dir.memorized(d_name_s))
+			return (true);
 	}
-
-	if (idx >= 0)
-		return (0);
 
 	std::unique_lock lk(s->sockfdsmtx);
 	for (client_fd *dfdp : s->sockfds) {
@@ -1060,7 +885,7 @@ process_outbound(struct dirent *f, dir *dir)
 		notify_elfwrite_job &ne = job->notify_elfwrite_get();
 		ne.path = strdup(f->d_name);
 		ne.pathlen = strlen(f->d_name);
-		ne.dir = dir;
+		ne.dir = &dir;
 		ne.nosha = s->nosha;
 
 		if (ne.path == NULL) {
@@ -1078,23 +903,7 @@ process_outbound(struct dirent *f, dir *dir)
 	}
 	lk.unlock();
 
-	std::lock_guard lg(dir->dirmtx);
-	err = expand_paths(dir);
-	if (err != 0) {
-		ERR("Failed to expand paths after processing %s",
-		    f->d_name);
-		return (-1);
-	}
-
-	assert(dir->efile_size > dir->efile_len);
-	dir->existing_files[dir->efile_len] = strdup(f->d_name);
-
-	if (dir->existing_files[dir->efile_len++] == NULL) {
-		ERR("Failed to strdup f->d_name: %m");
-		abort();
-	}
-
-	return (0);
+	return (dir.memorize_file(f));
 }
 
 }

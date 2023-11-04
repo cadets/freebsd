@@ -91,7 +91,7 @@ dtt_elf(state *s, dtt_entry_t *e)
 		{
 			std::lock_guard lk(s->inbounddir->dirmtx);
 			sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXX",
-			    s->inbounddir->dirpath);
+			    s->inbounddir->full_path().c_str());
 		}
 
 		fd = mkstemp(tmpfile);
@@ -117,8 +117,7 @@ dtt_elf(state *s, dtt_entry_t *e)
 		return;
 	}
 
-	assert(offs + e->u.elf.len <= len &&
-	    "Assertion happens if ELF segment length is too long");
+	assert(offs + e->u.elf.len <= len && "Assertion happens if ELF segment length is too long");
 	memcpy(elf + offs, e->u.elf.data, e->u.elf.len);
 	offs += e->u.elf.len;
 
@@ -146,7 +145,7 @@ dtt_elf(state *s, dtt_entry_t *e)
 		{
 			std::lock_guard lk(s->inbounddir->dirmtx);
 			sprintf(tmpfile, "%s.elf.XXXXXXXXXXXXXX",
-			    s->inbounddir->dirpath);
+			    s->inbounddir->full_path().c_str());
 		}
 	}
 }
@@ -251,7 +250,7 @@ listen_dttransport(void *_s)
 
 	{
 		std::lock_guard lk(s->inbounddir->dirmtx);
-		dirlen = strlen(s->inbounddir->dirpath);
+		dirlen = s->inbounddir->full_path().length();
 	}
 
 	for (;;) {

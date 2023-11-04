@@ -46,6 +46,8 @@
 #include <dirent.h>
 
 #include <mutex>
+#include <set>
+#include <string>
 
 namespace dtraced {
 
@@ -53,33 +55,41 @@ extern char INBOUNDDIR[MAXPATHLEN];
 extern char OUTBOUNDDIR[MAXPATHLEN];
 extern char BASEDIR[MAXPATHLEN];
 
-
-struct dir;
+class dir;
 class state;
 
-typedef int (*foreach_fn_t)(struct dirent *, dir *);
+typedef bool (*foreach_fn_t)(dir &, struct dirent *);
 
-struct dir {
-	char *dirpath;		 /* directory path */
-	int dirfd;		 /* directory filedesc */
-	DIR *dir;		 /* directory pointer */
-	char **existing_files;	 /* files that exist in the dir */
-	size_t efile_size;	 /* vector size */
-	size_t efile_len;	 /* number of elements */
-	std::mutex dirmtx;	 /* directory mutex */
+class dir {
+	using fileset = std::set<std::string>;
+	std::string dirpath;	 /* directory path */
+	DIR *dirp;		 /* directory pointer */
+	fileset existing_files;	 /* files that exist in the dir */
 	foreach_fn_t processfn;	 /* function to process the dir */
-	state *state; /* backpointer to state */
+
+	bool process(void);
+
+public:
+	state *state;		/* backpointer to state */
+	std::mutex dirmtx;	/* directory mutex */
+	int dirfd;		/* directory filedesc */
+
+	dir(void) = delete;
+	dir(const char *, foreach_fn_t);
+	~dir();
+	bool write_data(unsigned char *, size_t);
+	bool listen(void);
+	bool file_exists(const char *);
+	bool memorized(const std::string &);
+	bool memorize_file(struct dirent *);
+	bool rmpath(const std::string &);
+	bool populate_existing(void);
+	const std::string &full_path() const { return (this->dirpath); }
 };
 
-int write_data(dir *, unsigned char *, size_t);
-void listen_dir(void *);
-int populate_existing(struct dirent *, dir *);
-int file_foreach(DIR *, foreach_fn_t, dir *);
-dir *dtd_mkdir(const char *, foreach_fn_t);
-void dtd_closedir(dir *);
-int process_inbound(struct dirent *, dir *);
-int process_base(struct dirent *, dir *);
-int process_outbound(struct dirent *, dir *);
+bool process_inbound(dir &, struct dirent *);
+bool process_base(dir &, struct dirent *);
+bool process_outbound(dir &, struct dirent *);
 }
 
 #endif // _DTRACED_DIRECTORY_H_
