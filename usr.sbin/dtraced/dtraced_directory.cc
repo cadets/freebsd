@@ -746,11 +746,11 @@ process_base(dir &dir, struct dirent *f)
 			ERR("%s%s does not exist", dir.full_path().c_str(),
 			    f->d_name);
 			(void)dir.rmpath(d_name_s);
-			return (-1);
+			return (false);
 		}
 
 		if (dir.memorized(d_name_s))
-			return (0);
+			return (true);
 
 		DEBUG("processing %s", f->d_name);
 		fullpath = dir.full_path();

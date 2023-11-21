@@ -84,7 +84,7 @@ client_request::handle_elfmsg(void)
 	}
 
 	DEBUG("write_data(%s, [buf], %zu)", dir->dirpath, buf_size);
-	if (dir->write_data(buf, buf_size)) {
+	if (!dir->write_data(buf, buf_size)) {
 		ERR("write_data() failed");
 		return (false);
 	}
