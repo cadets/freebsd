@@ -74,10 +74,7 @@ namespace dtraced {
 
 class state;
 
-void get_randname(char *, size_t);
-void freep(void *);
 void closefd_generic(int *);
-void closedir_generic(DIR **);
 void cleanup_pidfile(struct pidfh **);
 int  waitpid_timeout(pid_t, struct timespec *);
 int event(state &, int, const struct kevent *, int, struct kevent *, int,

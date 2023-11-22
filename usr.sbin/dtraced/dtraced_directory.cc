@@ -665,7 +665,6 @@ dtraced_copyfile(const char *src, int fd_dst, const char *dst)
 	__cleanup(closefd_generic) int fd = -1;
 	__cleanup(closefd_generic) int newfd = -1;
 	struct stat sb;
-	__cleanup(freep) void *buf = NULL;
 	size_t len;
 
 	memset(&sb, 0, sizeof(struct stat));
@@ -680,18 +679,14 @@ dtraced_copyfile(const char *src, int fd_dst, const char *dst)
 	}
 
 	len = sb.st_size;
-	buf = malloc(len);
-	if (buf == NULL) {
-		ERR("failed to allocate buf: %m");
-		abort();
-	}
 
-	if (read(fd, buf, len) < 0) {
+	std::vector<char> buf(len);
+	if (read(fd, buf.data(), len) < 0) {
 		ERR("Failed to read %zu bytes from %s (%d): %m", len, src, fd);
 		return;
 	}
 
-	if (write(fd_dst, buf, len) < 0) {
+	if (write(fd_dst, buf.data(), len) < 0) {
 		ERR("failed to write %zu bytes to %s (%d): %m", len, dst,
 		    newfd);
 		return;

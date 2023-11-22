@@ -55,42 +55,12 @@
 
 namespace dtraced {
 
-/*
- * Used for generating a random name of the outbound ELF file.
- */
-void
-get_randname(char *b, size_t len)
-{
-	size_t i;
-
-	/*
-	 * Generate lower-case random characters.
-	 */
-	for (i = 0; i < len; i++)
-		b[i] = arc4random_uniform(25) + 97;
-}
-
-void
-freep(void *mem)
-{
-
-	free(*(void **) mem);
-}
-
 void
 closefd_generic(int *fd)
 {
 
 	if (*fd != -1)
 		close(*fd);
-}
-
-void
-closedir_generic(DIR **dir)
-{
-
-	if (*dir)
-		closedir(*dir);
 }
 
 void
