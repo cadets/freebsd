@@ -759,7 +759,7 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 	    sizeof(dtrace_ecbdesc_t));
 	if (scn != NULL)
 		return (scn);
-	
+
 	eecb = malloc(sizeof(dt_elf_ecbdesc_t));
 	if (eecb == NULL)
 		errx(EXIT_FAILURE, "failed to malloc eecb");
@@ -2450,9 +2450,10 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd, char *filename,
 
 	if (write(elf_fd, buf, st.st_size - SHA256_DIGEST_LENGTH) < 0)
 		errx(EXIT_FAILURE, "Failed to write ELF contents into tmp");
-	
+
 	memcpy(filename, template, sizeof(template));
 	strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
+	free(buf);
 	return (elf_fd);
 }
 

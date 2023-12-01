@@ -868,6 +868,13 @@ vtdtr_vq_disable_intr(struct virtio_dtrace_queue *q)
 	virtqueue_disable_intr(q->vtdq_vq);
 }
 
+static int
+vtdtr_should_free(void *p)
+{
+
+	return (p != &eof_ctrl && p != &ready_ctrl && p != &query_node_id_ctrl);
+}
+
 static void
 vtdtr_send_eof(struct virtio_dtrace_queue *q)
 {
@@ -1068,15 +1075,14 @@ vtdtr_fill_desc(struct virtio_dtrace_queue *q,
 
 	VTDTR_QUEUE_LOCK(q);
 	vq = q->vtdq_vq;
-	/*
-	 * FIXME: We seem to fault on the free(_ctrl, M_DEVBUF). We should
-	 * probably handle this differently.
-	 */
+
 	do {
 		error = vtdtr_queue_enqueue_ctrl(q, ctrl, 1, 0);
 		if (error == ENOSPC)
-			while ((_ctrl = virtqueue_drain(vq, &last)) != NULL)
-				free(_ctrl, M_DEVBUF);
+			while ((_ctrl = virtqueue_drain(vq, &last)) != NULL) {
+				if (vtdtr_should_free(_ctrl))
+					free(_ctrl, M_DEVBUF);
+			}
 		KASSERT(error == 0 || error == ENOSPC,
 		    ("%s: cannot enqueue control buffer %d", __func__, error));
 	} while (error == ENOSPC);
