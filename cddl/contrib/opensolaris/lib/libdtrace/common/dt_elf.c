@@ -252,12 +252,12 @@ dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo)
 		return (NULL);
 
 	if ((scn = elf_newscn(e)) == NULL)
-		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
-		     e, elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s", e,
+		    elf_errmsg(-1));
 
 	if ((data = elf_newdata(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
-		     scn, elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s", scn,
+		    elf_errmsg(-1));
 
 	inttab = malloc(sizeof(uint64_t) * difo->dtdo_intlen);
 	if (inttab == NULL)

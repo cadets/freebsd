@@ -1051,6 +1051,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg1 type is NONE",
 			    subr_name[subr]);
 
+		se = dt_list_next(se);
 		/*
 		 * Check if the third (optional) argument is present
 		 */
