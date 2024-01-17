@@ -1975,7 +1975,8 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		else
 			copied = 0;
 
-		if (copied == 1 || mod != dnp->dn_dtp->dt_ddefs) {
+		if ((copied == 1 && CTF_K_FORWARD != dnp->dn_kind) ||
+		    mod != dnp->dn_dtp->dt_ddefs) {
 			/*
 			 * Generate an USETX instruction with the current symbol
 			 * that we will resolve later on in the linking process.
