@@ -862,7 +862,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 *  setx idx, %r1 => %r1 : uint64_t
 		 */
 
-		n->din_tf = dt_typefile_kernel();
+		n->din_tf = dt_typefile_D();
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint64_t");
 		if (n->din_ctfid == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
