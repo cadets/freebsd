@@ -2057,7 +2057,8 @@ again:
 		dtrace_close(g_dtp);
 		exit(0);
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
-		//dtrace_dump_actions(dcp->dc_prog);
+		if (g_verbose)
+			dtrace_dump_actions(dcp->dc_prog);
 		verictx = dt_verictx_init(g_dtp);
 		if (dt_prog_verify(verictx, dcp->dc_prog, dcp->dc_prog) != 0)
 			dfatal("failed to verify %p", dcp->dc_prog);
@@ -2246,6 +2247,8 @@ compile_file(dtrace_cmd_t *dcp)
 	    g_cflags, g_argc, g_argv)) == NULL)
 		dfatal("failed to compile script %s", dcp->dc_arg);
 
+	if (g_verbose)
+		dtrace_dump_actions(dcp->dc_prog);
 	g_argv[0] = arg0;
 	(void) fclose(fp);
 

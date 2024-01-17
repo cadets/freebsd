@@ -93,7 +93,7 @@ dump_action(dtrace_actdesc_t *ap)
 	dtrace_difo_t *dp = ap->dtad_difo;
 	uint64_t num_frames = 0;
 
-	fprintf(stderr, "\n");
+	fprintf(stderr, "\nACTION RETURNS: %s\n", ap->dtad_return ? "YES" : "NO");
 
 	switch (kind) {
 	case DTRACEACT_NONE:
