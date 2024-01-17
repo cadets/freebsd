@@ -762,6 +762,7 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 	 * Since we will be tracing this, we want to return a non-void
 	 * type from this action.
 	 */
+
 	ap->dtad_return = 1;
 }
 

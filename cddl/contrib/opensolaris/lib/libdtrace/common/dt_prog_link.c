@@ -330,6 +330,7 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 	dtrace_diftype_t *rtype;
 	dtrace_difo_t *difo;
 	dtrace_prog_t *pgp;
+	ctf_id_t return_ctfid;
 	int ctf_kind;
 
 	/*
@@ -410,8 +411,22 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 
 			ret_cleanup(node, rtype);
 
-			rtype->dtdt_size = dt_typefile_typesize(
-			    node->din_tf, node->din_ctfid);
+			if (rtype->dtdt_flags & DIF_TF_BYREF) {
+				return_ctfid = dt_typefile_reference(
+				    node->din_tf, node->din_ctfid);
+				/*
+				 * FIXME:. This is very much a heuristic. This
+				 * can probably be done better.
+				 */
+				return_ctfid = return_ctfid == CTF_ERR ?
+				    node->din_ctfid :
+				    return_ctfid;
+				rtype->dtdt_size = dt_typefile_typesize(
+				    node->din_tf, return_ctfid);
+			} else {
+				rtype->dtdt_size = dt_typefile_typesize(
+				    node->din_tf, node->din_ctfid);
+			}
 		} else if (rtype->dtdt_kind == DIF_TYPE_BOTTOM) {
 			/*
 			 * We don't care what the size is, we just need to set
