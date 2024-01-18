@@ -1396,7 +1396,7 @@ dtrace_send_elf(dtrace_prog_t *pgp, int fromfd, int tofd, const char *location,
 }
 
 void
-dt_enable_hypertrace(dtrace_hdl_t *dtp)
+dtrace_enable_hypertrace(dtrace_hdl_t *dtp)
 {
 
 	(void) dtrace_setopt(dtp, "hypertrace", "yes");
@@ -1404,21 +1404,21 @@ dt_enable_hypertrace(dtrace_hdl_t *dtp)
 }
 
 void
-dt_set_failmsg_needed(dtrace_hdl_t *dtp)
+dtrace_set_failmsg_needed(dtrace_hdl_t *dtp)
 {
 
 	dtp->dt_failmsg_needed = 1;
 }
 
 int
-dt_hypertrace_enabled(dtrace_hdl_t *dtp)
+dtrace_hypertrace_enabled(dtrace_hdl_t *dtp)
 {
 
 	return (dtp->dt_hypertrace);
 }
 
 int
-dt_hypertrace_options_update(dtrace_hdl_t *dtp)
+dtrace_hypertrace_options_update(dtrace_hdl_t *dtp)
 {
 
 	/*

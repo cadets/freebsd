@@ -52,7 +52,7 @@
 
 #include <dt_hashmap.h>
 #include <dt_impl.h>
-#include <dt_linker_subr.h>
+//#include <dt_linker_subr.h>
 #include <dt_printf.h>
 #include <dt_program.h>
 #include <dt_provider.h>
@@ -294,7 +294,7 @@ dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 }
 
 int
-dt_vprobes_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+dtrace_vprobes_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
 	int n;
 	dtrace_vprobe_io_t args = { 0 };
@@ -314,7 +314,7 @@ dt_vprobes_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 }
 
 int
-dt_augment_tracing(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+dtrace_augment_tracing(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
 	dtrace_enable_io_t args = { 0 };
 	void *dof;
@@ -1766,7 +1766,7 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 }
 
 dtrace_prog_t *
-dt_vprog_from(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, int pgp_kind)
+dtrace_vprog_from(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, int pgp_kind)
 {
 	dtrace_prog_t *newpgp;
 

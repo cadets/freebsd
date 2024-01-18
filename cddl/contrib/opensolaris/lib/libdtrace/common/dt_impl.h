@@ -746,6 +746,7 @@ extern int dt_lib_depend_add(dtrace_hdl_t *, dt_list_t *, const char *);
 extern dt_lib_depend_t *dt_lib_depend_lookup(dt_list_t *, const char *);
 extern ctf_file_t *dt_lib_membinfo(ctf_file_t *, ctf_id_t,
     const char *, ctf_membinfo_t *);
+extern dtrace_difv_t *dt_get_variable(dtrace_difo_t *, uint16_t, int, int);
 
 extern dt_pcb_t *yypcb;		/* pointer to current parser control block */
 extern char yyintprefix;	/* int token prefix for macros (+/-) */

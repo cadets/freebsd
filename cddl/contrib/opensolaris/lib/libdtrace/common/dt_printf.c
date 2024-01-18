@@ -1218,7 +1218,7 @@ dt_printf_validate(dtrace_hdl_t *dtp, dt_pfargv_t *pfv, uint_t flags,
 		 * pfc_check() function below may optionally modify the format
 		 * as part of validating the type of the input argument.
 		 */
-		if (dt_hypertrace_enabled(dtp) == 0) {
+		if (dtrace_hypertrace_enabled(dtp) == 0) {
 			if (pfc->pfc_print == &pfprint_sint ||
 			    pfc->pfc_print == &pfprint_uint ||
 			    pfc->pfc_print == &pfprint_dint) {
@@ -1238,7 +1238,7 @@ dt_printf_validate(dtrace_hdl_t *dtp, dt_pfargv_t *pfv, uint_t flags,
 		 * string by concatenating together any required printf(3C)
 		 * size prefixes with the conversion's native format string.
 		 */
-		if (dt_hypertrace_enabled(dtp) == 0) {
+		if (dtrace_hypertrace_enabled(dtp) == 0) {
 			if (pfc->pfc_check(pfv, pfd, vnp) == 0) {
 				xyerror(D_PRINTF_ARG_TYPE,
 				    "%s( ) %s is incompatible with "

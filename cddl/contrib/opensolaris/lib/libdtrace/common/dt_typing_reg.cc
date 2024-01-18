@@ -36,7 +36,7 @@
  * SUCH DAMAGE.
  */
 
-#include <dt_typing.h>
+#include <dt_typing.hh>
 
 #include <sys/types.h>
 #include <sys/dtrace.h>
@@ -45,11 +45,11 @@
 #include <dt_impl.h>
 #include <dt_program.h>
 #include <dt_list.h>
-#include <dt_linker_subr.h>
-#include <dt_basic_block.h>
-#include <dt_ifgnode.h>
-#include <dt_typefile.h>
-#include <dt_typing_helpers.h>
+#include <dt_linker_subr.hh>
+#include <dt_basic_block.hh>
+#include <dt_dfg.hh>
+#include <dt_typefile.hh>
+#include <dt_typing_helpers.hh>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,28 +58,26 @@
 #include <errno.h>
 #include <assert.h>
 
-#include <dt_typing_reg.h>
+namespace dtrace {
 
 /*
  * dt_typecheck_regdefs() takes in a list of nodes that define
  * the current node we are looking at and ensures that their types
  * are consistent.
  */
-dt_ifg_node_t *
-dt_typecheck_regdefs(dt_list_t *defs, int *empty)
+dfg_node *
+dt_typecheck_regdefs(dfg_node *n, node_set &defs, int *empty)
 {
-	dt_ifg_list_t *ifgl;
-	dt_ifg_node_t *node, *onode;
-	char buf1[4096] = {0}, buf2[4096] = {0};
+	dfg_node *node, *onode;
+	std::string s1, s2;
 	int type, otype;
 	int class1, class2;
 	int first_iter;
 	int which;
 
-	ifgl = NULL;
 	type = otype = DIF_TYPE_NONE;
 	class1 = class2 = -1;
-	node = onode = NULL;
+	node = nullptr;
 	*empty = 1;
 	first_iter = 1;
 
@@ -87,13 +85,14 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 	 * If we only have a r0node in our list of definitions,
 	 * we will return the r0node and have the type as BOTTOM.
 	 */
-	if ((ifgl = dt_list_next(defs)) != NULL) {
-		node = ifgl->dil_ifgnode;
+	if (defs.size() == 1 && *defs.begin() == r0node) {
 		*empty = 0;
-		if (node == r0node && dt_list_next(ifgl) == NULL)
-			return (r0node);
+		return (r0node);
 	}
 
+	if (defs.size() > 0)
+		node = *defs.begin(); // FIXME: Needed for onode to be set
+				      // correctly.
 	/*
 	 * We iterate over all the register definitions for a particular
 	 * node. We make sure that each of the definitions agrees
@@ -102,11 +101,13 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 	 * Moreover, at this point we will have eliminated the case where
 	 * we only have 1 node (r0node) present in the list.
 	 */
-	for (ifgl = dt_list_next(defs); ifgl; ifgl = dt_list_next(ifgl)) {
+	for (auto it = defs.begin(); it != defs.end(); ++it) {
 		onode = node;
-		node = ifgl->dil_ifgnode;
-
+		node = *it;
 		otype = type;
+
+		if (node == r0node)
+			continue;
 
 		/*
 		 * If we have bottom, we just take the old node's value.
@@ -130,7 +131,7 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 		 *       giving us the desired type-checking behaviour, making
 		 *       sure that all branches have consistent register defns.
 		 */
-		if (node->din_type == DIF_TYPE_BOTTOM) {
+		if (node->d_type == DIF_TYPE_BOTTOM) {
 			type = otype;
 			node = onode;
 			continue;
@@ -142,22 +143,21 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 		 * We failed to infer the type to begin with, bail out.
 		 */
 		if (type == -1) {
-			fprintf(stderr, "failed to infer type (-1)\n");
-			return (NULL);
+			return (nullptr);
 		}
 
 		if (onode == r0node)
 			continue;
 
 		if (type == DIF_TYPE_STRING || otype == DIF_TYPE_STRING) {
-			dt_ifg_node_t *str_node, *other_node;
+			dfg_node *str_node, *other_node;
 			int string_type, other_type;
 
 			str_node = type == DIF_TYPE_STRING ? node : onode;
 			other_node = type == DIF_TYPE_STRING ? onode : node;
 
-			string_type = str_node->din_type;
-			other_type = other_node->din_type;
+			string_type = str_node->d_type;
+			other_type = other_node->d_type;
 
 			if (other_type == DIF_TYPE_BOTTOM)
 				continue;
@@ -171,18 +171,19 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 				/*
 				 * Get the CTF type name
 				 */
-				if (dt_typefile_typename(other_node->din_tf,
-				    other_node->din_ctfid, buf2,
-				    sizeof(buf2)) != ((char *)buf2))
+				auto opt = other_node->tf->get_typename(
+				    other_node->ctfid);
+				if (!opt.has_value())
 					dt_set_progerr(g_dtp, g_pgp,
 					    "dt_typecheck_regdefs(): failed at "
 					    "getting type name node %ld: %s",
-					    other_node->din_ctfid,
-					    dt_typefile_error(other_node->din_tf));
+					    other_node->ctfid,
+					    other_node->tf->get_errmsg());
 
-				if (strcmp(buf2, "const char *") == 0 ||
-				    strcmp(buf2, "char *") == 0 ||
-				    strcmp(buf2, "string") == 0) {
+				s1 = std::move(opt.value());
+
+				if (s1 == "const char *" || s1 == "char *" ||
+				    s1 == "string") {
 					first_iter = 0;
 					continue;
 				}
@@ -194,137 +195,137 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 		 * inferred in the current one, which is nonsense.
 		 */
 		if (first_iter == 0 && otype != type) {
-			char otype_str[256] = { 0 };
-			char ctype_str[256] = { 0 };
+			std::string otype_str, ctype_str;
 
 			if (otype == DIF_TYPE_STRING) {
-				strcpy(otype_str, "D string");
+				otype_str = "D string";
 			} else if (otype == DIF_TYPE_BOTTOM) {
-				strcpy(otype_str, "D bottom type");
+				otype_str = "D bottom type";
 			} else if (otype == DIF_TYPE_NONE) {
-				strcpy(otype_str, "none");
+				otype_str = "none";
 			} else if (otype == DIF_TYPE_CTF) {
 				/*
 				 * Get the CTF type name
 				 */
-				if (dt_typefile_typename(onode->din_tf,
-				    onode->din_ctfid, otype_str,
-				    sizeof(otype_str)) != ((char *)otype_str))
+				auto opt = onode->tf->get_typename(onode->ctfid);
+				if (!opt.has_value())
 					dt_set_progerr(g_dtp, g_pgp,
-					    "dt_typecheck_regdefs(): failed at "
+					    "dt_typecheck_regdefs(%p[%zu]): failed at "
 					    "getting type name node %ld: %s",
-					    onode->din_ctfid,
-					    dt_typefile_error(onode->din_tf));
+					    n->difo, n->uidx, onode->ctfid,
+					    onode->tf->get_errmsg());
+				otype_str = std::move(opt.value());
 			} else {
-				strcpy(otype_str, "unknown (ERROR)");
+				otype_str = "unknown (ERROR)";
 			}
 
 			if (type == DIF_TYPE_STRING) {
-				strcpy(ctype_str, "D string");
+				ctype_str = "D string";
 			} else if (type == DIF_TYPE_BOTTOM) {
-				strcpy(ctype_str, "D bottom type");
+				ctype_str = "D bottom type";
 			} else if (type == DIF_TYPE_NONE) {
-				strcpy(ctype_str, "none");
+				ctype_str = "none";
 			} else if (type == DIF_TYPE_CTF) {
 				/*
 				 * Get the CTF type name
 				 */
-				if (dt_typefile_typename(node->din_tf,
-				    node->din_ctfid, ctype_str,
-				    sizeof(ctype_str)) != ((char *)ctype_str))
+				auto opt = node->tf->get_typename(node->ctfid);
+				if (!opt.has_value())
 					dt_set_progerr(g_dtp, g_pgp,
-					    "dt_typecheck_regdefs(): failed at "
+					    "dt_typecheck_regdefs(%p[%zu]): failed at "
 					    "getting type name node %ld: %s",
-					    node->din_ctfid,
-					    dt_typefile_error(node->din_tf));
+					    n->difo, n->uidx, node->ctfid,
+					    node->tf->get_errmsg());
+				ctype_str = std::move(opt.value());
 			} else {
-				strcpy(ctype_str, "unknown (ERROR)");
+				ctype_str = "unknown (ERROR)";
 			}
 
-			fprintf(stderr,
-			    "failed to typecheck conditional: "
+			dt_set_progerr(g_dtp, g_pgp,
+			    "%p[%zu]: failed to typecheck conditional: "
 			    "(branch 1: %s (%zu) != branch 2: %s (%zu))\n",
-			    otype_str, onode->din_uidx, ctype_str,
-			    node->din_uidx);
-			return (NULL);
+			    n->difo, n->uidx, otype_str.c_str(), onode->uidx,
+			    ctype_str.c_str(), node->uidx);
+			return (nullptr);
 		}
 
 		if (type == DIF_TYPE_CTF) {
-			assert(node->din_tf != NULL);
+			assert(node->tf != nullptr);
 
 			/*
 			 * We get the type name for reporting purposes.
 			 */
-			if (dt_typefile_typename(node->din_tf, node->din_ctfid,
-			    buf1, sizeof(buf1)) != ((char *)buf1))
+			auto opt = node->tf->get_typename(node->ctfid);
+			if (!opt.has_value())
 				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_typecheck_regdefs(): failed at "
+				    "dt_typecheck_regdefs(%p[%zu]): failed at "
 				    "getting type name node %ld: %s",
-				    node->din_ctfid,
-				    dt_typefile_error(node->din_tf));
+				    n->difo, n->uidx, node->ctfid,
+				    node->tf->get_errmsg());
+
+			s1 = std::move(opt.value());
 
 			/*
 			 * If we are at the first definition, or only have one
 			 * definition, we don't need to check the types.
 			 */
-			if (onode == NULL)
+			if (onode == nullptr)
 				continue;
 
-			if (onode->din_type == DIF_TYPE_BOTTOM)
+			if (onode->d_type == DIF_TYPE_BOTTOM)
 				continue;
 
-			assert(onode->din_tf != NULL);
+			assert(onode->tf != nullptr);
  			/*
 			 * Get the previous' node's inferred type for
 			 * error reporting.
 			 */
-			if (dt_typefile_typename(onode->din_tf,
-			    onode->din_ctfid, buf2,
-			    sizeof(buf2)) != ((char *)buf2))
+			opt = onode->tf->get_typename(onode->ctfid);
+			if (!opt.has_value())
 				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_typecheck_regdefs(): failed at "
+				    "dt_typecheck_regdefs(%p[%zu]): failed at "
 				    "getting type onode name %ld: %s",
-				    onode->din_ctfid,
-				    dt_typefile_error(onode->din_tf));
+				    n->difo, n->uidx, onode->ctfid,
+				    onode->tf->get_errmsg());
 
 			/*
 			 * Fail to typecheck if the types don't match 100%.
-			 * We only do this if both types are non-NULL/0 as we
+			 * We only do this if both types are non-nullptr/0 as we
 			 * might be doing some weird zeroing thing where we
 			 * can't infer the correct type in either of the nodes.
 			 * However, we know that any base CTF type can be
 			 * reliably zeroed (non-struct, non-union).
 			 */
-			if ((node->din_isnull == 0 && onode->din_isnull == 0) &&
-			    dt_type_subtype(node->din_tf, node->din_ctfid,
-			    onode->din_tf, onode->din_ctfid, &which)) {
+			if ((!node->isnull && !onode->isnull) &&
+			    dt_type_subtype(node->tf, node->ctfid, onode->tf,
+			    onode->ctfid, &which)) {
 				fprintf(stderr,
-				    "dt_typecheck_regdefs(): types %s (%zu) "
+				    "dt_typecheck_regdefs(%p[%zu]): types %s (%zu) "
 				    "and %s (%zu) do not match\n",
-				    buf1, node->din_uidx, buf2,
-				    onode->din_uidx);
-				return (NULL);
+				    n->difo, n->uidx, s1.c_str(), node->uidx,
+				    s2.c_str(), onode->uidx);
+				return (nullptr);
 			}
 
-			if ((node->din_sym == NULL && onode->din_sym != NULL) ||
-			    (node->din_sym != NULL && onode->din_sym == NULL)) {
-				fprintf(stderr,
-				    "dt_typecheck_regdefs(): symbol is "
-				    "missing in a node\n");
-				return (NULL);
+			if ((node->sym == nullptr && onode->sym != nullptr) ||
+			    (node->sym != nullptr && onode->sym == nullptr)) {
+				dt_set_progerr(g_dtp, g_pgp,
+				    "dt_typecheck_regdefs(%p[%zu]): symbol is "
+				    "missing in a node\n",
+				    n->difo, n->uidx);
+				return (nullptr);
 			}
 
 			/*
 			 * We don't need to check both
 			 * because of the above check.
 			 */
-			if (node->din_sym &&
-			    strcmp(node->din_sym, onode->din_sym) != 0) {
-				fprintf(stderr,
-				    "dt_typecheck_regdefs(): nodes have "
+			if (node->sym && strcmp(node->sym, onode->sym) != 0) {
+				dt_set_progerr(g_dtp, g_pgp,
+				    "dt_typecheck_regdefs(%p[%zu]): nodes have "
 				    "different symbols: %s != %s\n",
-				    node->din_sym, onode->din_sym);
-				return (NULL);
+				    n->difo, n->uidx, node->sym, onode->sym);
+				return (nullptr);
 			}
 		}
 
@@ -334,3 +335,4 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 	return (node);
 }
 
+}

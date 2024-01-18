@@ -63,7 +63,6 @@
 #include <libproc.h>
 #endif
 #ifdef __FreeBSD__
-#include <dt_prog_link.h>
 #include <locale.h>
 #include <spawn.h>
 #endif
@@ -1287,7 +1286,7 @@ process_prog:
 			 */
 			dt_bench_hdl_attach(bench, cshdl, CALL_EAGAIN);
 
-			(void) dt_get_srcident(buf);
+			(void) dtrace_get_srcident(buf);
 			pthread_mutex_lock(&g_pgplistmtx);
 			newpgpl = get_pgplist_entry(buf, vmid, &found,
 			    PGPL_GUEST);
@@ -1414,8 +1413,8 @@ process_prog:
 			 * "rcvpgp" @ "Virtual program creation - start" -- attach data = VPROG_CREATION
 			 */
 			dt_bench_hdl_attach(bench, cshdl, VPROG_CREATION);
-			guestpgp =
-			    dt_vprog_from(g_dtp, newprog, PGP_KIND_HYPERCALLS);
+			guestpgp = dtrace_vprog_from(g_dtp, newprog,
+			    PGP_KIND_HYPERCALLS);
 			if (guestpgp == NULL) {
 				dabort("failed to create a guest program");
 			}
@@ -1769,7 +1768,7 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 			return;
 		}
 
-		n = dt_vprobes_create(g_dtp, gpgp_resp);
+		n = dtrace_vprobes_create(g_dtp, gpgp_resp);
 		if (n == -1) {
 			if (atomic_fetch_add(&g_intr, 1))
 				atomic_store(&g_impatient, 1);
@@ -1810,7 +1809,7 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 		setup_tracing();
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	} else {
-		if (dt_augment_tracing(g_dtp, pgp)) {
+		if (dtrace_augment_tracing(g_dtp, pgp)) {
 			if (atomic_fetch_add(&g_intr, 1))
 				atomic_store(&g_impatient, 1);
 			fprintf(stderr, "failed to augment tracing: %s",
@@ -1822,7 +1821,7 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 		}
 	}
 
-	if (n_pgps > 0 && dt_hypertrace_options_update(g_dtp) == -1)
+	if (n_pgps > 0 && dtrace_hypertrace_options_update(g_dtp) == -1)
 		fatal("failed to load options");
 	n_pgps++;
 }
@@ -2056,7 +2055,7 @@ again:
 		pthread_mutex_destroy(&g_benchlistmtx);
 		dtrace_close(g_dtp);
 		exit(0);
-	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
+	} else if (dtrace_relocate(g_dtp, dcp->dc_prog) == 0) {
 		if (g_verbose)
 			dtrace_dump_actions(dcp->dc_prog);
 		verictx = dt_verictx_init(g_dtp);
@@ -2348,7 +2347,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	}
 
 
-	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
+	if (dtrace_relocate(g_dtp, dcp->dc_prog) != 0)
 		dfatal("Failed to apply relocations");
 
 	if (g_verbose) {
@@ -3135,10 +3134,10 @@ main(int argc, char *argv[])
 		dtrace_set_guest(g_dtp);
 
 	if (g_elf)
-		dt_enable_hypertrace(g_dtp);
+		dtrace_enable_hypertrace(g_dtp);
 
 	if (g_failmsg_needed)
-		dt_set_failmsg_needed(g_dtp);
+		dtrace_set_failmsg_needed(g_dtp);
 
 
 #if defined(__i386__)
@@ -3394,7 +3393,7 @@ main(int argc, char *argv[])
 		}
 	}
 
-	dt_resolver_setflags(rslv);
+	dtrace_resolver_setflags(rslv);
 
 	if (g_ofp == NULL && g_mode != DMODE_EXEC) {
 		(void) fprintf(stderr, "%s: -B not valid in combination"

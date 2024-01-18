@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2020, 2021 Domagoj Stolfa
+ * Copyright (c) 2024 Domagoj Stolfa
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
@@ -36,24 +36,55 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _DT_TYPING_H_
-#define _DT_TYPING_H_
+#ifndef _DT_TYPING_HELPERS_HH_
+#define _DT_TYPING_HELPERS_HH_
 
-#include <sys/dtrace.h>
+#include <sys/types.h>
+#include <sys/ctf.h>
+
 #include <dtrace.h>
+#include <dt_program.h>
+#include <dt_typefile.hh>
 
-#include <_dt_ifgnode.h>
+#define SUBTYPE_NONE  0
+#define SUBTYPE_EQUAL (1 << 0)
+#define SUBTYPE_FST   (1 << 1)
+#define SUBTYPE_SND   (1 << 2)
+#define SUBTYPE_ANY   (SUBTYPE_EQUAL | SUBTYPE_FST | SUBTYPE_SND)
 
-#define DTC_BOTTOM  -1
-#define DTC_INT      0
-#define DTC_STRUCT   1
-#define DTC_STRING   2
-#define DTC_FORWARD  3
-#define DTC_UNION    4
-#define DTC_ENUM     5
+#ifndef __cplusplus
+#error "This file should only be included from C++"
+#endif
 
-extern int dt_prog_infer_types(dtrace_hdl_t *, dtrace_prog_t *,
-    dtrace_difo_t *);
-extern int dt_infer_type(dt_ifg_node_t *);
+namespace dtrace {
 
-#endif /* _DT_TYPING_H_ */
+extern dtrace_hdl_t *g_dtp;
+extern dtrace_prog_t *g_pgp;
+
+extern ctf_id_t dt_type_strip_ref(typefile *, ctf_id_t &, size_t &);
+extern ctf_id_t dt_type_strip_typedef(typefile *, ctf_id_t *);
+extern int dt_ctf_type_compare(typefile *, ctf_id_t, typefile *,
+    ctf_id_t);
+extern int dt_type_subtype(typefile *, ctf_id_t, typefile *, ctf_id_t,
+    int *);
+extern const char *dt_class_name(int);
+extern int dt_get_class(typefile *, ctf_id_t, int);
+extern int dt_type_compare(dfg_node *, dfg_node *);
+extern typefile *dt_get_typename_tfcheck(dfg_node *, typefile **,
+    size_t, char *, size_t, const char *);
+extern void dt_get_typename(dfg_node *, char *, size_t, const char *);
+extern int dt_typecheck_string(dtrace_hdl_t *, int, int, ctf_id_t, ctf_id_t,
+    typefile *, typefile *);
+extern int dt_typecheck_stringii(dtrace_hdl_t *, dfg_node *,
+    dfg_node *);
+extern int dt_typecheck_stringiv(dtrace_hdl_t *, dfg_node *,
+    dtrace_difv_t *);
+extern ctf_membinfo_t *dt_mip_from_sym(dfg_node *);
+extern ctf_membinfo_t *dt_mip_by_offset(dtrace_hdl_t *, typefile *,
+    ctf_id_t, uint64_t);
+extern ctf_id_t dt_autoresolve_ctfid(const char *, const char *,
+    typefile **);
+
+}
+
+#endif /* _DT_TYPING_HELPERS_HH_ */

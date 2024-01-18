@@ -1,5 +1,8 @@
 /*-
- * Copyright (c) 2021 Domagoj Stolfa
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
+ * Copyright (c) 2024 Domagoj Stolfa.
+ * All rights reserved.
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
@@ -23,10 +26,10 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY NETAPP, INC ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL NETAPP, INC OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -36,17 +39,52 @@
  * SUCH DAMAGE.
  */
 
-#ifndef __DT_TYPEFILE_T_
-#define __DT_TYPEFILE_T_
+#ifndef _DT_BASIC_BLOCK_H_
+#define _DT_BASIC_BLOCK_H_
 
-#include <sys/types.h>
-#include <sys/param.h>
+#include <sys/dtrace.h>
 
-typedef struct dt_typefile {
-	dt_list_t list;
-	dtrace_hdl_t *dtp;
-	void *modhdl;
-	char modname[MAXPATHLEN];
-} dt_typefile_t;
-
+#ifndef __cplusplus
+#error "This file should only be included from C++"
 #endif
+
+#include <memory>
+#include <vector>
+
+namespace dtrace {
+
+const size_t DT_BB_MAX = 8192;
+
+template<typename T>
+using vec = std::vector<T>;
+
+using std::pair;
+
+class basic_block {
+    public:
+	static size_t index;
+
+	dtrace_difo_t *difo;
+	size_t start;
+	size_t end;
+	size_t idx;
+	/*
+	 * Keep a vector of basic blocks as children and parents. We add a
+	 * 'bool' flag to each of the entries because we want to keep track if
+	 * that particular child in this particular vector was visited, rather
+	 * than caring if the basic block itself was visited at some point.
+	 */
+	vec<pair<basic_block *, bool>> children;
+	vec<pair<basic_block *, bool>> parents;
+
+    public:
+	basic_block(dtrace_difo_t *);
+	dif_instr_t *difo_buf() { return (this->difo->dtdo_buf); }
+};
+
+extern void dt_compute_bb(dtrace_difo_t *);
+extern void dt_compute_cfg(dtrace_difo_t *);
+
+}
+
+#endif /* _DT_BASIC_BLOCK_H_ */

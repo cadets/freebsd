@@ -6,15 +6,14 @@
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/lib/libgen/common
 
 PACKAGE=	dtrace
-LIB=		dtrace
+LIB_CXX=	dtrace
 SRCS=		dt_aggregate.c \
 		dt_analysis.c \
 		dt_as.c \
-		dt_basic_block.c \
+		dt_basic_block.cc \
 		dt_benchmark.c \
 		dt_buf.c \
 		dt_cc.c \
-		dt_cfg.c \
 		dt_cg.c \
 		dt_consume.c \
 		dt_decl.c \
@@ -27,13 +26,12 @@ SRCS=		dt_aggregate.c \
 		dt_handle.c \
 		dt_hashmap.c \
 		dt_ident.c \
-		dt_ifg.c \
-		dt_ifgnode.c \
+		dt_dfg.cc \
 		dt_isadep.c \
 		dt_inttab.c \
 		dt_lex.l \
 		dt_link.c \
-		dt_linker_subr.c \
+		dt_linker_subr.cc \
 		dt_list.c \
 		dt_map.c \
 		dt_module.c \
@@ -49,7 +47,7 @@ SRCS=		dt_aggregate.c \
 		dt_printf.c \
 		dt_proc.c \
 		dt_program.c \
-		dt_prog_link.c \
+		dt_prog_link.cc \
 		dt_provider.c \
 		dt_regset.c \
 		dt_resolver.c \
@@ -57,16 +55,18 @@ SRCS=		dt_aggregate.c \
 		dt_strtab.c \
 		dt_subr.c \
 		dt_sugar.c \
-		dt_typefile.c \
-		dt_typing.c \
-		dt_typing_helpers.c \
-		dt_typing_reg.c \
-		dt_typing_stack.c \
-		dt_typing_subr.c \
-		dt_typing_var.c \
+		dt_typefile.cc \
+		dt_typing.cc \
+		dt_typing_helpers.cc \
+		dt_typing_reg.cc \
+		dt_typing_stack.cc \
+		dt_typing_subr.cc \
+		dt_typing_var.cc \
 		dt_work.c \
 		dt_xlator.c \
 		gmatch.c
+
+CXXSTD=	c++20
 
 DSRCS=		errno.d			\
 		io.d			\
@@ -100,6 +100,7 @@ CFLAGS+= -I${SRCTOP}/sys/contrib/openzfs/lib/libspl/include/os/freebsd
 CFLAGS+= -I${SRCTOP}/sys
 CFLAGS+= -include ${SRCTOP}/sys/contrib/openzfs/include/os/freebsd/spl/sys/ccompile.h
 CFLAGS+= -DHAVE_ISSETUGID
+CXXFLAGS+=	-fno-rtti -fno-exceptions
 
 CFLAGS+=	-I${.OBJDIR} -I${.CURDIR} \
 		-I${SRCTOP}/sys/cddl/dev/dtrace/${MACHINE_ARCH} \

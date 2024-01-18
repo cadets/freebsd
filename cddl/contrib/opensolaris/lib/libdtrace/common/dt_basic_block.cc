@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
- * Copyright (c) 2020, 2021 Domagoj Stolfa.
+ * Copyright (c) 2020, 2024 Domagoj Stolfa.
  * All rights reserved.
  *
  * This software was developed by SRI International and the University of
@@ -39,7 +39,7 @@
  * SUCH DAMAGE.
  */
 
-#include <dt_basic_block.h>
+#include <dt_basic_block.hh>
 
 #include <sys/types.h>
 #include <sys/dtrace.h>
@@ -48,7 +48,7 @@
 #include <dt_impl.h>
 #include <dt_program.h>
 #include <dt_list.h>
-#include <dt_linker_subr.h>
+#include <dt_linker_subr.hh>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,76 +56,39 @@
 #include <assert.h>
 #include <err.h>
 
-dt_basic_block_t *
-dt_alloc_bb(dtrace_difo_t *difo)
+namespace dtrace {
+
+size_t basic_block::index = 0;
+
+basic_block::basic_block(dtrace_difo_t *difo)
+    : difo(difo)
+    , idx(basic_block::index++)
+    , start(0)
+    , end(0)
 {
-	dt_basic_block_t *bb;
-	static size_t i = 0;
-
-	bb = malloc(sizeof(dt_basic_block_t));
-	if (bb == NULL)
-		return (NULL);
-
-	memset(bb, 0, sizeof(dt_basic_block_t));
-	bb->dtbb_difo = difo;
-	bb->dtbb_idx = i++;
-
-	return (bb);
-}
-
-dt_bb_entry_t *
-dt_alloc_bb_e(dtrace_difo_t *difo)
-{
-	dt_bb_entry_t *bb_e;
-
-	bb_e = malloc(sizeof(dt_bb_entry_t));
-	if (bb_e == NULL)
-		errx(EXIT_FAILURE, "failed to allocate the BB list entry");
-
-	memset(bb_e, 0, sizeof(dt_bb_entry_t));
-
-	bb_e->dtbe_bb = dt_alloc_bb(difo);
-	bb_e->dtbe_tovisit = 1;
-	if (bb_e->dtbe_bb == NULL)
-		errx(EXIT_FAILURE, "failed to allocate the basic block");
-
-	return (bb_e);
 }
 
 void
 dt_compute_bb(dtrace_difo_t *difo)
 {
-	dt_basic_block_t *bb;
-	dt_bb_entry_t *bb_e;
-	int *leaders;
+	basic_block *bb;
+	std::vector<bool> leaders(difo->dtdo_len);
 	uint16_t lbl;
 	dif_instr_t instr;
 	uint8_t opcode;
 	int i;
 
-	bb = NULL;
-	bb_e = NULL;
-	leaders = NULL;
-	i = 0;
-	lbl = 0;
-	instr = 0;
-	opcode = 0;
-
-	leaders = malloc(sizeof(int) * difo->dtdo_len);
-	if (leaders == NULL)
-		errx(EXIT_FAILURE, "failed to malloc leaders");
-
-	memset(leaders, 0, sizeof(int) * difo->dtdo_len);
+	bb = nullptr;
 
 	/*
 	 * First instruction is a leader.
 	 */
-	leaders[0] = 1;
+	leaders[0] = true;
 
 	/*
 	 * Compute the leaders.
 	 */
-	for (i = 0; i < difo->dtdo_len; i++) {
+	for (auto i = 0; i < difo->dtdo_len; i++) {
 		instr = difo->dtdo_buf[i];
 		opcode = DIF_INSTR_OP(instr);
 
@@ -149,8 +112,8 @@ dt_compute_bb(dtrace_difo_t *difo)
 			 * skipping it all together.
 			 */
 			if (opcode != DIF_OP_BA)
-				leaders[i + 1] = 1;
-			leaders[lbl] = 1;
+				leaders[i + 1] = true;
+			leaders[lbl] = true;
 		}
 	}
 
@@ -158,8 +121,8 @@ dt_compute_bb(dtrace_difo_t *difo)
 	 * For each leader we encounter, we compute the set of all instructions
 	 * that fit into the current basic block.
 	 */
-	for (i = 0; i < difo->dtdo_len; i++) {
-		if (leaders[i] == 1) {
+	for (auto i = 0; i < difo->dtdo_len; i++) {
+		if (leaders[i]) {
 			/*
 			 * We've encountered a leader, we don't actually need
 			 * to copy any instructions over, as we already have
@@ -172,17 +135,19 @@ dt_compute_bb(dtrace_difo_t *difo)
 			 * starting instruction.
 			 */
 			if (bb != NULL) {
-				bb->dtbb_end = i - 1;
+				bb->end = i - 1;
 			}
 
-			bb_e = dt_alloc_bb_e(difo);
+			basic_blocks.push_back(
+			    std::make_unique<basic_block>(difo));
+			auto bbp = basic_blocks.back().get();
+			if (bb == nullptr) [[unlikely]]
+				difo->dtdo_bb = (void *)bbp;
 
-			if (bb == NULL)
-				difo->dtdo_bb = bb_e->dtbe_bb;
-			bb = bb_e->dtbe_bb;
-
-			bb->dtbb_start = i;
-			dt_list_append(&bb_list, bb_e);
+			bb = bbp;
+			if (bb == nullptr)
+				errx(EXIT_FAILURE, "allocating new bb failed");
+			bb->start = i;
 		}
 	}
 
@@ -193,5 +158,54 @@ dt_compute_bb(dtrace_difo_t *difo)
 	 * of a target near the end, with no branches in between there and the
 	 * ret instruction.
 	 */
-	bb->dtbb_end = difo->dtdo_len - 1;
+	bb->end = difo->dtdo_len - 1;
+}
+
+void
+dt_compute_cfg(dtrace_difo_t *difo)
+{
+	int lbl;
+	uint8_t opcode;
+	dif_instr_t instr;
+
+	for (auto &bb1 : basic_blocks) {
+		assert(bb1 != NULL);
+		if (bb1->difo != difo)
+			continue;
+
+		instr = bb1->difo_buf()[bb1->end];
+		opcode = DIF_INSTR_OP(instr);
+
+		if (opcode >= DIF_OP_BA && opcode <= DIF_OP_BLEU)
+			lbl = DIF_INSTR_LABEL(instr);
+		else
+			lbl = -1;
+
+		for (auto &bb2 : basic_blocks) {
+			assert(bb2 != NULL);
+
+			if (bb1 == bb2)
+				continue;
+
+			if (bb2->difo != difo)
+				continue;
+
+			if (lbl != -1 && bb2->start == lbl) {
+				bb1->children.push_back(
+				    std::make_pair(bb2.get(), true));
+				bb2->parents.push_back(
+				    std::make_pair(bb1.get(), true));
+			}
+
+			if (opcode != DIF_OP_BA &&
+			    bb1->end + 1 == bb2->start) {
+				bb1->children.push_back(
+				    std::make_pair(bb2.get(), true));
+				bb2->parents.push_back(
+				    std::make_pair(bb1.get(), true));
+			}
+		}
+	}
+}
+
 }

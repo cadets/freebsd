@@ -1128,7 +1128,7 @@ dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 	if (opt == NULL)
 		return (dt_set_errno(dtp, EINVAL));
 
-	if (dt_hypertrace_enabled(dtp)) {
+	if (dtrace_hypertrace_enabled(dtp)) {
 		if (dtp->dt_active)
 			return (dt_set_errno(dtp, EDT_ACTIVE));
 

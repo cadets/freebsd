@@ -36,7 +36,7 @@
  * SUCH DAMAGE.
  */
 
-#include <dt_typing.h>
+#include <dt_typing.hh>
 
 #include <sys/types.h>
 #include <sys/dtrace.h>
@@ -45,11 +45,10 @@
 #include <dt_impl.h>
 #include <dt_program.h>
 #include <dt_list.h>
-#include <dt_linker_subr.h>
-#include <dt_basic_block.h>
-#include <dt_ifgnode.h>
-#include <dt_typefile.h>
-#include <dt_hashmap.h>
+#include <dt_linker_subr.hh>
+#include <dt_basic_block.hh>
+#include <dt_dfg.hh>
+#include <dt_typefile.hh>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,76 +57,73 @@
 #include <errno.h>
 #include <assert.h>
 
-#include <dt_typing_helpers.h>
+#include <dt_typing_helpers.hh>
+
+namespace dtrace {
 
 ctf_id_t
-dt_type_strip_ref(dt_typefile_t *tf, ctf_id_t *orig_id, size_t *n_stars)
+dt_type_strip_ref(typefile *tf, ctf_id_t &orig_id, size_t &n_stars)
 {
 	ctf_id_t kind;
 	ctf_id_t id;
 	size_t n_redirects;
 
-	assert(n_stars != NULL);
-	assert(orig_id != NULL);
-
-	kind = dt_typefile_typekind(tf, *orig_id);
-
-	*n_stars = 0;
+	kind = tf->get_kind(orig_id);
+	n_stars = 0;
 
 	if (kind != CTF_K_TYPEDEF && kind != CTF_K_POINTER &&
 	    kind != CTF_K_ARRAY)
 		return (kind);
 
-	id = *orig_id;
+	id = orig_id;
 	n_redirects = 0;
 
 again:
 	while (kind == CTF_K_TYPEDEF || kind == CTF_K_POINTER) {
-		id = dt_typefile_reference(tf, id);
+		id = tf->get_reference(id);
 		if (id == CTF_ERR) {
 			fprintf(stderr,
 			    "dt_typefile_reference() failed with: %s\n",
-			    dt_typefile_error(tf));
+			    tf->get_errmsg());
 			return (CTF_ERR);
 		}
 
 		if (kind == CTF_K_POINTER)
 			n_redirects++;
 
-		kind = dt_typefile_typekind(tf, id);
+		kind = tf->get_kind(id);
 	}
 
 	assert(kind != CTF_K_TYPEDEF && kind != CTF_K_POINTER);
 	if (kind == CTF_K_ARRAY) {
 		ctf_arinfo_t *ai;
 
-		ai = dt_typefile_array_info(tf, id);
-		if (ai == NULL)
+		ai = tf->get_array_info(id);
+		if (ai == nullptr)
 			return (CTF_ERR);
 
 		id = ai->ctr_contents;
 		free(ai);
 
 		n_redirects++;
-		kind = dt_typefile_typekind(tf, id); /* update our kind */
+		kind = tf->get_kind(id); /* update our kind */
 		goto again;
 	}
 
-	*n_stars = n_redirects;
-	*orig_id = id;
-
+	n_stars = n_redirects;
+	orig_id = id;
 	return (kind);
 }
 
 ctf_id_t
-dt_type_strip_typedef(dt_typefile_t *tf, ctf_id_t *orig_id)
+dt_type_strip_typedef(typefile *tf, ctf_id_t *orig_id)
 {
 	ctf_id_t kind;
 	ctf_id_t id;
 
-	assert(orig_id != NULL);
+	assert(orig_id != nullptr);
 
-	kind = dt_typefile_typekind(tf, *orig_id);
+	kind = tf->get_kind(*orig_id);
 
 	if (kind != CTF_K_TYPEDEF)
 		return (kind);
@@ -135,15 +131,15 @@ dt_type_strip_typedef(dt_typefile_t *tf, ctf_id_t *orig_id)
 	id = *orig_id;
 
 	while (kind == CTF_K_TYPEDEF) {
-		id = dt_typefile_reference(tf, id);
+		id = tf->get_reference(id);
 		if (id == CTF_ERR) {
 			fprintf(stderr,
 			    "dt_typefile_reference() failed with: %s\n",
-			    dt_typefile_error(tf));
+			    tf->get_errmsg());
 			return (CTF_ERR);
 		}
 
-		kind = dt_typefile_typekind(tf, id);
+		kind = tf->get_kind(id);
 	}
 
 	assert(kind != CTF_K_TYPEDEF);
@@ -153,20 +149,16 @@ dt_type_strip_typedef(dt_typefile_t *tf, ctf_id_t *orig_id)
 }
 
 static int
-_dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *_tf1, ctf_id_t _id1,
-    dt_typefile_t *_tf2, ctf_id_t _id2)
+_dt_ctf_type_compare(uset<std::string> &processed_typenames, typefile *_tf1,
+    ctf_id_t _id1, typefile *_tf2, ctf_id_t _id2)
 {
-	dt_typefile_t *tf1, *tf2;
-	ctf_id_t id1, id2;
+	typefile *tf1, *tf2;
 	size_t n_stars1, n_stars2;
-	ctf_id_t kind1, kind2, tmp;
-	void *memb1, *memb2;
-	char type1_name[4096], type2_name[4096];
-	char memb1_name[4096], memb2_name[4096];
-	void *s1, *s2;
+	ctf_id_t id1, id2, kind1, kind2, tmp, memb1, memb2;
+	std::string type1_name, type2_name, memb1_name, memb2_name;
 
-	assert(_tf1 != NULL);
-	assert(_tf2 != NULL);
+	assert(_tf1 != nullptr);
+	assert(_tf2 != nullptr);
 
 	/*
 	 * If we're comparing the same type, it's just equal.
@@ -174,8 +166,8 @@ _dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *_tf1, ctf_id_t _id1,
 	if (_tf1 == _tf2 && _id1 == _id2)
 		return (0);
 
-	kind1 = dt_type_strip_ref(tf1, &id1, &n_stars1);
-	kind2 = dt_type_strip_ref(tf2, &id2, &n_stars2);
+	kind1 = dt_type_strip_ref(_tf1, id1, n_stars1);
+	kind2 = dt_type_strip_ref(_tf2, id2, n_stars2);
 
 	assert(kind1 != CTF_K_UNKNOWN);
 	assert(kind2 != CTF_K_UNKNOWN);
@@ -198,29 +190,31 @@ _dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *_tf1, ctf_id_t _id1,
 	kind1 = tmp == CTF_K_STRUCT ? tmp : kind2;
 	kind2 = tmp == CTF_K_STRUCT ? kind2 : tmp;
 
-	if (dt_typefile_typename(tf1, id1, type1_name, sizeof(type1_name)) !=
-	    (char *)type1_name) {
+	auto opt = tf1->get_typename(id1);
+	if (!opt.has_value()) {
 		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
-		    dt_typefile_error(tf1));
+		    tf1->get_errmsg());
 		return (-1);
 	}
 
-	if (dt_typefile_typename(tf2, id2, type2_name, sizeof(type2_name)) !=
-	    (char *)type2_name) {
+	type1_name = std::move(opt.value());
+	opt = tf2->get_typename(id2);
+	if (!opt.has_value()) {
 		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
-		    dt_typefile_error(tf2));
+		    tf2->get_errmsg());
 		return (-1);
 	}
 
+	type2_name = std::move(opt.value());
 
 	/*
 	 * Give integers some leeway.
 	 */
 	if (kind1 == CTF_K_INTEGER && kind2 == CTF_K_INTEGER) {
-		if (dt_typefile_compat(tf1, id1, tf2, id2) == 0) {
+		if (tf1->type_compat_with(id1, tf2, id2) == 0) {
 			fprintf(stderr,
 			    "%s(): %s and %s are incompatible integers\n",
-			    __func__, type1_name, type2_name);
+			    __func__, type1_name.c_str(), type2_name.c_str());
 			return (-1);
 		}
 
@@ -230,19 +224,19 @@ _dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *_tf1, ctf_id_t _id1,
 	/*
 	 * Names must match
 	 */
-	if (strcmp(type1_name, type2_name) != 0) {
+	if (type1_name != type2_name) {
 		fprintf(stderr, "%s(): comparison not possible: %s != %s\n",
-		    __func__, type1_name, type2_name);
+		    __func__, type1_name.c_str(), type2_name.c_str());
 		return (-1);
 	}
 
 	if (kind1 == CTF_K_UNION || kind1 == CTF_K_ENUM ||
 	    kind1 == CTF_K_FORWARD) {
-		if (dt_typefile_compat(tf1, id1, tf2, id2) == 0) {
+		if (tf1->type_compat_with(id1, tf2, id2) == 0) {
 			fprintf(stderr,
 			    "dt_typefile_compat(): %s is not "
 			    "compatible with %s\n",
-			    type1_name, type2_name);
+			    type1_name.c_str(), type2_name.c_str());
 			return (-1);
 		}
 
@@ -250,85 +244,77 @@ _dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *_tf1, ctf_id_t _id1,
 	}
 
 	if (kind1 == CTF_K_STRUCT) {
-		s1 = dt_typefile_buildup_struct(tf1, id1);
-		if (s1 == NULL) {
+		auto *s1 = tf1->build_struct(id1);
+		if (s1 == nullptr) {
 			fprintf(stderr,
 			    "dt_typefile_buildup_struct(%s) "
 			    "failed for %s: %s\n",
-			    dt_typefile_stringof(tf1), type1_name,
-			    dt_typefile_error(tf1));
+			    tf1->name().c_str(), type1_name.c_str(),
+			    tf1->get_errmsg());
 			return (-1);
 		}
 
-		s2 = dt_typefile_buildup_struct(tf2, id2);
-		if (s2 == NULL) {
+		auto *s2 = tf2->build_struct(id2);
+		if (s2 == nullptr) {
 			fprintf(stderr,
 			    "dt_typefile_buildup_struct(%s) "
 			    "failed for %s: %s\n",
-			    dt_typefile_stringof(tf2), type2_name,
-			    dt_typefile_error(tf2));
+			    tf2->name().c_str(), type2_name.c_str(),
+			    tf2->get_errmsg());
 			return (-1);
 		}
 
-		memb1 = dt_typefile_struct_next(s1);
-		memb2 = dt_typefile_struct_next(s2);
-
+		vec<ctf_id_t>::iterator it1, it2;
 		/*
 		 * Go over each member and ensure that if both exist, they are
 		 * pointwise equal. We don't accept *any* variety between them.
 		 */
-		while (memb1 && memb2) {
-			if (dt_typefile_typename(tf1,
-			    dt_typefile_memb_ctfid(memb1), memb1_name,
-			    sizeof(memb1_name)) != (char *)memb1_name) {
+		for (it1 = s1->begin(), it2 = s2->begin();
+		     it1 != s1->end() && it2 != s2->end(); ++it1, ++it2) {
+			memb1 = *it1;
+			memb2 = *it2;
+
+			opt = tf1->get_typename(memb1);
+			if (!opt.has_value()) {
 				fprintf(stderr,
 				    "dt_typefile_typename() failed: %s\n",
-				    dt_typefile_error(tf1));
+				    tf1->get_errmsg());
 				return (-1);
 			}
 
-			if (dt_typefile_typename(tf2,
-			    dt_typefile_memb_ctfid(memb2), memb2_name,
-			    sizeof(memb2_name)) != (char *)memb2_name) {
+			memb1_name = std::move(opt.value());
+			opt = tf2->get_typename(memb2);
+			if (!opt.has_value()) {
 				fprintf(stderr,
 				    "dt_typefile_typename() failed: %s\n",
-				    dt_typefile_error(tf2));
+				    tf2->get_errmsg());
 				return (-1);
 			}
 
-			if (dt_hashmap_lookup(hm, memb1_name,
-			    strlen(memb1_name) + 1) != NULL)
-				goto next;
+			memb2_name = std::move(opt.value());
 
-			if (dt_hashmap_insert(hm, memb1_name,
-			    strlen(memb1_name) + 1, (void *)0x1, DTH_MANAGED)) {
-				fprintf(stderr,
-				    "%s(): failed to insert %s into hashmap\n",
-				    __func__, memb1_name);
-			}
+			if (processed_typenames.contains(memb1_name))
+				continue;
 
-			if (_dt_ctf_type_compare(hm, tf1,
-			    dt_typefile_memb_ctfid(memb1), tf2,
-			    dt_typefile_memb_ctfid(memb2))) {
+			if (_dt_ctf_type_compare(processed_typenames, tf1,
+			    memb1, tf2, memb2)) {
 				fprintf(stderr,
 				    "comparison between %s and %s failed\n",
-				    memb1_name, memb2_name);
+				    memb1_name.c_str(), memb2_name.c_str());
 				return (-1);
 			}
 
-next:
-			memb1 = dt_typefile_struct_next(s1);
-			memb2 = dt_typefile_struct_next(s2);
+			processed_typenames.insert(memb1_name);
 		}
 
-		assert(memb1 == NULL || memb2 == NULL);
+		assert(it1 == s1->end() || it2 == s2->end());
 
 		if (memb1 != memb2) {
 			fprintf(stderr,
 			    "structures %s (%s) and %s (%s) "
 			    "don't match\n",
-			    type1_name, dt_typefile_stringof(tf1), type2_name,
-			    dt_typefile_stringof(tf2));
+			    type1_name.c_str(), tf1->name().c_str(),
+			    type2_name.c_str(), tf2->name().c_str());
 			return (-1);
 		}
 	}
@@ -337,35 +323,23 @@ next:
 }
 
 int
-dt_ctf_type_compare(dt_typefile_t *tf1, ctf_id_t id1,
-    dt_typefile_t *tf2, ctf_id_t id2)
+dt_ctf_type_compare(typefile *tf1, ctf_id_t id1,
+    typefile *tf2, ctf_id_t id2)
 {
-	dt_hashmap_t *hm;
-	int rval;
-
-	rval = 0;
-
-	hm = dt_hashmap_create(1 << 12);
-	if (hm == NULL)
-		return (-1);
-
-	rval = _dt_ctf_type_compare(hm, tf1, id1, tf2, id2);
-	dt_hashmap_free(hm, 1);
-
-	return (rval);
+	uset<std::string> processed_typenames;
+	return (_dt_ctf_type_compare(processed_typenames, tf1, id1, tf2, id2));
 }
 
 static int
-dt_is_void(char *t_name)
+dt_is_void(std::string &t)
 {
 
-	return (strcmp(t_name, "void *") == 0 ||
-	    strcmp(t_name, "const void *") == 0);
+	return (t == "void *" || t == "const void *");
 }
 
 int
 dt_typecheck_string(dtrace_hdl_t *dtp, int t1, int t2, ctf_id_t c1, ctf_id_t c2,
-    dt_typefile_t *tf1, dt_typefile_t *tf2)
+    typefile *tf1, typefile *tf2)
 {
 	if (t1 == DIF_TYPE_STRING && t2 == DIF_TYPE_CTF) {
 		dt_module_t *mod = tf2->modhdl;
@@ -378,54 +352,51 @@ dt_typecheck_string(dtrace_hdl_t *dtp, int t1, int t2, ctf_id_t c1, ctf_id_t c2,
 }
 
 int
-dt_typecheck_stringiv(dtrace_hdl_t *dtp, dt_ifg_node_t *n, dtrace_difv_t *dv)
+dt_typecheck_stringiv(dtrace_hdl_t *dtp, dfg_node *n, dtrace_difv_t *dv)
 {
 
-	return (dt_typecheck_string(dtp, n->din_type, dv->dtdv_type.dtdt_kind,
-	    n->din_ctfid, dv->dtdv_ctfid, n->din_tf, dv->dtdv_tf));
+	return (dt_typecheck_string(dtp, n->d_type, dv->dtdv_type.dtdt_kind,
+	    n->ctfid, dv->dtdv_ctfid, n->tf, v2tf(dv->dtdv_tf)));
 }
 
 int
-dt_typecheck_stringii(dtrace_hdl_t *dtp, dt_ifg_node_t *n1, dt_ifg_node_t *n2)
+dt_typecheck_stringii(dtrace_hdl_t *dtp, dfg_node *n1, dfg_node *n2)
 {
 
-	return (dt_typecheck_string(dtp, n1->din_type, n2->din_type,
-	    n1->din_ctfid, n2->din_ctfid, n1->din_tf, n2->din_tf));
+	return (dt_typecheck_string(dtp, n1->d_type, n2->d_type,
+	    n1->ctfid, n2->ctfid, n1->tf, n2->tf));
 }
 
 int
-dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
+dt_type_subtype(typefile *tf1, ctf_id_t id1, typefile *tf2,
     ctf_id_t id2, int *which)
 {
 	ctf_id_t kind1, kind2;
-	void *memb1, *memb2;
 	size_t n_stars1, n_stars2;
 	uint32_t size1, size2;
 	int isvoid1, isvoid2;
-	char memb1_name[4096], memb2_name[4096];
-	char type1_name[4096], type2_name[4096];
-	char r1_type_name[4096], r2_type_name[4096];
-	void *s1, *s2;
+	char buf[4096];
+	std::string r1_type_name, r2_type_name, type1_name, type2_name,
+	    memb1_name, memb2_name;
+	ctf_id_t s1, s2, memb1, memb2;
 
 	*which = SUBTYPE_NONE;
 
-	assert(tf1 != NULL);
-	assert(tf2 != NULL);
+	assert(tf1 != nullptr);
+	assert(tf2 != nullptr);
 
-	if (dt_typefile_typename(tf1, id1, type1_name, sizeof(type1_name)) !=
-	    (char *)type1_name) {
-		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
-		    dt_typefile_error(tf1));
+	auto opt = tf1->get_typename(id1);
+	if (!opt.has_value()) {
 		return (-1);
 	}
 
-	if (dt_typefile_typename(tf2, id2, type2_name, sizeof(type2_name)) !=
-	    (char *)type2_name) {
-		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
-		    dt_typefile_error(tf2));
+	type1_name = std::move(opt.value());
+	opt = tf2->get_typename(id2);
+	if (!opt.has_value()) {
 		return (-1);
 	}
 
+	type2_name = std::move(opt.value());
 	isvoid1 = dt_is_void(type1_name);
 	isvoid2 = dt_is_void(type2_name);
 
@@ -440,8 +411,8 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		return (0);
 	}
 
-	kind1 = dt_type_strip_ref(tf1, &id1, &n_stars1);
-	kind2 = dt_type_strip_ref(tf2, &id2, &n_stars2);
+	kind1 = dt_type_strip_ref(tf1, id1, n_stars1);
+	kind2 = dt_type_strip_ref(tf2, id2, n_stars2);
 
 	/*
 	 * In case number of stars in a pointer didn't match.
@@ -450,7 +421,7 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		fprintf(stderr,
 		    "mismatched pointer %s != %s "
 		    "(%zu stars != %zu stars)\n",
-		    type1_name, type2_name, n_stars1, n_stars2);
+		    type1_name.c_str(), type2_name.c_str(), n_stars1, n_stars2);
 		return (-1);
 	}
 
@@ -476,24 +447,24 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 	if (kind1 == CTF_K_INTEGER && kind2 == CTF_K_INTEGER) {
 		ctf_encoding_t enc1, enc2;
 
-		if (dt_typefile_encoding(tf1, id1, &enc1) != 0) {
+		if (tf1->get_encoding(id1, &enc1) != 0) {
 			fprintf(stderr,
 			    "dt_type_subtype(): failed getting encoding "
 			    "with %s: %s\n",
-			    dt_typefile_stringof(tf1), dt_typefile_error(tf1));
+			    tf1->name().c_str(), tf1->get_errmsg());
 			return (-1);
 		}
 
-		if (dt_typefile_encoding(tf2, id2, &enc2) != 0) {
+		if (tf2->get_encoding(id2, &enc2) != 0) {
 			fprintf(stderr,
 			    "dt_type_subtype(): failed getting encoding "
 			    "with %s: %s\n",
-			    dt_typefile_stringof(tf2), dt_typefile_error(tf2));
+			    tf2->name().c_str(), tf2->get_errmsg());
 			return (-1);
 		}
 
-		size1 = dt_typefile_typesize(tf1, id1);
-		size2 = dt_typefile_typesize(tf2, id2);
+		size1 = tf1->get_size(id1);
+		size2 = tf2->get_size(id2);
 
 #if 0
 		if (enc1.cte_format != enc2.cte_format && size1 == size2) {
@@ -523,19 +494,21 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		return (0);
 	}
 
-	if (dt_typefile_typename(tf1, id1, r1_type_name,
-	    sizeof(r1_type_name)) != (char *)r1_type_name) {
-		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
-		    dt_typefile_error(tf1));
+	if (tf1->get_typename(id1, buf, sizeof(buf)) != (char *)buf) {
+		fprintf(stderr, "typefile::get_typename() failed: %s\n",
+		    tf1->get_errmsg());
 		return (-1);
 	}
 
-	if (dt_typefile_typename(tf2, id2, r2_type_name,
-	    sizeof(r2_type_name)) != (char *)r2_type_name) {
-		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
-		    dt_typefile_error(tf2));
+	r1_type_name = std::string(buf);
+
+	if (tf2->get_typename(id2, buf, sizeof(buf)) != (char *)buf) {
+		fprintf(stderr, "typefile::get_typename() failed: %s\n",
+		    tf2->get_errmsg());
 		return (-1);
 	}
+
+	r2_type_name = std::string(buf);
 
 	/*
 	 * Since this is C, we do a comparison by name first. If the names don't
@@ -546,14 +519,14 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 	 * relaxed, but for now we require that the name matches. This is easily
 	 * removed later.
 	 */
-	if (strcmp(r1_type_name, r2_type_name) != 0) {
+	if (r1_type_name != r2_type_name) {
 		fprintf(stderr, "%s(): subtyping not possible: %s != %s\n",
-		    __func__, type1_name, type2_name);
+		    __func__, type1_name.c_str(), type2_name.c_str());
 		return (-1);
 	}
 
-	size1 = dt_typefile_typesize(tf1, id1);
-	size2 = dt_typefile_typesize(tf2, id2);
+	size1 = tf1->get_size(id1);
+	size2 = tf2->get_size(id2);
 
 	/*
 	 * We should never have gotten to this point if we were going to get
@@ -575,70 +548,58 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		 * this is sufficient.
 		 */
 
-		s1 = dt_typefile_buildup_struct(tf1, id1);
-		if (s1 == NULL) {
+		auto *s1 = tf1->build_struct(id1);
+		if (s1 == nullptr) {
 			fprintf(stderr,
-			    "dt_typefile_buildup_struct(%s) "
-			    "failed for %s: %s\n",
-			    dt_typefile_stringof(tf1), type1_name,
-			    dt_typefile_error(tf1));
+			    "build up struct %s failed for %s: %s\n",
+			    type1_name.c_str(), tf1->name().c_str(),
+			    tf1->get_errmsg());
 			return (-1);
 		}
 
-		s2 = dt_typefile_buildup_struct(tf2, id2);
-		if (s2 == NULL) {
+		auto *s2 = tf2->build_struct(id2);
+		if (s2 == nullptr) {
 			fprintf(stderr,
-			    "dt_typefile_buildup_struct(%s) "
-			    "failed for %s: %s\n",
-			    dt_typefile_stringof(tf2), type2_name,
-			    dt_typefile_error(tf2));
+			    "build up struct %s failed for %s: %s\n",
+			    type2_name.c_str(), tf2->name().c_str(),
+			    tf2->get_errmsg());
 			return (-1);
 		}
 
-		memb1 = dt_typefile_struct_next(s1);
-		memb2 = dt_typefile_struct_next(s2);
-
+		vec<ctf_id_t>::iterator it1, it2;
 		/*
 		 * Go over each member and ensure that if both exist, they are
 		 * pointwise equal. We don't accept *any* variety between them.
 		 */
-		while (memb1 && memb2) {
-			if (dt_typefile_typename(tf1,
-			    dt_typefile_memb_ctfid(memb1), memb1_name,
-			    sizeof(memb1_name)) != (char *)memb1_name) {
-				fprintf(stderr,
-				    "dt_typefile_typename() failed: %s\n",
-				    dt_typefile_error(tf1));
+		for (it1 = s1->begin(), it2 = s2->begin();
+		     it1 != s1->end() && it2 != s2->end(); ++it1, ++it2) {
+			memb1 = *it1;
+			memb2 = *it2;
+
+			auto opt = tf1->get_typename(memb1);
+			if (!opt.has_value()) {
 				return (-1);
 			}
 
-			if (dt_typefile_typename(tf2,
-			    dt_typefile_memb_ctfid(memb2), memb2_name,
-			    sizeof(memb2_name)) != (char *)memb2_name) {
-				fprintf(stderr,
-				    "dt_typefile_typename() failed: %s\n",
-				    dt_typefile_error(tf2));
+			memb1_name = std::move(opt.value());
+			opt = tf2->get_typename(memb2);
+			if (!opt.has_value()) {
 				return (-1);
 			}
 
-			if (dt_ctf_type_compare(tf1,
-			    dt_typefile_memb_ctfid(memb1), tf2,
-			    dt_typefile_memb_ctfid(memb2))) {
+			memb2_name = std::move(opt.value());
+			if (dt_ctf_type_compare(tf1, memb1, tf2, memb2)) {
 				fprintf(stderr,
 				    "comparison between %s and %s failed\n",
-				    memb1_name, memb2_name);
+				    memb1_name.c_str(), memb2_name.c_str());
 				return (-1);
 			}
-
-			memb1 = dt_typefile_struct_next(s1);
-			memb2 = dt_typefile_struct_next(s2);
 		}
 
-		assert(memb1 == NULL || memb2 == NULL);
-
-		if (memb1 == NULL && memb2 != NULL)
+		assert(it1 == s1->end() || it2 == s2->end());
+		if (it1 == s1->end() && it2 != s2->end())
 			*which = SUBTYPE_FST;
-		else if (memb1 != NULL && memb2 == NULL)
+		else if (it1 != s1->end() && it2 == s2->end())
 			*which = SUBTYPE_SND;
 		else
 			*which = SUBTYPE_EQUAL;
@@ -657,28 +618,9 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		return (0);
 	}
 
-	fprintf(stderr, "unknown typing error (%s != %s)\n", type1_name,
-	    type2_name);
+	fprintf(stderr, "unknown typing error (%s != %s)\n", type1_name.c_str(),
+	    type2_name.c_str());
 	return (-1);
-}
-
-const char *
-dt_class_name(int class)
-{
-	switch (class) {
-	case DTC_BOTTOM:
-		return ("bottom");
-	case DTC_INT:
-		return ("integer");
-	case DTC_STRUCT:
-		return ("struct");
-	case DTC_STRING:
-		return ("string");
-	case DTC_FORWARD:
-		return ("forward");
-	}
-
-	return ("unknown");
 }
 
 /*
@@ -686,29 +628,29 @@ dt_class_name(int class)
  * the internal DTrace class it belongs to (DTC_INT, DTC_BOTTOM, DTC_STRUCT).
  */
 int
-dt_get_class(dt_typefile_t *tf, ctf_id_t id, int follow)
+dt_get_class(typefile *tf, ctf_id_t id, int follow)
 {
 	ctf_id_t ot, k, new_id;
-	int class;
+	int typeclass;
 	char buf[DT_TYPE_NAMELEN];
-	dt_typefile_t *typef;
+	typefile *typef;
 
 	ot = -1;
 	k = 0;
 
 	/* ignore any errors here. */
-	dt_typefile_typename(tf, id, buf, sizeof(buf));
+	tf->get_typename(id, buf, sizeof(buf));
 
 	do {
 
-		if ((k = dt_typefile_typekind(tf, id)) == CTF_ERR)
+		if ((k = tf->get_kind(id)) == CTF_ERR)
 			return (DTC_BOTTOM);
 
 		if (id == ot)
 			break;
 
 		ot = id;
-	} while (((id = dt_typefile_reference(tf, id)) != CTF_ERR));
+	} while (((id = tf->get_reference(id)) != CTF_ERR));
 
 	if (k == CTF_K_INTEGER)
 		return (DTC_INT);
@@ -726,8 +668,8 @@ dt_get_class(dt_typefile_t *tf, ctf_id_t id, int follow)
 		ctf_arinfo_t *ai;
 		ctf_id_t src_type;
 
-		ai = dt_typefile_array_info(tf, ot);
-		if (ai == NULL)
+		ai = tf->get_array_info(ot);
+		if (ai == nullptr)
 			return (DTC_BOTTOM);
 
 		src_type = ai->ctr_contents;
@@ -741,37 +683,42 @@ dt_get_class(dt_typefile_t *tf, ctf_id_t id, int follow)
 		if (!follow)
 			return (DTC_FORWARD);
 
-		parent = ctf_parent_file(dt_typefile_getctfp(tf));
-		if (parent == NULL)
+		parent = ctf_parent_file(tf->get_ctfp());
+		if (parent == nullptr)
 			return (DTC_FORWARD);
 
 		if (id == CTF_ERR)
 			id = ot;
+
+		typef = nullptr;
+
 		/* follow the list of typefiles until we find the right one */
-		for (typef = dt_list_next(&typefiles); typef;
-		     typef = dt_list_next(typef)) {
-			current = dt_typefile_getctfp(typef);
-			if (current == parent)
+		for (auto &t : typefiles) {
+			current = t->get_ctfp();
+			if (current == parent) {
+				typef = t.get();
 				break;
-			if (class == DTC_INT || class == DTC_STRUCT)
-				return (class);
+			}
+
+			if (typeclass == DTC_INT || typeclass == DTC_STRUCT)
+				return (typeclass);
 		}
 
-		if (typef == NULL)
+		if (typef == nullptr)
 			return (DTC_FORWARD);
 
-		new_id = dt_typefile_ctfid(typef, buf);
+		new_id = typef->get_ctfid(buf);
 		if (new_id == CTF_ERR)
 			return (DTC_FORWARD);
-		class = dt_get_class(typef, new_id, 0);
-		return (class);
+		typeclass = dt_get_class(typef, new_id, 0);
+		return (typeclass);
 	}
 
 	return (DTC_BOTTOM);
 }
 
 ctf_membinfo_t *
-dt_mip_from_sym(dt_ifg_node_t *n)
+dt_mip_from_sym(dfg_node *n)
 {
 	ctf_membinfo_t *mip;
 	int c;
@@ -780,64 +727,57 @@ dt_mip_from_sym(dt_ifg_node_t *n)
 	ctf_id_t kind;
 	dtrace_difo_t *difo;
 
-	if (n == NULL)
-		return (NULL);
+	if (n == nullptr)
+		return (nullptr);
 
 	/*
 	 * If there is no symbol here, we can't do anything.
 	 */
-	if (n->din_sym == NULL)
-		return (NULL);
+	if (n->sym == nullptr)
+		return (nullptr);
 
-	if (n->din_difo == NULL)
-		return (NULL);
+	if (n->difo == nullptr)
+		return (nullptr);
 
-	difo = n->din_difo;
+	difo = n->difo;
 
 	/*
 	 * sym in range(symtab)
 	 */
-	if ((uintptr_t)n->din_sym >=
+	if ((uintptr_t)n->sym >=
 	    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
-		return (NULL);
+		return (nullptr);
 
-	/*
-	 * Get the original type name of n->din_ctfid for
-	 * error reporting.
-	 */
-	if (dt_typefile_typename(n->din_tf, n->din_ctfid, buf,
-	    sizeof(buf)) != ((char *)buf))
-		return (NULL);
-
-	c = dt_get_class(n->din_tf, n->din_ctfid, 1);
-	if (c != DTC_STRUCT && c != DTC_FORWARD)
-		return (NULL);
+	c = dt_get_class(n->tf, n->ctfid, 1);
+	if (c != DTC_STRUCT && c != DTC_FORWARD) {
+		return (nullptr);
+	}
 
 	/*
 	 * Figure out t2 = type_at(t1, symname)
 	 */
-	mip = malloc(sizeof(ctf_membinfo_t));
-	if (mip == NULL)
-		return (NULL);
+	mip = (ctf_membinfo_t *)malloc(sizeof(ctf_membinfo_t));
+	if (mip == nullptr)
+		return (nullptr);
 
 	memset(mip, 0, sizeof(ctf_membinfo_t));
 
-	kind = dt_typefile_typekind(n->din_tf, n->din_ctfid);
+	kind = n->tf->get_kind(n->ctfid);
 	if (kind == CTF_K_POINTER || kind == CTF_K_VOLATILE ||
 	    kind == CTF_K_TYPEDEF || kind == CTF_K_RESTRICT ||
 	    kind == CTF_K_CONST)
 		/*
 		 * Get the non-pointer type. This should NEVER fail.
 		 */
-		type = dt_typefile_reference(n->din_tf, n->din_ctfid);
+		type = n->tf->get_reference(n->ctfid);
 	else
-		type = n->din_ctfid;
+		type = n->ctfid;
 
 	assert(type != CTF_ERR);
 
-	if (dt_typefile_membinfo(n->din_tf, type, n->din_sym, mip) == 0) {
+	if (n->tf->get_membinfo(type, n->sym, mip) == 0) {
 		free(mip);
-		return (NULL);
+		return (nullptr);
 	}
 
 	return (mip);
@@ -854,63 +794,71 @@ dt_mip_from_sym(dt_ifg_node_t *n)
  * a string or a structure, rather than as a number).
  */
 int
-dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
+dt_type_compare(dfg_node *dn1, dfg_node *dn2)
 {
-	char buf1[4096] = {0};
-	char buf2[4096] = {0};
+	char buf[DT_TYPE_NAMELEN] = {0};
+	std::string t1, t2;
 	int class1, class2;
 
 	class1 = 0;
 	class2 = 0;
 
-	if (dn1->din_type == DIF_TYPE_BOTTOM &&
-	    dn2->din_type == DIF_TYPE_BOTTOM)
+	if (dn1->d_type == DIF_TYPE_BOTTOM &&
+	    dn2->d_type == DIF_TYPE_BOTTOM)
 		dt_set_progerr(g_dtp, g_pgp, "both types are bottom");
 
-	assert(dn1->din_type != DIF_TYPE_BOTTOM ||
-	    dn2->din_type != DIF_TYPE_BOTTOM);
+	assert(dn1->d_type != DIF_TYPE_BOTTOM ||
+	    dn2->d_type != DIF_TYPE_BOTTOM);
 
-	if (dn1->din_type == DIF_TYPE_BOTTOM)
+	if (dn1->d_type == DIF_TYPE_BOTTOM)
 		return (2);
 
-	if (dn2->din_type == DIF_TYPE_BOTTOM)
+	if (dn2->d_type == DIF_TYPE_BOTTOM)
 		return (1);
 
-	assert(dn1->din_type != DIF_TYPE_NONE);
-	assert(dn2->din_type != DIF_TYPE_NONE);
+	assert(dn1->d_type != DIF_TYPE_NONE);
+	assert(dn2->d_type != DIF_TYPE_NONE);
 
-	if (dn1->din_type == DIF_TYPE_CTF) {
-		if (dt_typefile_typename(dn1->din_tf, dn1->din_ctfid, buf1,
-		    sizeof(buf1)) != ((char *)buf1))
+	if (dn1->d_type == DIF_TYPE_CTF) {
+		auto opt = dn1->tf->get_typename(dn1->ctfid);
+		if (!opt.has_value()) {
 			dt_set_progerr(g_dtp, g_pgp,
 			    "dt_type_compare(): failed at getting type "
 			    "name %ld: %s",
-			    dn1->din_ctfid, dt_typefile_error(dn1->din_tf));
+			    dn1->ctfid, dn1->tf->get_errmsg());
+		}
+
+		t1 = std::move(opt.value());
 	}
 
-	if (dn2->din_type == DIF_TYPE_CTF) {
-		if (dt_typefile_typename(dn2->din_tf, dn2->din_ctfid, buf2,
-		    sizeof(buf2)) != ((char *)buf2))
+	if (dn2->d_type == DIF_TYPE_CTF) {
+		auto opt = dn2->tf->get_typename(dn2->ctfid);
+		if (!opt.has_value()) {
 			dt_set_progerr(g_dtp, g_pgp,
 			    "dt_type_compare(): failed at getting type "
 			    "name %ld: %s",
-			    dn2->din_ctfid, dt_typefile_error(dn2->din_tf));
+			    dn2->ctfid, dn2->tf->get_errmsg());
+		}
+
+		t2 = std::move(opt.value());
 	}
 
-	class1 = dn1->din_type == DIF_TYPE_CTF ?
-	    dt_get_class(dn1->din_tf, dn1->din_ctfid, 1) :
+	class1 = dn1->d_type == DIF_TYPE_CTF ?
+	    dt_get_class(dn1->tf, dn1->ctfid, 1) :
 	    DTC_STRING;
-	class2 = dn2->din_type == DIF_TYPE_CTF ?
-	    dt_get_class(dn2->din_tf, dn2->din_ctfid, 1) :
+	class2 = dn2->d_type == DIF_TYPE_CTF ?
+	    dt_get_class(dn2->tf, dn2->ctfid, 1) :
 	    DTC_STRING;
 
 	if (class1 == DTC_BOTTOM)
 		dt_set_progerr(g_dtp, g_pgp,
-		    "dt_type_compare(): class1 is bottom because of %s", buf1);
+		    "dt_type_compare(): class1 is bottom because of %s",
+		    t1.c_str());
 
 	if (class2 == DTC_BOTTOM)
 		dt_set_progerr(g_dtp, g_pgp,
-		    "dt_type_compare(): class2 is bottom because of %s", buf2);
+		    "dt_type_compare(): class2 is bottom because of %s",
+		    t2.c_str());
 
 	if (class1 == DTC_STRING && class2 == DTC_INT)
 		return (1);
@@ -944,17 +892,17 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	return (-1);
 }
 
-dt_typefile_t *
-dt_get_typename_tfcheck(dt_ifg_node_t *n, dt_typefile_t **tfs, size_t ntfs,
+typefile *
+dt_get_typename_tfcheck(dfg_node *n, typefile **tfs, size_t ntfs,
     char *buf, size_t bufsize, const char *loc)
 {
-	dt_typefile_t *tf;
+	typefile *tf;
 	size_t i;
 
 	for (i = 0; i < ntfs; i++) {
 		tf = tfs[i];
 
-		if (n->din_tf == tf)
+		if (n->tf == tf)
 			break;
 	}
 
@@ -963,42 +911,35 @@ dt_get_typename_tfcheck(dt_ifg_node_t *n, dt_typefile_t **tfs, size_t ntfs,
 	if (i == ntfs)
 		dt_set_progerr(g_dtp, g_pgp,
 		    "%s: node %zu' could not find typefile '%s'", loc,
-		    n->din_uidx, dt_typefile_stringof(n->din_tf));
+		    n->uidx, n->tf->name().c_str());
 
-	if (dt_typefile_typename(n->din_tf, n->din_ctfid, buf, bufsize) != buf)
+	if (n->tf->get_typename(n->ctfid, buf, bufsize) != buf)
 		dt_set_progerr(g_dtp, g_pgp,
 		    "%s: (%zu) failed getting type name %ld: %s", loc,
-		    n->din_uidx, n->din_ctfid, dt_typefile_error(n->din_tf));
+		    n->uidx, n->ctfid, n->tf->get_errmsg());
 
 	return (tf);
 }
 
-void
-dt_get_typename(dt_ifg_node_t *n, char *buf, size_t bufsize, const char *loc)
-{
-
-	(void) dt_get_typename_tfcheck(n, &n->din_tf, 1, buf, bufsize, loc);
-}
-
-typedef struct {
+struct membinfo_helper {
 	dtrace_hdl_t *dtp;
 	ctf_file_t *ctfp;
 	ctf_membinfo_t *mip;
 	uint64_t offs;
 	ctf_id_t ctfid;
-} dt_membinfo_helper_t;
+};
 
 static int
 dt_find_memboffs(const char *name, ctf_id_t ctfid, ulong_t off, void *arg)
 {
-	dt_membinfo_helper_t *mh = arg;
+	membinfo_helper *mh = (membinfo_helper *)arg;
 
 	/* invalid argument, return an error */
-	if (arg == NULL)
+	if (arg == nullptr)
 		return (-1);
 
 	/* we already found our member, simply return. */
-	if (mh->mip != NULL)
+	if (mh->mip != nullptr)
 		return (0);
 
 	/* if not matching, simply continue searching. */
@@ -1009,8 +950,8 @@ dt_find_memboffs(const char *name, ctf_id_t ctfid, ulong_t off, void *arg)
 	 * We now know we have a matching offset. Get the mip and populate our
 	 * struct.
 	 */
-	mh->mip = malloc(sizeof(ctf_membinfo_t));
-	if (mh->mip == NULL)
+	mh->mip = (ctf_membinfo_t *)malloc(sizeof(ctf_membinfo_t));
+	if (mh->mip == nullptr)
 		return (-1);
 
 	memset(mh->mip, 0, sizeof(ctf_membinfo_t));
@@ -1024,14 +965,13 @@ dt_find_memboffs(const char *name, ctf_id_t ctfid, ulong_t off, void *arg)
 }
 
 ctf_membinfo_t *
-dt_mip_by_offset(dtrace_hdl_t *dtp, dt_typefile_t *tf, ctf_id_t ctfid,
+dt_mip_by_offset(dtrace_hdl_t *dtp, typefile *tf, ctf_id_t ctfid,
     uint64_t offs)
 {
 	ctf_file_t *ctfp;
-	dt_membinfo_helper_t mh;
+	membinfo_helper mh = { 0 };
 
-	memset(&mh, 0, sizeof(mh));
-	ctfp = dt_typefile_getctfp(tf);
+	ctfp = tf->get_ctfp();
 
 	mh.offs = offs;
 	mh.ctfp = ctfp;
@@ -1039,19 +979,19 @@ dt_mip_by_offset(dtrace_hdl_t *dtp, dt_typefile_t *tf, ctf_id_t ctfid,
 	mh.ctfid = ctfid;
 
 	if (ctf_member_iter(mh.ctfp, ctfid, dt_find_memboffs, &mh) == -1)
-		return (NULL);
+		return (nullptr);
 
 	return (mh.mip);
 }
 
 ctf_id_t
 dt_autoresolve_ctfid(const char *mod, const char *resolved_type,
-    dt_typefile_t **tfp)
+    typefile **tfp)
 {
-	dt_typefile_t *tf;
+	typefile *tf;
 	ctf_id_t ctfid;
 
-	tf = NULL;
+	tf = nullptr;
 	ctfid = CTF_ERR;
 
 	/*
@@ -1062,21 +1002,25 @@ dt_autoresolve_ctfid(const char *mod, const char *resolved_type,
 	else
 		tf = dt_typefile_mod(mod);
 
-	if (tf != NULL)
-		ctfid = dt_typefile_ctfid(tf, resolved_type);
+	if (tf != nullptr)
+		ctfid = tf->get_ctfid(resolved_type);
 
-	if (tf == NULL || ctfid == CTF_ERR) {
+	if (tf == nullptr || ctfid == CTF_ERR) {
 		/*
 		 * FIXME: This probably doesn't match what libdtrace currently
 		 * does with modules.
 		 */
-		for (tf = dt_typefile_first(); tf; tf = dt_list_next(tf)) {
-			ctfid = dt_typefile_ctfid(tf, resolved_type);
-			if (ctfid != CTF_ERR)
+		for (auto &t : typefiles) {
+			ctfid = t->get_ctfid(resolved_type);
+			if (ctfid != CTF_ERR) {
+				tf = t.get();
 				break;
+			}
 		}
 	}
 
 	*tfp = tf;
 	return (ctfid);
+}
+
 }

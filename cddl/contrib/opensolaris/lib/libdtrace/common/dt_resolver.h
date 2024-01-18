@@ -33,7 +33,14 @@
 #define	DT_RSLV_HOSTNAME	0
 #define	DT_RSLV_VERSION		1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern int dt_resolve(const char *, uint32_t);
-extern void dt_resolver_setflags(uint32_t);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _DT_RESOLVER_H_

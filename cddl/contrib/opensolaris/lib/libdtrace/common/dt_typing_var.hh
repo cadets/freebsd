@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2020 Domagoj Stolfa
+ * Copyright (c) 2024 Domagoj Stolfa
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
@@ -36,11 +36,35 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _DT_CFG_H_
-#define _DT_CFG_H_
+#ifndef _DT_TYPING_VAR_HH_
+#define _DT_TYPING_VAR_HH_
 
+#include <sys/types.h>
 #include <sys/dtrace.h>
 
-extern void dt_compute_cfg(dtrace_difo_t *);
+#include <dtrace.h>
 
-#endif /* _DT_CFG_H_ */
+#ifndef __cplusplus
+#error "This file should only be included from C++"
+#endif
+
+#include <dt_dfg.hh>
+
+namespace dtrace {
+
+struct argcheck_cookie {
+	dfg_node *node;
+	uint16_t varcode;
+	uint8_t idx;
+};
+
+extern void dt_builtin_type(dfg_node *, uint16_t, uint8_t);
+extern int dt_infer_type_arg(dtrace_hdl_t *, const dtrace_probedesc_t *,
+    void *);
+extern int dt_infer_type_var(dtrace_hdl_t *, dtrace_difo_t *, dfg_node *,
+    dtrace_difv_t *);
+extern dfg_node *dt_typecheck_vardefs(dfg_node *, dtrace_difo_t *, node_set &,
+    int *);
+}
+
+#endif /* _DT_TYPING_VAR_Hh_ */

@@ -1,18 +1,5 @@
 /*-
- * Copyright (c) 2020 Domagoj Stolfa
- *
- * This software was developed by SRI International and the University of
- * Cambridge Computer Laboratory (Department of Computer Science and
- * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
- * DARPA SSITH research programme.
- *
- * This software was developed by the University of Cambridge Computer
- * Laboratory (Department of Computer Science and Technology) with support
- * from Arm Limited.
- *
- * This software was developed by the University of Cambridge Computer
- * Laboratory (Department of Computer Science and Technology) with support
- * from the Kenneth Hayter Scholarship Fund.
+ * Copyright (c) 2024 Domagoj Stolfa
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,32 +21,44 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
-#ifndef __DT_BASIC_BLOCK_H_
-#define __DT_BASIC_BLOCK_H_
+#ifndef _DT_LINKER_SUBR_H_
+#define _DT_LINKER_SUBR_H_
 
 #include <sys/types.h>
 #include <sys/dtrace.h>
 
-#include <dtrace.h>
+#ifndef __cplusplus
+#error "This file should only be included from C++"
+#endif
+
+#include <dt_dfg.hh>
+#include <dt_basic_block.hh>
+
 #include <dt_list.h>
 
-typedef struct dt_basic_block {
-	dtrace_difo_t	*dtbb_difo;
-#define dtbb_buf dtbb_difo->dtdo_buf
-	size_t		dtbb_start;
-	size_t		dtbb_end;
-	size_t		dtbb_idx;
-#define	DT_BB_MAX	8192
-	dt_list_t	dtbb_children;
-	dt_list_t	dtbb_parents;
-} dt_basic_block_t;
+namespace dtrace {
 
-typedef struct dt_bb_entry {
-	dt_list_t		dtbe_list;
-	dt_basic_block_t	*dtbe_bb;
-	int			dtbe_tovisit;
-} dt_bb_entry_t;
+using dfg_list = std::list<std::unique_ptr<dfg_node>>;
 
-#endif /* __DT_BASIC_BLOCK_H_ */
+extern dfg_list dfg_nodes;
+extern std::vector<std::unique_ptr<basic_block>> basic_blocks;
+extern std::vector<std::unique_ptr<dtrace_difv_t>> var_vector;
+extern dfg_node *r0node;
+
+extern int dt_subr_clobbers(uint16_t);
+extern int dt_clobbers_reg(dif_instr_t, uint8_t);
+extern int dt_var_is_builtin(uint16_t);
+extern int dt_clobbers_var(dif_instr_t, dfg_node_data &);
+extern dtrace_difv_t *dt_get_var_from_vec(uint16_t, int, int);
+extern void dt_get_varinfo(dif_instr_t, uint16_t *, int *, int *);
+extern void dt_insert_var(dtrace_difv_t *);
+extern int dt_var_uninitialized(dtrace_difv_t *);
+extern void dt_populate_varlist(dtrace_hdl_t *, dtrace_difo_t *);
+extern ssize_t dt_get_stack(std::vector<basic_block *> &, dfg_node *);
+}
+
+#endif /* _DT_LINKER_SUBR_H_ */

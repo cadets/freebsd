@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2020 Domagoj Stolfa
+ * Copyright (c) 2024 Domagoj Stolfa
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
@@ -44,18 +44,17 @@
 
 #include <sys/dtrace.h>
 
-#include <dt_prog_link.h>
-#include <dt_impl.h>
-#include <dt_program.h>
 #include <dtrace.h>
 
-#include <dt_ifgnode.h>
-#include <dt_basic_block.h>
-#include <dt_ifg.h>
-#include <dt_cfg.h>
-#include <dt_linker_subr.h>
-#include <dt_typefile.h>
-#include <dt_typing.h>
+#include <dt_impl.h>
+#include <dt_program.h>
+
+#include <dt_dfg.hh>
+#include <dt_basic_block.hh>
+#include <dt_dfg.hh>
+#include <dt_linker_subr.hh>
+#include <dt_typefile.hh>
+#include <dt_typing.hh>
 
 #include <assert.h>
 #include <stdio.h>
@@ -68,75 +67,72 @@
 #include <sys/sysctl.h>
 #endif
 
-dt_list_t node_list;
-dt_list_t bb_list;
-dt_ifg_list_t *node_last = NULL;
-dt_list_t var_list;
-dt_ifg_node_t *r0node = NULL;
+char t_mtx[MAXPATHLEN];
+char t_rw[MAXPATHLEN];
+char t_sx[MAXPATHLEN];
+char t_thread[MAXPATHLEN];
+
+namespace dtrace {
+
+template <typename T> using vec = std::vector<T>;
+template <typename T> using uptr = std::unique_ptr<T>;
+
+dfg_list dfg_nodes;
+vec<uptr<basic_block>> basic_blocks;
+vec<uptr<dtrace_difv_t>> var_vector;
+dfg_node *r0node = nullptr;
 
 typedef struct dtrace_ecbdesclist {
 	dt_list_t next;
 	dtrace_ecbdesc_t *ecbdesc;
 } dtrace_ecbdesclist_t;
 
-char t_mtx[MAXPATHLEN];
-char t_rw[MAXPATHLEN];
-char t_sx[MAXPATHLEN];
-char t_thread[MAXPATHLEN];
-
 static void
-patch_usetxs(dtrace_hdl_t *dtp, dt_ifg_node_t *n)
+patch_usetxs(dtrace_hdl_t *dtp, dfg_node *n)
 {
-	dt_ifg_list_t *usetx_ifgl;
-	dt_ifg_node_t *usetx_node;
 	uint8_t rd, opcode;
 	dif_instr_t instr;
-	dtrace_difo_t *difo;
 	int index;
 	uint16_t offset;
 
-	if (n == NULL)
+	if (n == nullptr)
 		return;
 
-	if (n->din_difo == NULL)
+	if (n->difo == nullptr)
 		return;
 
-	if (n->din_mip == NULL)
+	if (n->mip == nullptr)
 		return;
 
-	difo = n->din_difo;
-	offset = n->din_mip->ctm_offset / 8 /* bytes */;
+	offset = n->mip->ctm_offset / 8 /* bytes */;
 
-	for (usetx_ifgl = dt_list_next(&n->din_usetxs); usetx_ifgl;
-	     usetx_ifgl = dt_list_next(usetx_ifgl)) {
-		usetx_node = usetx_ifgl->dil_ifgnode;
-		if (usetx_node->din_relocated == 1)
+	for (auto node : n->usetx_defs) {
+		if (node->relocated)
 			continue;
 
-		instr = usetx_node->din_buf[usetx_node->din_uidx];
+		instr = node->get_instruction();
 		opcode = DIF_INSTR_OP(instr);
 		if (opcode != DIF_OP_USETX)
 			errx(EXIT_FAILURE, "opcode (%d) is not usetx", opcode);
 
 		rd = DIF_INSTR_RD(instr);
 
-		if (difo->dtdo_inthash == NULL) {
-			difo->dtdo_inthash = dt_inttab_create(dtp);
+		if (n->difo->dtdo_inthash == nullptr) {
+			n->difo->dtdo_inthash = dt_inttab_create(dtp);
 
-			if (difo->dtdo_inthash == NULL)
+			if (n->difo->dtdo_inthash == nullptr)
 				errx(EXIT_FAILURE,
 				    "failed "
 				    "to allocate inttab");
 		}
 
-		if ((index = dt_inttab_insert(difo->dtdo_inthash, offset, 0)) ==
-		    -1)
+		if ((index = dt_inttab_insert(n->difo->dtdo_inthash, offset,
+		    0)) == -1)
 			errx(EXIT_FAILURE, "failed to insert %u into inttab",
 			    offset);
 
-		usetx_node->din_buf[usetx_node->din_uidx] = DIF_INSTR_SETX(
-		    index, rd);
-		usetx_node->din_relocated = 1;
+		node->difo_buf()[node->uidx] = DIF_INSTR_SETX(index, rd);
+		node->relocated = true;
 	}
 }
 
@@ -165,7 +161,7 @@ dt_prepare_typestrings(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 }
 
 static void
-relocate_uloadadd(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
+relocate_uloadadd(dtrace_hdl_t *dtp, dfg_node *node)
 {
 	size_t size, kind;
 	ctf_id_t ctfid;
@@ -174,15 +170,16 @@ relocate_uloadadd(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
 	ctf_encoding_t encoding;
 	dif_instr_t instr, new_instr;
 
-	instr = node->din_buf[node->din_uidx];
+	instr = node->get_instruction();
 	opcode = DIF_INSTR_OP(instr);
 
-	if (opcode == DIF_OP_ADD)
+	if (opcode == DIF_OP_ADD) {
 		goto usetx_relo;
+	}
 
-	ctfid = dt_typefile_resolve(node->din_tf, node->din_mip->ctm_type);
-	size = dt_typefile_typesize(node->din_tf, ctfid);
-	kind = dt_typefile_typekind(node->din_tf, ctfid);
+	ctfid = node->tf->resolve(node->mip->ctm_type);
+	size = node->tf->get_size(ctfid);
+	kind = node->tf->get_kind(ctfid);
 
 
 	/*
@@ -201,7 +198,7 @@ relocate_uloadadd(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
 
 		new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
 	} else {
-		if (dt_typefile_encoding(node->din_tf, ctfid, &encoding) != 0)
+		if (node->tf->get_encoding(ctfid, &encoding) != 0)
 			errx(EXIT_FAILURE, "failed to get encoding for %ld",
 			    ctfid);
 
@@ -246,20 +243,41 @@ relocate_uloadadd(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
 	}
 
 usetx_relo:
-	if (node->din_mip == NULL) {
-		node->din_relocated = 1;
-		return;
+	ctf_membinfo_t *mip = nullptr;
+
+	if (node->mip == nullptr) {
+		if (node->sym == nullptr) {
+			node->relocated = true;
+			return;
+		}
+
+		mip = (ctf_membinfo_t *)malloc(sizeof(ctf_membinfo_t));
+		assert(mip != nullptr);
+
+		memset(mip, 0, sizeof(*mip));
+		auto type = node->tf->get_reference(node->ctfid);
+		if (node->tf->get_membinfo(type, node->sym, mip) == 0) {
+			dt_set_progerr(node->dtp, node->program,
+			    "%s(%p[%zu]): failed to get mip: %s.%s: %s\n",
+			    __func__, node->difo, node->uidx,
+			    node->tf->get_typename(node->ctfid)
+				.value_or("UNKNOWN")
+				.c_str(),
+			    node->sym, node->tf->get_errmsg());
+		}
+
+		node->mip = mip;
 	}
 
 	patch_usetxs(dtp, node);
 
 	if (opcode != DIF_OP_ADD)
-		node->din_buf[node->din_uidx] = new_instr;
-	node->din_relocated = 1;
+		node->difo_buf()[node->uidx] = new_instr;
+	node->relocated = true;
 }
 
 static void
-relocate_retpush(dtrace_hdl_t *dtp, dt_ifg_node_t *node,
+relocate_retpush(dtrace_hdl_t *dtp, dfg_node *node,
     dtrace_actkind_t actkind, dtrace_actdesc_t *ad,
     dtrace_diftype_t *orig_rtype)
 {
@@ -268,14 +286,14 @@ relocate_retpush(dtrace_hdl_t *dtp, dt_ifg_node_t *node,
 	 * If this instruction does not come from a usetx,
 	 * we don't really have to do anything with it.
 	 */
-	if (node->din_mip == NULL)
+	if (node->mip == nullptr)
 		return;
 
 	patch_usetxs(dtp, node);
 }
 
 static void
-relocate_push(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
+relocate_push(dtrace_hdl_t *dtp, dfg_node *node, dtrace_actkind_t actkind,
     dtrace_actdesc_t *ad, dtrace_diftype_t *orig_rtype)
 {
 
@@ -283,12 +301,10 @@ relocate_push(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 }
 
 static void
-ret_cleanup(dt_ifg_node_t *node, dtrace_diftype_t *rtype)
+ret_cleanup(dfg_node *node, dtrace_diftype_t *rtype)
 {
-	dt_ifg_list_t *r1l;
-	dif_instr_t instr = 0;
-	uint8_t opcode = 0;
-	dt_ifg_node_t *n;
+	dif_instr_t instr;
+	uint8_t opcode;
 
 	/*
 	 * We only need to clean up things if we return by reference
@@ -298,11 +314,8 @@ ret_cleanup(dt_ifg_node_t *node, dtrace_diftype_t *rtype)
 	    (rtype->dtdt_flags & DIF_TF_BYUREF) == 0)
 		return;
 
-	for (r1l = dt_list_next(&node->din_r1defs); r1l;
-	    r1l = dt_list_next(r1l)) {
-		n = r1l->dil_ifgnode;
-
-		instr = n->din_buf[n->din_uidx];
+	for (auto n : node->r1_defs) {
+		instr = n->get_instruction();
 		opcode = DIF_INSTR_OP(instr);
 
 		switch (opcode) {
@@ -317,14 +330,14 @@ ret_cleanup(dt_ifg_node_t *node, dtrace_diftype_t *rtype)
 		case DIF_OP_LDUW:
 		case DIF_OP_LDSW:
 		case DIF_OP_LDX:
-			n->din_buf[n->din_uidx] = DIF_INSTR_NOP;
+			n->difo_buf()[n->uidx] = DIF_INSTR_NOP;
 			break;
 		}
 	}
 }
 
 static void
-relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
+relocate_ret(dtrace_hdl_t *dtp, dfg_node *node, dtrace_actkind_t actkind,
     dtrace_actdesc_t *ad, dtrace_diftype_t *orig_rtype)
 {
 	dtrace_diftype_t *rtype;
@@ -337,15 +350,15 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 	 * In case of a RET, we first patch up the DIFO with the correct return
 	 * type and size.
 	 */
-	difo = node->din_difo;
+	difo = node->difo;
 	rtype = &difo->dtdo_rtype;
 
-	rtype->dtdt_kind = node->din_type;
-	if (node->din_type == DIF_TYPE_CTF)
-		rtype->dtdt_ckind = node->din_ctfid;
-	else if (node->din_type == DIF_TYPE_STRING)
+	rtype->dtdt_kind = node->d_type;
+	if (node->d_type == DIF_TYPE_CTF)
+		rtype->dtdt_ckind = node->ctfid;
+	else if (node->d_type == DIF_TYPE_STRING)
 		rtype->dtdt_ckind = DT_STR_TYPE(dtp);
-	else if (node->din_type == DIF_TYPE_BOTTOM)
+	else if (node->d_type == DIF_TYPE_BOTTOM)
 		/*
 		 * If we have a bottom type, we really
 		 * don't care which CTF type the host
@@ -356,11 +369,11 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 	else
 		errx(EXIT_FAILURE,
 		    "unexpected node->din_type (%x) at location %zu",
-		    node->din_type, node->din_uidx);
+		    node->d_type, node->uidx);
 
 	assert(actkind != DTRACEACT_NONE);
 	if (actkind != DTRACEACT_DIFEXPR)
-		assert(ad != NULL);
+		assert(ad != nullptr);
 
 	switch (actkind) {
 	case DTRACEACT_EXIT:
@@ -390,9 +403,8 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 		 * Fall through to the default case.
 		 */
 	default:
-		if (node->din_mip == NULL && rtype->dtdt_kind == DIF_TYPE_CTF) {
-			ctf_kind = dt_typefile_typekind(
-			    node->din_tf, node->din_ctfid);
+		if (node->mip == nullptr && rtype->dtdt_kind == DIF_TYPE_CTF) {
+			ctf_kind = node->tf->get_kind(node->ctfid);
 
 			/*
 			 * XXX(dstolfa, important): Is this a sensible thing to
@@ -412,20 +424,20 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 			ret_cleanup(node, rtype);
 
 			if (rtype->dtdt_flags & DIF_TF_BYREF) {
-				return_ctfid = dt_typefile_reference(
-				    node->din_tf, node->din_ctfid);
+				return_ctfid = node->tf->get_reference(
+				    node->ctfid);
 				/*
 				 * FIXME:. This is very much a heuristic. This
 				 * can probably be done better.
 				 */
 				return_ctfid = return_ctfid == CTF_ERR ?
-				    node->din_ctfid :
+				    node->ctfid :
 				    return_ctfid;
-				rtype->dtdt_size = dt_typefile_typesize(
-				    node->din_tf, return_ctfid);
+				rtype->dtdt_size = node->tf->get_size(
+				    return_ctfid);
 			} else {
-				rtype->dtdt_size = dt_typefile_typesize(
-				    node->din_tf, node->din_ctfid);
+				rtype->dtdt_size = node->tf->get_size(
+				    node->ctfid);
 			}
 		} else if (rtype->dtdt_kind == DIF_TYPE_BOTTOM) {
 			/*
@@ -442,7 +454,7 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 	/*
 	 * Safety guard
 	 */
-	if (node->din_type == DIF_TYPE_STRING) {
+	if (node->d_type == DIF_TYPE_STRING) {
 		rtype->dtdt_flags |= DIF_TF_BYREF;
 		rtype->dtdt_ckind = CTF_ERR;
 	}
@@ -451,40 +463,36 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 }
 
 static void
-patch_setxs(dt_list_t *setx_defs1, dt_list_t *setx_defs2)
+patch_setxs(node_set *setx_defs1, node_set *setx_defs2)
 {
-	dt_ifg_list_t *sd1l, *sd2l;
-	dt_ifg_node_t *sd1, *sd2;
-	dif_instr_t instr1, instr2;
-	uint8_t op1, op2;
+	node_set::iterator it1, it2;
+	for (it1 = setx_defs1->begin(), it2 = setx_defs2->begin();
+	     it1 != setx_defs1->end() && it2 != setx_defs2->end();
+	     ++it1, ++it2) {
+		auto sd1 = *it1;
+		auto sd2 = *it2;
 
-	for (sd1l = dt_list_next(setx_defs1), sd2l = dt_list_next(setx_defs2);
-	     sd1l && sd2l;
-	     sd1l = dt_list_next(sd1l), sd2l = dt_list_next(sd2l)) {
-		sd1 = sd1l->dil_ifgnode;
-		sd2 = sd2l->dil_ifgnode;
-
-		sd1->din_buf[sd1->din_uidx] = DIF_INSTR_NOP;
-		sd2->din_buf[sd2->din_uidx] = DIF_INSTR_NOP;
+		sd1->difo_buf()[sd1->uidx] = DIF_INSTR_NOP;
+		sd2->difo_buf()[sd2->uidx] = DIF_INSTR_NOP;
 	}
 }
 
-static int
-check_setxs(dt_list_t *setx_defs1, dt_list_t *setx_defs2)
+static bool
+check_setxs(node_set *setx_defs1, node_set *setx_defs2)
 {
-	dt_ifg_list_t *sd1l, *sd2l;
-	dt_ifg_node_t *sd1, *sd2;
+	dfg_node *sd1, *sd2;
 	dif_instr_t instr1, instr2;
 	uint8_t op1, op2;
+	node_set::iterator it1, it2;
 
-	for (sd1l = dt_list_next(setx_defs1), sd2l = dt_list_next(setx_defs2);
-	     sd1l && sd2l;
-	     sd1l = dt_list_next(sd1l), sd2l = dt_list_next(sd2l)) {
-		sd1 = sd1l->dil_ifgnode;
-		sd2 = sd2l->dil_ifgnode;
+	for (it1 = setx_defs1->begin(), it2 = setx_defs2->begin();
+	     it1 != setx_defs1->end() && it2 != setx_defs2->end();
+	     ++it1, ++it2) {
+		sd1 = *it1;
+		sd2 = *it2;
 
-		instr1 = sd1->din_buf[sd1->din_uidx];
-		instr2 = sd2->din_buf[sd2->din_uidx];
+		instr1 = sd1->get_instruction();
+		instr2 = sd2->get_instruction();
 
 		op1 = DIF_INSTR_OP(instr1);
 		op2 = DIF_INSTR_OP(instr2);
@@ -493,26 +501,24 @@ check_setxs(dt_list_t *setx_defs1, dt_list_t *setx_defs2)
 		 * This is really the only thing we need to check here.
 		 */
 		if (op1 != DIF_OP_SETX || instr1 != instr2)
-			return (0);
+			return (false);
 	}
 
-	return (1);
+	return (true);
 }
 
 static void
-relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
+relocate_dfg_node(dfg_node *node, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
     dtrace_actkind_t actkind, dtrace_actdesc_t *ad, dtrace_difo_t *difo,
     dtrace_diftype_t *orig_rtype)
 {
-	dt_ifg_node_t *node;
 	dif_instr_t instr;
 	uint8_t opcode;
 
-	node = ifgl->dil_ifgnode;
-	if (node->din_difo != difo)
+	if (node->difo != difo)
 		return;
 
-	instr = node->din_buf[node->din_uidx];
+	instr = node->get_instruction();
 	opcode = DIF_INSTR_OP(instr);
 
 	switch (opcode) {
@@ -535,8 +541,8 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 		rv = DIF_INSTR_R2(instr);
 
 		newinstr = DIF_INSTR_PUSHTS(DIF_OP_PUSHTV,
-		    node->din_type, rv, rs);
-		node->din_buf[node->din_uidx] = newinstr;
+		    node->d_type, rv, rs);
+		node->difo_buf()[node->uidx] = newinstr;
 		break;
 	}
 
@@ -549,11 +555,9 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	case DIF_OP_TYPECAST: {
 		dif_instr_t idef1, idef2;
 		uint8_t opdef1, opdef2;
-		dt_ifg_node_t *ndef1, *ndef2;
-		dt_ifg_list_t *rd1, *rd2;
 		uint8_t r11, r12, r21, r22, currd, rd;
-		dt_list_t *setx_defs1, *setx_defs2, *defs;
-		char symname[4096] = { 0 };
+		node_set *setx_defs1, *setx_defs2, *defs;
+		std::string symname;
 		uint16_t sym;
 		size_t l;
 
@@ -563,9 +567,9 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 		 * actually execute it as an instruction. We will
 		 * collapse the nops later.
 		 */
-		node->din_buf[node->din_uidx] = DIF_INSTR_NOP;
+		node->difo_buf()[node->uidx] = DIF_INSTR_NOP;
 
-		if (node->din_uidx < 2)
+		if (node->uidx < 2)
 			goto end;
 
 		patch_usetxs(dtp, node);
@@ -577,25 +581,18 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 			    "%s(): sym (%u) >= symlen (%zu)\n", __func__, sym,
 			    difo->dtdo_symlen);
 
-		l = strlcpy(symname, difo->dtdo_symtab + sym, sizeof(symname));
-		if (l >= sizeof(symname))
-			dt_set_progerr(dtp, pgp,
-			    "%s(): length (%zu) >= %zu when copying type name",
-			    __func__, l, sizeof(symname));
-
-		if (strcmp(symname, "uintptr_t") != 0)
+		symname = std::string(difo->dtdo_symtab + sym);
+		if (symname == "uintptr_t")
 			goto end;
 
 		/*
-		 * Now we need to check if we have a sll followed by a sra as
+		 * Now we need to check if we have an sll followed by an sra as
 		 * the previous two instructions. This can happen in the case
 		 * sign extension is needed -- however we don't actually want to
 		 * do this for an uintptr_t.
 		 */
-		for (rd1 = dt_list_next(&node->din_r1defs); rd1;
-		     rd1 = dt_list_next(rd1)) {
-			ndef1 = rd1->dil_ifgnode;
-			idef1 = ndef1->din_buf[ndef1->din_uidx];
+		for (auto ndef1 : node->r1_defs) {
+			idef1 = ndef1->get_instruction();
 			opdef1 = DIF_INSTR_OP(idef1);
 
 			if (opdef1 != DIF_OP_SRA)
@@ -608,12 +605,12 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 			 * Figure out which register we need to look up the
 			 * definitions for.
 			 */
-			defs = NULL;
-			setx_defs1 = NULL;
+			defs = nullptr;
+			setx_defs1 = nullptr;
 
 			if (r11 == currd) {
-				defs = &ndef1->din_r1defs;
-				setx_defs1 = &ndef1->din_r2defs;
+				defs = &ndef1->r1_defs;
+				setx_defs1 = &ndef1->r2_defs;
 			}
 
 			if (r21 == currd) {
@@ -621,19 +618,17 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 				 * Assert that we don't have a sra %r1, %r1, %r1
 				 * as that would be extremely weird.
 				 */
-				assert(defs == NULL);
-				assert(setx_defs1 == NULL);
-				defs = &ndef1->din_r2defs;
-				setx_defs1 = &ndef1->din_r1defs;
+				assert(defs == nullptr);
+				assert(setx_defs1 == nullptr);
+				defs = &ndef1->r2_defs;
+				setx_defs1 = &ndef1->r1_defs;
 			}
 
-			if (defs == NULL)
+			if (defs == nullptr)
 				continue;
 
-			for (rd2 = dt_list_next(defs); rd2;
-			     rd2 = dt_list_next(rd2)) {
-				ndef2 = rd2->dil_ifgnode;
-				idef2 = ndef2->din_buf[ndef2->din_uidx];
+			for (auto ndef2 : *defs) {
+				idef2 = ndef2->get_instruction();
 				opdef2 = DIF_INSTR_OP(idef2);
 
 				if (opdef2 != DIF_OP_SLL)
@@ -644,28 +639,28 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 
 				rd = DIF_INSTR_RD(idef2);
 
-				setx_defs2 = NULL;
+				setx_defs2 = nullptr;
 				if (r12 == rd)
-					setx_defs2 = &ndef2->din_r2defs;
+					setx_defs2 = &ndef2->r2_defs;
 
 				if (r22 == rd)
-					setx_defs2 = &ndef2->din_r1defs;
+					setx_defs2 = &ndef2->r1_defs;
 
-				if (setx_defs2 == NULL)
+				if (setx_defs2 == nullptr)
 					continue;
 
 				if (!check_setxs(setx_defs1, setx_defs2))
 					continue;
 
-				ndef2->din_buf[ndef2->din_uidx] = DIF_INSTR_NOP;
-				ndef1->din_buf[ndef1->din_uidx] = DIF_INSTR_NOP;
+				ndef2->difo_buf()[ndef2->uidx] = DIF_INSTR_NOP;
+				ndef1->difo_buf()[ndef1->uidx] = DIF_INSTR_NOP;
 
 				patch_setxs(setx_defs1, setx_defs2);
 			}
 		}
 
 end:
-		node->din_relocated = 1;
+		node->relocated = true;
 		break;
 	}
 
@@ -679,15 +674,14 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
     dtrace_actkind_t actkind, dtrace_actdesc_t *ad, dtrace_difo_t *difo,
     dtrace_diftype_t *orig_rtype)
 {
-	dt_ifg_list_t *ifgl;
 	int i, index;
 
-	if (difo->dtdo_inttab != NULL) {
+	if (difo->dtdo_inttab != nullptr) {
 		assert(difo->dtdo_intlen != 0);
-		assert(difo->dtdo_inthash == NULL);
+		assert(difo->dtdo_inthash == nullptr);
 
 		difo->dtdo_inthash = dt_inttab_create(dtp);
-		if (difo->dtdo_inthash == NULL)
+		if (difo->dtdo_inthash == nullptr)
 			errx(EXIT_FAILURE, "failed to allocate inthash");
 
 		for (i = 0; i < difo->dtdo_intlen; i++) {
@@ -699,51 +693,42 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 		}
 	}
 
-	for (ifgl = dt_list_next(&node_list); ifgl != NULL;
-	    ifgl = dt_list_next(ifgl)) {
-		relocate_ifg_entry(ifgl, dtp, pgp, actkind, ad, difo, orig_rtype);
+	for (auto &n : dfg_nodes) {
+		if (n.get() == r0node)
+			continue;
+		relocate_dfg_node(n.get(), dtp, pgp, actkind, ad, difo,
+		    orig_rtype);
 	}
 
 	return (0);
 }
 
-static int
-dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_ifg_node_t *n)
+static void
+dt_update_usetx_bb(dtrace_difo_t *difo, basic_block *bb, dfg_node *n)
 {
-	dt_ifg_list_t *ifgl, *nifgl;
 	dif_instr_t instr;
-	dt_ifg_node_t *node, *usetx_node;
 	uint8_t opcode;
-	uint8_t rd, _rd, r1;
 
-	ifgl = NULL;
-	nifgl = NULL;
-	node = usetx_node = NULL;
-	instr = 0;
-	opcode = 0;
-	rd = _rd = r1 = 0;
+	if (n->sym == nullptr)
+		errx(EXIT_FAILURE, "usetx din_sym should not be nullptr");
 
-	rd = DIF_INSTR_RD(n->din_buf[n->din_uidx]);
+	for (auto &node : dfg_nodes) {
+		if (node.get() == r0node)
+			continue;
 
-	if (n->din_sym == NULL)
-		errx(EXIT_FAILURE, "usetx din_sym should not be NULL");
-
-	for (ifgl = dt_list_next(&node_list); ifgl; ifgl = dt_list_next(ifgl)) {
-		node = ifgl->dil_ifgnode;
-		instr = node->din_buf[node->din_uidx];
+		instr = node->get_instruction();
 		opcode = DIF_INSTR_OP(instr);
 
-		if (node->din_difo != difo)
+		if (node.get() == n)
 			continue;
 
-		if (n->din_uidx >= node->din_uidx)
+		if (node->difo != difo)
 			continue;
 
-		if (node->din_uidx < bb->dtbb_start ||
-		    node->din_uidx > bb->dtbb_end)
+		if (n->uidx >= node->uidx)
 			continue;
 
-		if (node == n)
+		if (node->uidx < bb->start || node->uidx > bb->end)
 			continue;
 
 		if (opcode == DIF_OP_ULOAD    ||
@@ -752,87 +737,47 @@ dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_ifg_node_t *n)
 		    opcode == DIF_OP_PUSHTR   ||
 		    opcode == DIF_OP_ADD      ||
 		    opcode == DIF_OP_TYPECAST) {
-			usetx_node = dt_find_node_in_ifg(node, n);
-
+			auto usetx_node = node->find_child(n);
 			if (usetx_node != n)
 				continue;
 
-			nifgl = malloc(sizeof(dt_ifg_list_t));
-			memset(nifgl, 0, sizeof(dt_ifg_list_t));
-
-			nifgl->dil_ifgnode = n;
-			if (dt_in_list(&node->din_usetxs,
-			    (void *)&n, sizeof(dt_ifg_node_t *)) == NULL)
-				dt_list_append(&node->din_usetxs, nifgl);
+			node->usetx_defs.insert(n);
 		}
 	}
-
-	return (0);
 }
 
 static void
-_dt_update_usetxs(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_ifg_node_t *n)
+dt_update_usetxs(dtrace_difo_t *difo, basic_block *bb, dfg_node *n)
 {
-	dt_bb_entry_t *chld;
-	dt_basic_block_t *chld_bb;
-	int redefined;
+	dt_update_usetx_bb(difo, bb, n);
 
-	chld = NULL;
-	chld_bb = NULL;
-	redefined = 0;
-
-	redefined = dt_update_usetx_bb(difo, bb, n);
-	if (redefined)
-		return;
-
-	for (chld = dt_list_next(&bb->dtbb_children); chld;
-	    chld = dt_list_next(chld)) {
-		chld_bb = chld->dtbe_bb;
-		if (chld_bb->dtbb_idx > DT_BB_MAX)
-			errx(EXIT_FAILURE, "too many basic blocks.");
-		_dt_update_usetxs(difo, chld_bb, n);
+	for (auto child : bb->children) {
+		dt_update_usetxs(difo, child.first, n);
 	}
-}
-
-static void
-dt_update_usetxs(dtrace_difo_t *difo, dt_ifg_node_t *n)
-{
-	dif_instr_t instr;
-	uint8_t opcode;
-
-	instr = 0;
-	opcode = 0;
-
-	if (n == NULL)
-		return;
-
-	instr = n->din_buf[n->din_uidx];
-	opcode = DIF_INSTR_OP(instr);
-
-	if (opcode != DIF_OP_USETX)
-		return;
-
-	if (n->din_sym == NULL)
-		errx(EXIT_FAILURE, "opcode is usetx but no symbol found");
-
-	if (n->din_difo != difo)
-		return;
-
-	_dt_update_usetxs(difo, difo->dtdo_bb, n);
 }
 
 static void
 dt_prog_infer_usetxs(dtrace_difo_t *difo)
 {
-	dt_ifg_list_t *ifgl;
-	dt_ifg_node_t *n;
+	basic_block *bb = static_cast<basic_block *>(difo->dtdo_bb);
 
-	ifgl = NULL;
-	n = NULL;
+	for (auto it = dfg_nodes.rbegin(); it != dfg_nodes.rend(); ++it) {
+		auto n = it->get();
+		assert(n != nullptr);
 
-	for (ifgl = node_last; ifgl; ifgl = dt_list_prev(ifgl)) {
-		n = ifgl->dil_ifgnode;
-		dt_update_usetxs(difo, n);
+		if (n->sym == nullptr)
+			continue;
+
+		if (n->difo != difo)
+			continue;
+
+		dif_instr_t instr = n->get_instruction();
+		uint8_t opcode = DIF_INSTR_OP(instr);
+
+		if (opcode != DIF_OP_USETX)
+			continue;
+
+		dt_update_usetxs(difo, bb, n);
 	}
 }
 
@@ -847,12 +792,12 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo,
 	uint32_t id;
 	uint8_t scope;
 
-	var = vlvar = NULL;
+	var = vlvar = nullptr;
 	i = 0;
-	otab = NULL;
+	otab = nullptr;
 	inthash_size = 0;
 
-	if (difo->dtdo_inthash != NULL) {
+	if (difo->dtdo_inthash != nullptr) {
 		inthash_size = dt_inttab_size(difo->dtdo_inthash);
 		if (inthash_size == 0) {
 			fprintf(stderr, "inthash_size is 0\n");
@@ -860,9 +805,9 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo,
 		}
 
 		otab = difo->dtdo_inttab;
-		difo->dtdo_inttab = dt_alloc(dtp,
+		difo->dtdo_inttab = (uint64_t *)dt_alloc(dtp,
 		    sizeof(uint64_t) * inthash_size);
-		if (difo->dtdo_inttab == NULL)
+		if (difo->dtdo_inttab == nullptr)
 			errx(EXIT_FAILURE, "failed to malloc inttab");
 
 		memset(difo->dtdo_inttab, 0, sizeof(uint64_t) * inthash_size);
@@ -886,9 +831,9 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo,
 		if (dt_var_is_builtin(var->dtdv_id))
 			continue;
 
-		vlvar = dt_get_var_from_varlist(var->dtdv_id,
+		vlvar = dt_get_var_from_vec(var->dtdv_id,
 		    var->dtdv_scope, var->dtdv_kind);
-		assert(vlvar != NULL);
+		assert(vlvar != nullptr);
 
 		var->dtdv_type = vlvar->dtdv_type;
 		id = var->dtdv_id;
@@ -932,7 +877,7 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
 	dtrace_actkind_t actkind;
 	dtrace_diftype_t saved_rtype;
 
-	rval = dt_prog_infer_defns(dtp, pgp, ecbdesc, difo);
+	rval = dt_compute_dfg(dtp, pgp, ecbdesc, difo);
 	if (rval != 0)
 		return (rval);
 
@@ -943,7 +888,7 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
 
 	dt_prog_infer_usetxs(difo);
 
-	actkind = ad == NULL ? DTRACEACT_DIFEXPR : ad->dtad_kind;
+	actkind = ad == nullptr ? DTRACEACT_DIFEXPR : ad->dtad_kind;
 	rval = dt_prog_relocate(dtp, pgp, actkind, ad, difo, &saved_rtype);
 	if (rval != 0)
 		return (rval);
@@ -952,16 +897,19 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
 	return (0);
 }
 
+}
+
 int
-dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+dtrace_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
-	dt_stmt_t *stp = NULL;
-	dtrace_stmtdesc_t *sdp = NULL;
-	dtrace_actdesc_t *ad = NULL;
+	using namespace dtrace;
+
+	dt_stmt_t *stp = nullptr;
+	dtrace_stmtdesc_t *sdp = nullptr;
+	dtrace_actdesc_t *ad = nullptr;
 	dtrace_ecbdesc_t *ecbdesc;
 	dtrace_preddesc_t *pred;
-	dt_list_t processed_ecbdescs;
-	dtrace_ecbdesclist_t *edl;
+	std::unordered_set<dtrace_ecbdesc_t *> processed_ecbdescs;
 	int rval = 0;
 	int err = 0;
 	int i;
@@ -974,15 +922,14 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 	dt_prepare_typestrings(dtp, pgp);
 
-	/*
-	 * Zero out the node list and basic block list.
-	 */
-	memset(&node_list, 0, sizeof(dt_list_t));
-	memset(&bb_list, 0, sizeof(dt_list_t));
-	memset(&processed_ecbdescs, 0, sizeof(dt_list_t));
+	dfg_nodes.clear();
+	basic_blocks.clear();
+	var_vector.clear();
 
-	r0node = dt_ifg_node_alloc(pgp, NULL, NULL, NULL, UINT_MAX);
-	r0node->din_type = DIF_TYPE_BOTTOM;
+	dfg_nodes.push_front(std::make_unique<dfg_node>(dtp, pgp, nullptr,
+	    nullptr, nullptr, UINT_MAX));
+	r0node = dfg_nodes.front().get();
+	r0node->d_type = DIF_TYPE_BOTTOM;
 
 	/*
 	 * Regenerate the identifier, since it's no longer the same program. Set
@@ -992,9 +939,9 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	dt_prog_generate_ident(pgp);
 
 	for (i = 0; i < DIFV_NSCOPES; i++) {
-		biggest_vartype[i] = malloc(
+		biggest_vartype[i] = (dtrace_diftype_t *)malloc(
 		    sizeof(dtrace_diftype_t) * DIF_VARIABLE_MAX);
-		if (biggest_vartype[i] == NULL)
+		if (biggest_vartype[i] == nullptr)
 			dt_set_progerr(dtp, pgp,
 			    "could not allocate biggest_vartype\n");
 
@@ -1002,39 +949,40 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		    sizeof(dtrace_diftype_t) * DIF_VARIABLE_MAX);
 	}
 
-	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
+	for (stp = (dt_stmt_t *)dt_list_next(&pgp->dp_stmts); stp;
+	     stp = (dt_stmt_t *)dt_list_next(stp)) {
 		sdp = stp->ds_desc;
 
-		if (sdp == NULL) {
+		if (sdp == nullptr) {
 			for (i = 0; i < DIFV_NSCOPES; i++)
 				free(biggest_vartype[i]);
 			return (dt_set_errno(dtp, EDT_NOSTMT));
 		}
 
 		ecbdesc = sdp->dtsd_ecbdesc;
-		if (ecbdesc == NULL) {
+		if (ecbdesc == nullptr) {
 			for (i = 0; i < DIFV_NSCOPES; i++)
 				free(biggest_vartype[i]);
 			return (dt_set_errno(dtp, EDT_DIFINVAL));
 		}
 
 		pred = &ecbdesc->dted_pred;
-		assert(pred != NULL);
+		assert(pred != nullptr);
 
-		if (pred->dtpdd_difo != NULL)
+		if (pred->dtpdd_difo != nullptr)
 			dt_populate_varlist(dtp, pred->dtpdd_difo);
 
 		/*
 		 * Nothing to do if the action is missing
 		 */
-		if (sdp->dtsd_action == NULL)
+		if (sdp->dtsd_action == nullptr)
 			continue;
 
 		/*
 		 * If we are in a state where we have the first action, but not
 		 * a last action we bail out. This should not happen.
 		 */
-		if (sdp->dtsd_action_last == NULL) {
+		if (sdp->dtsd_action_last == nullptr) {
 			for (i = 0; i < DIFV_NSCOPES; i++)
 				free(biggest_vartype[i]);
 			return (dt_set_errno(dtp, EDT_ACTLAST));
@@ -1055,7 +1003,7 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		for (ad = sdp->dtsd_action;
 		     ad != sdp->dtsd_action_last->dtad_next;
 		     ad = ad->dtad_next) {
-			if (ad->dtad_difo == NULL)
+			if (ad->dtad_difo == nullptr)
 				continue;
 
 			dt_populate_varlist(dtp, ad->dtad_difo);
@@ -1064,32 +1012,28 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	/*
 	 * Go over all the statements in a D program
 	 */
-	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
+	for (stp = (dt_stmt_t *)dt_list_next(&pgp->dp_stmts); stp;
+	     stp = (dt_stmt_t *)dt_list_next(stp)) {
 		sdp = stp->ds_desc;
-		if (sdp == NULL) {
+		if (sdp == nullptr) {
 			for (i = 0; i < DIFV_NSCOPES; i++)
 				free(biggest_vartype[i]);
 			return (dt_set_errno(dtp, EDT_NOSTMT));
 		}
 
 		ecbdesc = sdp->dtsd_ecbdesc;
-		if (ecbdesc == NULL) {
+		if (ecbdesc == nullptr) {
 			for (i = 0; i < DIFV_NSCOPES; i++)
 				free(biggest_vartype[i]);
 			return (dt_set_errno(dtp, EDT_DIFINVAL));
 		}
 
 		pred = &ecbdesc->dted_pred;
-		assert(pred != NULL);
+		assert(pred != nullptr);
 
-		if (pred->dtpdd_difo != NULL) {
-			for (edl = dt_list_next(&processed_ecbdescs); edl;
-			     edl = dt_list_next(edl))
-				if (edl->ecbdesc == ecbdesc)
-					break;
-
-			if (edl == NULL) {
-				rval = process_difo(dtp, pgp, NULL,
+		if (pred->dtpdd_difo != nullptr) {
+			if (!processed_ecbdescs.contains(ecbdesc)) {
+				rval = process_difo(dtp, pgp, nullptr,
 				    pred->dtpdd_difo, ecbdesc, biggest_vartype);
 				if (rval != 0) {
 					for (i = 0; i < DIFV_NSCOPES; i++)
@@ -1097,30 +1041,20 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 					return (dt_set_errno(dtp, rval));
 				}
 
-				edl = dt_alloc(dtp, sizeof(dtrace_ecbdesclist_t));
-				if (edl == NULL) {
-					for (i = 0; i < DIFV_NSCOPES; i++)
-						free(biggest_vartype[i]);
-					return (dt_set_errno(dtp, EDT_NOMEM));
-				}
-
-				memset(edl, 0, sizeof(dtrace_ecbdesclist_t));
-
-				edl->ecbdesc = ecbdesc;
-				dt_list_append(&processed_ecbdescs, edl);
+				processed_ecbdescs.insert(ecbdesc);
 			}
 		}
 		/*
 		 * Nothing to do if the action is missing
 		 */
-		if (sdp->dtsd_action == NULL)
+		if (sdp->dtsd_action == nullptr)
 			continue;
 
 		/*
 		 * If we are in a state where we have the first action, but not
 		 * a last action we bail out. This should not happen.
 		 */
-		if (sdp->dtsd_action_last == NULL) {
+		if (sdp->dtsd_action_last == nullptr) {
 			for (i = 0; i < DIFV_NSCOPES; i++)
 				free(biggest_vartype[i]);
 			return (dt_set_errno(dtp, EDT_ACTLAST));
@@ -1133,7 +1067,7 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		for (ad = sdp->dtsd_action;
 		     ad != sdp->dtsd_action_last->dtad_next;
 		     ad = ad->dtad_next) {
-			if (ad->dtad_difo == NULL)
+			if (ad->dtad_difo == nullptr)
 				continue;
 
 			rval = process_difo(dtp, pgp, ad, ad->dtad_difo,
@@ -1146,7 +1080,8 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		}
 	}
 
-	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
+	for (stp = (dt_stmt_t *)dt_list_next(&pgp->dp_stmts); stp;
+	     stp = (dt_stmt_t *)dt_list_next(stp)) {
 		/*
 		 * We don't need any checks here, because we just passed them
 		 * above.
@@ -1155,13 +1090,13 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		ecbdesc = sdp->dtsd_ecbdesc;
 		pred = &ecbdesc->dted_pred;
 
-		if (pred->dtpdd_difo != NULL)
+		if (pred->dtpdd_difo != nullptr)
 			finalize_vartab(pred->dtpdd_difo, biggest_vartype);
 
 		/*
 		 * Nothing to do if the action is missing
 		 */
-		if (sdp->dtsd_action == NULL)
+		if (sdp->dtsd_action == nullptr)
 			continue;
 
 		/*
@@ -1170,20 +1105,15 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		for (ad = sdp->dtsd_action;
 		     ad != sdp->dtsd_action_last->dtad_next;
 		     ad = ad->dtad_next) {
-			if (ad->dtad_difo == NULL)
+			if (ad->dtad_difo == nullptr)
 				continue;
 
 			finalize_vartab(ad->dtad_difo, biggest_vartype);
 		}
-
 	}
 
 	for (i = 0; i < DIFV_NSCOPES; i++)
 		free(biggest_vartype[i]);
-	while ((edl = dt_list_next(&processed_ecbdescs)) != NULL) {
-		dt_list_delete(&processed_ecbdescs, edl);
-		dt_free(dtp, edl);
-	}
 
 	return (0);
 }

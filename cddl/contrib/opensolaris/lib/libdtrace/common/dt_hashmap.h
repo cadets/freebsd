@@ -45,6 +45,10 @@
 #define DTH_MANAGED (1 << 1)
 #define DTH_POINTER (1 << 2)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef int (*dt_hashmap_fn_t)(void *, size_t, void *, void *);
 
 typedef struct {
@@ -68,5 +72,9 @@ void *dt_hashmap_delete(dt_hashmap_t *, void *, size_t);
 void dt_hashmap_free(dt_hashmap_t *, int);
 void dt_hashmap_dump(dt_hashmap_t *, const char *);
 int dt_hashmap_iter(dt_hashmap_t *, dt_hashmap_fn_t, void *);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _DT_HASHMAP_H_ */

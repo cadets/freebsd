@@ -522,8 +522,8 @@ typedef struct dtrace_difv {
 	ctf_id_t dtdv_ctfid;		/* variable CTF identifier */
 	char *dtdv_sym;			/* variable symbol name (if exists) */
 	ctf_file_t *dtdv_ctfp;		/* variable ctfp */
-	struct dt_typefile *dtdv_tf;	/* variable's typefile */
-	struct dt_list *dtdv_stack; 	/* expected stack (if applicable) */
+	void *dtdv_tf;			/* variable's typefile */
+	void *dtdv_stack; 		/* expected stack (if applicable) */
 	dtrace_diftype_t dtdv_storedtype;	/* variable type (see above) */
 #endif
 } dtrace_difv_t;
@@ -991,7 +991,6 @@ typedef struct dof_xlref {
 	uint32_t dofxr_argn;		/* index of argument for DIF_OP_XLARG */
 } dof_xlref_t;
 
-struct dt_basic_block;
 /*
  * DTrace Intermediate Format Object (DIFO)
  *
@@ -1028,7 +1027,7 @@ typedef struct dtrace_difo {
 	char *dtdo_symtab;		/* symbol table (optional) */
 	uint64_t dtdo_symlen;		/* length of symbol table */
 	char **dtdo_types;		/* array of types (dtdo_len size) */
-	struct dt_basic_block *dtdo_bb;	/* first basic block */
+	void *dtdo_bb;			/* first basic block */
 	size_t dtdo_idx;		/* difo identifier */
 	struct dt_inttab *dtdo_inthash;	/* integer hash table (userspace only) */
 #endif

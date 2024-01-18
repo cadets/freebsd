@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2021 Domagoj Stolfa
+ * Copyright (c) 2024 Domagoj Stolfa
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
@@ -36,37 +36,84 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _DT_TYPEFILE_T_
-#define _DT_TYPEFILE_T_
+#ifndef _DT_TYPEFILE_HH_
+#define _DT_TYPEFILE_HH_
 
 #include <dtrace.h>
 
-#include <_dt_typefile.h>
+#include <dt_module.h>
 
-extern dt_list_t typefiles;
+#ifndef __cplusplus
+#error "File should only be included from C++"
+#endif
+
+#include <list>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace dtrace {
+
+template <typename T> using vec = std::vector<T>;
+template <typename T> using uptr = std::unique_ptr<T>;
+template <typename K, typename T> using umap = std::unordered_map<K, T>;
+using std::pair;
+using std::list;
+
+struct struct_ctfinfo {
+	vec<ctf_id_t> ctf_types;
+	ssize_t current_offs = 0;
+};
+
+class typefile {
+    private:
+	umap<ctf_id_t, vec<ctf_id_t>> struct_info;
+
+    public:
+	dtrace_hdl_t *dtp = nullptr;
+	dt_module_t *modhdl = nullptr;
+	std::string modname = { 0 };
+
+    public:
+	typefile(dtrace_hdl_t *, dt_module_t *, std::string);
+	typefile(dtrace_hdl_t *, dt_module_t *, const char *);
+	typefile(dtrace_hdl_t *, dt_module_t *, char *);
+
+	ctf_id_t get_ctfid(const char *) const;
+	char *get_typename(ctf_id_t, char *, size_t) const;
+	ctf_id_t get_reference(ctf_id_t) const;
+	ssize_t get_size(ctf_id_t) const;
+	const char *get_errmsg(void) const;
+	ctf_file_t *get_membinfo(ctf_id_t, const char *, ctf_membinfo_t *) const;
+	ctf_id_t get_kind(ctf_id_t) const;
+	ctf_id_t resolve(ctf_id_t);
+	int get_encoding(ctf_id_t, ctf_encoding_t *);
+	int type_compat_with(ctf_id_t, const typefile *, ctf_id_t);
+	vec<ctf_id_t> *build_struct(ctf_id_t);
+	ctf_id_t memb_ctfid(void *);
+	ctf_file_t *get_ctfp(void);
+	ctf_arinfo_t *get_array_info(ctf_id_t);
+
+	const std::string &name() const;
+	const std::optional<std::string> get_typename(ctf_id_t) const;
+};
+
+extern list<uptr<typefile>> typefiles;
 
 void dt_typefile_openall(dtrace_hdl_t *);
+typefile *dt_typefile_first(void);
+typefile *dt_typefile_kernel(void);
+typefile *dt_typefile_D(void);
+typefile *dt_typefile_mod(const char *);
 
-ctf_id_t dt_typefile_ctfid(dt_typefile_t *, const char *);
-char *dt_typefile_typename(dt_typefile_t *, ctf_id_t, char *, size_t);
-ctf_id_t dt_typefile_reference(dt_typefile_t *, ctf_id_t);
-ssize_t dt_typefile_typesize(dt_typefile_t *, ctf_id_t);
-const char *dt_typefile_error(dt_typefile_t *);
-ctf_file_t *dt_typefile_membinfo(dt_typefile_t *, ctf_id_t,
-    const char *, ctf_membinfo_t *);
-ctf_id_t dt_typefile_typekind(dt_typefile_t *, ctf_id_t);
-dt_typefile_t *dt_typefile_first(void);
-dt_typefile_t *dt_typefile_kernel(void);
-dt_typefile_t *dt_typefile_D(void);
-ctf_id_t dt_typefile_resolve(dt_typefile_t *, ctf_id_t);
-dt_typefile_t *dt_typefile_mod(const char *);
-int dt_typefile_encoding(dt_typefile_t *, ctf_id_t, ctf_encoding_t *);
-const char *dt_typefile_stringof(dt_typefile_t *);
-int dt_typefile_compat(dt_typefile_t *, ctf_id_t, dt_typefile_t *, ctf_id_t);
-void *dt_typefile_buildup_struct(dt_typefile_t *, ctf_id_t);
-void *dt_typefile_struct_next(void *);
-ctf_id_t dt_typefile_memb_ctfid(void *);
-ctf_file_t *dt_typefile_getctfp(dt_typefile_t *);
-ctf_arinfo_t *dt_typefile_array_info(dt_typefile_t *, ctf_id_t);
+constexpr typefile *
+v2tf(void *tf)
+{
+
+	return (static_cast<typefile *>(tf));
+}
+
+};
 
 #endif

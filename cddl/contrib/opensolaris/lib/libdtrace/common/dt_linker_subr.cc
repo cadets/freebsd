@@ -29,19 +29,34 @@
 #include <sys/dtrace.h>
 
 #include <assert.h>
-#include <dt_basic_block.h>
-#include <dt_ifgnode.h>
+#include <dt_basic_block.hh>
+#include <dt_dfg.hh>
 #include <dt_impl.h>
-#include <dt_linker_subr.h>
-#include <dt_list.h>
+#include <dt_linker_subr.hh>
 #include <dt_module.h>
 #include <dt_program.h>
-#include <dt_typefile.h>
+#include <dt_typefile.hh>
 #include <dtrace.h>
 #include <err.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+dtrace_difv_t *
+dt_get_variable(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
+{
+	for (auto i = 0; i < difo->dtdo_varlen; i++) {
+		auto var = &difo->dtdo_vartab[i];
+
+		if (var->dtdv_scope == scope && var->dtdv_kind == kind &&
+		    var->dtdv_id == varid)
+			return (var);
+	}
+
+	return (nullptr);
+}
+
+namespace dtrace {
 
 int
 dt_subr_clobbers(uint16_t subr)
@@ -147,14 +162,14 @@ dt_var_is_builtin(uint16_t var)
 }
 
 int
-dt_clobbers_var(dif_instr_t instr, dt_node_kind_t *nkind)
+dt_clobbers_var(dif_instr_t instr, dfg_node_data &data)
 {
 	uint8_t opcode;
 	uint16_t v;
 	uint8_t scope, varkind;
 
-	scope = nkind->dtnk_scope;
-	varkind = nkind->dtnk_varkind;
+	scope = data.scope();
+	varkind = data.varkind();
 
 	if (varkind == DIFV_KIND_ARRAY)
 		return (0);
@@ -167,7 +182,7 @@ dt_clobbers_var(dif_instr_t instr, dt_node_kind_t *nkind)
 			return (0);
 
 		v = DIF_INSTR_VAR(instr);
-		if (nkind->dtnk_var == v)
+		if (data.var() == v)
 			return (1);
 		break;
 
@@ -176,7 +191,7 @@ dt_clobbers_var(dif_instr_t instr, dt_node_kind_t *nkind)
 			return (0);
 
 		v = DIF_INSTR_VAR(instr);
-		if (nkind->dtnk_var == v)
+		if (data.var() == v)
 			return (1);
 		break;
 
@@ -185,7 +200,7 @@ dt_clobbers_var(dif_instr_t instr, dt_node_kind_t *nkind)
 			return (0);
 
 		v = DIF_INSTR_VAR(instr);
-		if (nkind->dtnk_var == v)
+		if (data.var() == v)
 			return (1);
 		break;
 	}
@@ -194,43 +209,15 @@ dt_clobbers_var(dif_instr_t instr, dt_node_kind_t *nkind)
 }
 
 dtrace_difv_t *
-dt_get_variable(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
+dt_get_var_from_vec(uint16_t varid, int scope, int kind)
 {
-	dtrace_difv_t *var;
-	size_t i;
-
-	var = NULL;
-	i = 0;
-
-	for (i = 0; i < difo->dtdo_varlen; i++) {
-		var = &difo->dtdo_vartab[i];
-
-		if (var->dtdv_scope == scope && var->dtdv_kind == kind &&
-		    var->dtdv_id == varid)
-			return (var);
+	for (auto &v : var_vector) {
+		if (v->dtdv_scope == scope && v->dtdv_kind == kind &&
+		    v->dtdv_id == varid)
+			return (v.get());
 	}
 
-	return (NULL);
-}
-
-dtrace_difv_t *
-dt_get_var_from_varlist(uint16_t varid, int scope, int kind)
-{
-	dtrace_difv_t *var;
-	dt_var_entry_t *ve;
-
-	ve = NULL;
-	var = NULL;
-
-	for (ve = dt_list_next(&var_list); ve; ve = dt_list_next(ve)) {
-		var = ve->dtve_var;
-
-		if (var->dtdv_scope == scope && var->dtdv_kind == kind &&
-		    var->dtdv_id == varid)
-			return (var);
-	}
-
-	return (NULL);
+	return (nullptr);
 }
 
 void
@@ -282,15 +269,10 @@ void
 dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
     uint8_t scope, uint8_t kind)
 {
-	dt_var_entry_t *ve;
-	dtrace_difv_t *var;
+	dtrace_difv_t *var = nullptr;
 	dtrace_difv_t *difv;
 	ctf_file_t *d_ctfp;
 	dt_module_t *d_mod;
-	int needs_append = 0;
-
-	ve = NULL;
-	var = NULL;
 
 	/*
 	 * Search through the existing variable list looking for
@@ -298,18 +280,19 @@ dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
 	 * we will simply break out of the loop and move onto
 	 * the next instruction.
 	 */
-	for (ve = dt_list_next(&var_list); ve; ve = dt_list_next(ve)) {
-		var = ve->dtve_var;
-		if (var->dtdv_scope == scope && var->dtdv_kind == kind &&
-		    var->dtdv_id == varid)
+	for (auto &v : var_vector) {
+		if (v->dtdv_scope == scope && v->dtdv_kind == kind &&
+		    v->dtdv_id == varid) {
+			var = v.get();
 			break;
+		}
 	}
 
-	if (ve == NULL)
-		var = NULL;
+	if (var && var->dtdv_ctfid != CTF_ERR)
+		return;
 
 	difv = dt_get_variable(difo, varid, scope, kind);
-	if (difv == NULL)
+	if (difv == nullptr)
 		errx(EXIT_FAILURE, "%s(): failed to find variable (%u, %d, %d)",
 		    __func__, varid, scope, kind);
 
@@ -318,18 +301,16 @@ dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
 	 * copy the contents of the variable in the DIFO table
 	 * into the newly allocated region.
 	 */
-	if (var == NULL) {
-		var = malloc(sizeof(dtrace_difv_t));
-		if (var == NULL)
+	if (var == nullptr) {
+		var_vector.push_back(std::make_unique<dtrace_difv_t>());
+		var = var_vector.back().get();
+		if (var == nullptr)
 			errx(EXIT_FAILURE, "failed to allocate a new variable");
 		memset(var, 0, sizeof(dtrace_difv_t));
 		var->dtdv_ctfid = CTF_ERR;
-		needs_append = 1;
 	}
 
-	if (var->dtdv_ctfid != CTF_ERR)
-		return;
-
+	assert(var->dtdv_ctfid == CTF_ERR);
 	memcpy(var, difv, sizeof(dtrace_difv_t));
 
 	d_mod = dt_module_lookup_by_name(dtp, "D");
@@ -354,18 +335,6 @@ dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
 		var->dtdv_tf = dt_typefile_D();
 		var->dtdv_storedtype = difv->dtdv_storedtype;
 	}
-
-	if (needs_append) {
-		ve = malloc(sizeof(dt_var_entry_t));
-		if (ve == NULL)
-			errx(EXIT_FAILURE,
-			    "failed to allocate a new varlist entry");
-
-		memset(ve, 0, sizeof(dt_var_entry_t));
-		ve->dtve_var = var;
-
-		dt_list_append(&var_list, ve);
-	}
 }
 
 int
@@ -379,14 +348,9 @@ dt_var_uninitialized(dtrace_difv_t *difv)
 void
 dt_insert_var_by_difv(dtrace_hdl_t *dtp, dtrace_difv_t *difv)
 {
-	dt_var_entry_t *ve;
-	dtrace_difv_t *var;
+	dtrace_difv_t *var = nullptr;
 	ctf_file_t *d_ctfp;
 	dt_module_t *d_mod;
-	int needs_append = 0;
-
-	ve = NULL;
-	var = NULL;
 
 	/*
 	 * Search through the existing variable list looking for
@@ -394,34 +358,34 @@ dt_insert_var_by_difv(dtrace_hdl_t *dtp, dtrace_difv_t *difv)
 	 * we will simply break out of the loop and move onto
 	 * the next instruction.
 	 */
-	for (ve = dt_list_next(&var_list); ve; ve = dt_list_next(ve)) {
-		var = ve->dtve_var;
-		if (var->dtdv_scope == difv->dtdv_scope &&
-		    var->dtdv_kind == difv->dtdv_kind &&
-		    var->dtdv_id == difv->dtdv_id)
+	for (auto &v : var_vector) {
+		if (v->dtdv_scope == difv->dtdv_scope &&
+		    v->dtdv_kind == difv->dtdv_kind &&
+		    v->dtdv_id == difv->dtdv_id) {
+			var = v.get();
 			break;
+		}
 	}
 
-	if (ve == NULL)
-		var = NULL;
+	if (var && var->dtdv_ctfid != CTF_ERR)
+		return;
 
 	/*
 	 * Allocate a new variable to be put into our list and
 	 * copy the contents of the variable in the DIFO table
 	 * into the newly allocated region.
 	 */
-	if (var == NULL) {
-		var = malloc(sizeof(dtrace_difv_t));
-		if (var == NULL)
+	if (var == nullptr) {
+		var_vector.push_back(std::make_unique<dtrace_difv_t>());
+		var = var_vector.back().get();
+		if (var == nullptr)
 			errx(EXIT_FAILURE, "failed to allocate a new variable");
 		memset(var, 0, sizeof(dtrace_difv_t));
 		var->dtdv_ctfid = CTF_ERR;
-		needs_append = 1;
 	}
 
-	if (var->dtdv_ctfid != CTF_ERR)
-		return;
 
+	assert(var->dtdv_ctfid == CTF_ERR);
 	memcpy(var, difv, sizeof(dtrace_difv_t));
 
 	d_mod = dt_module_lookup_by_name(dtp, "D");
@@ -445,36 +409,16 @@ dt_insert_var_by_difv(dtrace_hdl_t *dtp, dtrace_difv_t *difv)
 		var->dtdv_tf = dt_typefile_D();
 		var->dtdv_storedtype = difv->dtdv_type;
 	}
-
-	if (needs_append) {
-		ve = malloc(sizeof(dt_var_entry_t));
-		if (ve == NULL)
-			errx(EXIT_FAILURE,
-			    "failed to allocate a new varlist entry");
-
-		memset(ve, 0, sizeof(dt_var_entry_t));
-		ve->dtve_var = var;
-
-		dt_list_append(&var_list, ve);
-	}
 }
 
 void
 dt_populate_varlist(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 {
-	dt_var_entry_t *ve;
-	dtrace_difv_t *var, *difv;
+	dtrace_difv_t *difv;
 	size_t i;
 	uint8_t opcode;
 	dif_instr_t instr;
 	uint16_t varid;
-
-	ve = NULL;
-	var = NULL;
-	i = 0;
-	opcode = 0;
-	instr = 0;
-	varid = 0;
 
 	for (i = 0; i < difo->dtdo_varlen; i++) {
 		difv = &difo->dtdo_vartab[i];
@@ -529,54 +473,20 @@ dt_populate_varlist(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	}
 }
 
-dt_stacklist_t *
-dt_get_stack(dt_basic_block_t **bb_path, ssize_t bb_path_len, dt_ifg_node_t *n)
+ssize_t
+dt_get_stack(vec<basic_block *> &bb_path, dfg_node *n)
 {
-	dt_stacklist_t *sl;
-	dt_bb_entry_t *bb_l;
-	dt_basic_block_t *bb;
-	ssize_t i;
-	int equal;
+	assert(!bb_path.empty());
 
-	sl = NULL;
-
-	if (bb_path_len <= 0)
-		return (NULL);
-
-	for (sl = dt_list_next(&n->din_stacklist); sl; sl = dt_list_next(sl)) {
-		equal = 1;
-		for (i = 0, bb_l = dt_list_next(&sl->dsl_identifier);
-		     i < bb_path_len && bb_l; i++, bb_l = dt_list_next(bb_l)) {
-			bb = bb_l->dtbe_bb;
-			if (bb != bb_path[i])
-				equal = 0;
+	for (ssize_t i = 0; i < n->stacks.size(); i++) {
+		auto &s = n->stacks[i];
+		if (s.identifier == bb_path) {
+			return (i);
 		}
-
-		if (equal != 0)
-			break;
 	}
 
-	if (sl == NULL) {
-		sl = malloc(sizeof(dt_stacklist_t));
-		if (sl == NULL)
-			errx(EXIT_FAILURE, "failed to malloc sl");
+	n->stacks.push_back(stackdata(bb_path));
+	return (n->stacks.size() - 1);
+}
 
-		memset(sl, 0, sizeof(dt_stacklist_t));
-
-		for (i = 0; i < bb_path_len; i++) {
-			dt_bb_entry_t *bb_path_entry;
-			bb_path_entry = malloc(sizeof(dt_bb_entry_t));
-			if (bb_path_entry == NULL)
-				errx(EXIT_FAILURE,
-				    "dt_get_stack(): malloc failed for "
-				    "bb_path_entry");
-
-			bb_path_entry->dtbe_bb = bb_path[i];
-			dt_list_append(&sl->dsl_identifier, bb_path_entry);
-		}
-
-		dt_list_append(&n->din_stacklist, sl);
-	}
-
-	return (sl);
 }

@@ -1,8 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
- *
- * Copyright (c) 2020 Domagoj Stolfa.
- * All rights reserved.
+ * Copyright (c) 2020, 2021 Domagoj Stolfa
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
@@ -26,10 +23,10 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY NETAPP, INC ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL NETAPP, INC OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -39,16 +36,43 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _DT_BASIC_BLOCK_H_
-#define _DT_BASIC_BLOCK_H_
+#ifndef _DT_TYPING_H_
+#define _DT_TYPING_H_
 
 #include <sys/dtrace.h>
+#include <dtrace.h>
 
-#include <_dt_basic_block.h>
+#define DTC_BOTTOM  -1
+#define DTC_INT      0
+#define DTC_STRUCT   1
+#define DTC_STRING   2
+#define DTC_FORWARD  3
+#define DTC_UNION    4
+#define DTC_ENUM     5
 
-extern dt_basic_block_t *dt_alloc_bb(dtrace_difo_t *);
-extern dt_bb_entry_t *dt_alloc_bb_e(dtrace_difo_t *);
-extern void dt_compute_bb(dtrace_difo_t *);
+#ifndef __cplusplus
+#error "This file should only be included from C++"
+#endif
 
+#include <dt_dfg.hh>
 
-#endif /* _DT_BASIC_BLOCK_H_ */
+#include <unordered_set>
+#include <vector>
+
+namespace dtrace {
+
+template <typename T> using vec = std::vector<T>;
+template <typename T> using uset = std::unordered_set<T>;
+
+extern int dt_prog_infer_types(dtrace_hdl_t *, dtrace_prog_t *,
+    dtrace_difo_t *);
+extern int dt_infer_type(dfg_node *);
+extern int dt_infer_type_subr(dfg_node *, node_vec *);
+extern int dt_var_stack_typecheck(dfg_node *, dfg_node *,
+    dtrace_difv_t *);
+extern node_vec *dt_typecheck_stack(dfg_node *, vec<stackdata> &, int *);
+extern dfg_node *dt_typecheck_regdefs(dfg_node *, node_set &, int *);
+
+}
+
+#endif /* _DT_TYPING_H_ */

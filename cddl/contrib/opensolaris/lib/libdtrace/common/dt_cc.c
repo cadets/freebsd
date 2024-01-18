@@ -1781,7 +1781,7 @@ dt_setcontext(dtrace_hdl_t *dtp, dtrace_probedesc_t *pdp)
 		err = 0;
 	}
 
-	if (dt_hypertrace_enabled(dtp) == 0 && err == EDT_NOPROBE &&
+	if (dtrace_hypertrace_enabled(dtp) == 0 && err == EDT_NOPROBE &&
 	    !(yypcb->pcb_cflags & DTRACE_C_ZDEFS)) {
 		xyerror(D_PDESC_ZERO,
 		    "probe description %s:%s:%s:%s:%s does not "

@@ -42,6 +42,10 @@
 
 #include <dt_program.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * dt_elf_ref_t: A context-dependent reference to another ELF section.
  */
@@ -270,5 +274,8 @@ extern dtrace_prog_t *dt_elf_to_prog(dtrace_hdl_t *, int, int,
     int *, dtrace_prog_t *);
 extern void dtrace_use_elf(dtrace_hdl_t *);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _DT_ELF_H_ */

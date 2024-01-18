@@ -65,7 +65,7 @@ dt_resolve(const char *target, uint32_t flags)
 }
 
 void
-dt_resolver_setflags(uint32_t flags)
+dtrace_resolver_setflags(uint32_t flags)
 {
 
 	resolve_flags = flags;

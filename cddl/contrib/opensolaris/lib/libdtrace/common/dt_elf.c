@@ -2458,7 +2458,7 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd, char *filename,
 }
 
 char *
-dt_get_srcident(char *buf)
+dtrace_get_srcident(char *buf)
 {
 
 	memcpy(buf, g_saved_srcident, DT_PROG_IDENTLEN);

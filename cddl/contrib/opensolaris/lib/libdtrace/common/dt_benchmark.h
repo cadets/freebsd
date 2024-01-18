@@ -51,6 +51,10 @@
 
 #ifdef __DTRACE_RUN_BENCHMARKS__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef char   *dt_snapshot_name_t;
 typedef size_t dt_snapshot_hdl_t;
 
@@ -171,6 +175,10 @@ typedef size_t dt_snapshot_hdl_t;
 #define  __dt_bench_snapshot_time(...) (0)
 #define  __dt_bench_stop_time(...)
 #define  __dt_bench_new_time(...) ((void *)1) /* XXX: Oof. */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __DTRACE_RUN_BENCHMARKS__ */
 
