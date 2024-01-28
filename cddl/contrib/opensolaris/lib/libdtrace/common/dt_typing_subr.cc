@@ -60,8 +60,8 @@
 
 namespace dtrace {
 
-static void
-dt_arg_cmpwith(dfg_node *arg, typefile **tfs, size_t ntfs,
+void
+TypeInference::argCmpWith(dfg_node *arg, typefile **tfs, size_t ntfs,
     const char *type, char *buf, size_t bufsize, const char *loc,
     int subtype_relation)
 {
@@ -126,7 +126,7 @@ dt_arg_cmpwith(dfg_node *arg, typefile **tfs, size_t ntfs,
 }
 
 int
-dt_infer_type_subr(dfg_node *n, node_vec *stack)
+TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 {
 	uint16_t subr;
 	dif_instr_t instr;
@@ -243,7 +243,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, t_mtx, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
@@ -263,7 +263,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, t_mtx, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
@@ -283,7 +283,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, t_rw, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
@@ -303,7 +303,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, t_rw, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
@@ -323,7 +323,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, t_rw, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
@@ -343,7 +343,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -354,7 +354,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		dt_arg_cmpwith(arg1,
+		argCmpWith(arg1,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -375,7 +375,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -387,7 +387,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		if (stack->size() > 1) {
 			arg1 = (*stack)[i++];
 			assert(arg1->tf != nullptr);
-			dt_arg_cmpwith(arg1,
+			argCmpWith(arg1,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -413,7 +413,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "pid_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -434,7 +434,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		if (arg0->d_type == DIF_TYPE_CTF)
-			dt_arg_cmpwith(arg0,
+			argCmpWith(arg0,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -458,7 +458,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
@@ -468,7 +468,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		dt_arg_cmpwith(arg1,
+		argCmpWith(arg1,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -479,7 +479,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg2 = (*stack)[i++];
 		assert(arg2->tf != nullptr);
-		dt_arg_cmpwith(arg2,
+		argCmpWith(arg2,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -495,7 +495,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		arg0 = (*stack)[i++];
 
 		if (arg0->d_type == DIF_TYPE_CTF)
-			dt_arg_cmpwith(arg0,
+			argCmpWith(arg0,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "char *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -509,7 +509,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		dt_arg_cmpwith(arg1,
+		argCmpWith(arg1,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -520,7 +520,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg2 = (*stack)[i++];
 		assert(arg2->tf != nullptr);
-		dt_arg_cmpwith(arg2,
+		argCmpWith(arg2,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -535,7 +535,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -556,7 +556,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
@@ -566,7 +566,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		dt_arg_cmpwith(arg1,
+		argCmpWith(arg1,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
@@ -576,7 +576,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg2 = (*stack)[i++];
 		assert(arg2->tf != nullptr);
-		dt_arg_cmpwith(arg2,
+		argCmpWith(arg2,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -591,7 +591,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -602,7 +602,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		dt_arg_cmpwith(arg1,
+		argCmpWith(arg1,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -613,7 +613,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg2 = (*stack)[i++];
 		assert(arg2->tf != nullptr);
-		dt_arg_cmpwith(arg2,
+		argCmpWith(arg2,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
@@ -628,7 +628,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "mblk_t *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -654,7 +654,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
@@ -664,7 +664,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		dt_arg_cmpwith(arg1,
+		argCmpWith(arg1,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "int64_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -679,7 +679,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "int64_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -691,7 +691,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		if (stack->size() > 1) {
 			arg1 = (*stack)[i++];
 			assert(arg1->tf != nullptr);
-			dt_arg_cmpwith(arg1,
+			argCmpWith(arg1,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -710,7 +710,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		arg0 = (*stack)[i++];
 
 		if (arg0->d_type == DIF_TYPE_CTF)
-			dt_arg_cmpwith(arg0,
+			argCmpWith(arg0,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -729,7 +729,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		if (arg0->d_type == DIF_TYPE_CTF)
-			dt_arg_cmpwith(arg0,
+			argCmpWith(arg0,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -743,7 +743,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		dt_arg_cmpwith(arg1,
+		argCmpWith(arg1,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "char", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -758,7 +758,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		if (arg0->d_type == DIF_TYPE_CTF)
-			dt_arg_cmpwith(arg0,
+			argCmpWith(arg0,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -772,7 +772,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		dt_arg_cmpwith(arg1,
+		argCmpWith(arg1,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -784,7 +784,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		if (stack->size() > 2) {
 			arg2 = (*stack)[i++];
 			assert(arg2->tf != nullptr);
-			dt_arg_cmpwith(arg2,
+			argCmpWith(arg2,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -801,7 +801,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		if (arg0->d_type == DIF_TYPE_CTF)
-			dt_arg_cmpwith(arg0,
+			argCmpWith(arg0,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -816,7 +816,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		arg1 = (*stack)[i++];
 
 		if (arg0->d_type == DIF_TYPE_CTF)
-			dt_arg_cmpwith(arg1,
+			argCmpWith(arg1,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -831,7 +831,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		if (stack->size() > 2) {
 			arg2 = (*stack)[i++];
 			assert(arg2->tf != nullptr);
-			dt_arg_cmpwith(arg2,
+			argCmpWith(arg2,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -854,7 +854,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uint16_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -876,7 +876,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uint32_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -898,7 +898,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uint64_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -919,7 +919,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -930,7 +930,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		dt_arg_cmpwith(arg1,
+		argCmpWith(arg1,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
@@ -944,7 +944,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "in_addr_t *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -959,7 +959,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "struct in6_addr *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -976,7 +976,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		arg0 = (*stack)[i++];
 
 		if (arg0->d_type == DIF_TYPE_CTF)
-			dt_arg_cmpwith(arg0,
+			argCmpWith(arg0,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -994,7 +994,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
@@ -1004,7 +1004,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		dt_arg_cmpwith(arg1,
+		argCmpWith(arg1,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -1027,7 +1027,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, t_sx, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
@@ -1047,7 +1047,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
@@ -1057,7 +1057,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		dt_arg_cmpwith(arg1,
+		argCmpWith(arg1,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "char", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -1068,7 +1068,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg2 = (*stack)[i++];
 		assert(arg2->tf != nullptr);
-		dt_arg_cmpwith(arg2,
+		argCmpWith(arg2,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -1083,7 +1083,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -1104,7 +1104,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		if (arg0->d_type == DIF_TYPE_CTF)
-			dt_arg_cmpwith(arg0,
+			argCmpWith(arg0,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -1119,7 +1119,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		if (stack->size() > 1) {
 			arg1 = (*stack)[i++];
 			assert(arg1->tf != nullptr);
-			dt_arg_cmpwith(arg1,
+			argCmpWith(arg1,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -1151,7 +1151,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		dt_arg_cmpwith(arg0,
+		argCmpWith(arg0,
 		    (typefile *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -1175,7 +1175,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		if (arg0->d_type == DIF_TYPE_CTF)
-			dt_arg_cmpwith(arg0,
+			argCmpWith(arg0,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
@@ -1189,7 +1189,7 @@ dt_infer_type_subr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		if (arg1->d_type == DIF_TYPE_CTF)
-			dt_arg_cmpwith(arg1,
+			argCmpWith(arg1,
 			    (typefile *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),

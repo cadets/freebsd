@@ -64,14 +64,27 @@ namespace dtrace {
 template <typename T> using vec = std::vector<T>;
 template <typename T> using uset = std::unordered_set<T>;
 
-extern int dt_prog_infer_types(dtrace_hdl_t *, dtrace_prog_t *,
-    dtrace_difo_t *);
-extern int dt_infer_type(dfg_node *);
-extern int dt_infer_type_subr(dfg_node *, node_vec *);
-extern int dt_var_stack_typecheck(dfg_node *, dfg_node *,
-    dtrace_difv_t *);
-extern node_vec *dt_typecheck_stack(dfg_node *, vec<stackdata> &, int *);
-extern dfg_node *dt_typecheck_regdefs(dfg_node *, node_set &, int *);
+class TypeInference {
+    private:
+	dtrace_hdl_t *dtp;
+	dtrace_prog_t *pgp;
+
+    private:
+	int inferNode(dfg_node *);
+	int inferSubr(dfg_node *, node_vec *);
+	int inferVar(dtrace_difo_t *, dfg_node *, dtrace_difv_t *);
+	int checkVarStack(dfg_node *, dfg_node *, dtrace_difv_t *);
+	node_vec *checkStack(dfg_node *, vec<stackdata> &, int *);
+	dfg_node *checkRegDefs(dfg_node *, node_set &, int *);
+	dfg_node *checkVarDefs(dfg_node *, dtrace_difo_t *, node_set &, int *);
+	void argCmpWith(dfg_node *, typefile **, size_t, const char *, char *,
+	    size_t, const char *, int);
+	void setBuiltinType(dfg_node *, uint16_t, uint8_t);
+
+    public:
+	TypeInference(dtrace_hdl_t *, dtrace_prog_t *);
+	int inferDIFO(dtrace_difo_t *);
+};
 
 }
 

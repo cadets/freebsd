@@ -64,7 +64,7 @@ namespace dtrace {
  * the expected type of said builtin variable.
  */
 void
-dt_builtin_type(dfg_node *n, uint16_t var, uint8_t idx)
+TypeInference::setBuiltinType(dfg_node *n, uint16_t var, uint8_t idx)
 {
 	argcheck_cookie cookie = { 0 };
 	dtrace_probedesc_t *pdesc;
@@ -534,11 +534,11 @@ dt_infer_type_arg(
 }
 
 /*
- * dt_infer_type_var() figures out the type of a variable in the varlist and
+ * inferVar() figures out the type of a variable in the varlist and
  * typechecks it against dr.
  */
 int
-dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
+TypeInference::inferVar(dtrace_difo_t *difo, dfg_node *dr,
     dtrace_difv_t *dif_var)
 {
 	char buf[4096] = {0}, var_type[4096] = {0};
@@ -550,7 +550,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
 
 	if (dr == nullptr && dif_var == nullptr) {
 		fprintf(stderr,
-		    "dt_infer_type_var(): both dr and dif_var are nullptr\n");
+		    "inferVar(): both dr and dif_var are nullptr\n");
 		return (-1);
 	}
 
@@ -559,7 +559,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
 
 	if (dif_var == nullptr) {
 		fprintf(stderr,
-		    "dt_infer_type_var(): dif_var is nullptr, this makes "
+		    "inferVar(): dif_var is nullptr, this makes "
 		    "no sense\n");
 		return (-1);
 	}
@@ -595,7 +595,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
 			if (dr->tf->get_typename(dr->ctfid, buf, sizeof(buf)) !=
 			    ((char *)buf))
 				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type_var(): failed at getting "
+				    "inferVar(): failed at getting "
 				    "type name %ld: %s\n",
 				    dr->ctfid,
 				    dr->tf->get_errmsg());
@@ -614,7 +614,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
 			    dif_var->dtdv_ctfid, var_type,
 			    sizeof(var_type)) != ((char *)var_type))
 				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type_var(): failed at getting "
+				    "inferVar(): failed at getting "
 				    "type name %ld: %s\n",
 				    dif_var->dtdv_ctfid,
 				    v2tf(dif_var->dtdv_tf)->get_errmsg());
@@ -629,7 +629,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
 			strcpy(var_type, "unknown");
 
 		fprintf(stderr,
-		    "dt_infer_type_var(): dif_var and dr have different "
+		    "inferVar(): dif_var and dr have different "
 		    "types: %s (%d%s) != %s (%d%s)\n",
 		    var_type, dif_var->dtdv_type.dtdt_kind, b1, buf,
 		    dr->d_type, b2);
@@ -639,7 +639,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
 
 	if (dr->d_type == DIF_TYPE_NONE || dr->d_type == DIF_TYPE_BOTTOM)
 		dt_set_progerr(g_dtp, g_pgp,
-		    "dt_infer_type_var(): unexpected type %d\n", dr->d_type);
+		    "inferVar(): unexpected type %d\n", dr->d_type);
 
 	if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_STRING)
 		return (DIF_TYPE_STRING);
@@ -648,7 +648,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
 		if (v2tf(dif_var->dtdv_tf)->get_typename(dif_var->dtdv_ctfid,
 		    var_type, sizeof(var_type)) != ((char *)var_type))
 			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type_var(): failed at getting "
+			    "inferVar(): failed at getting "
 			    "type name %ld: %s\n",
 			    dif_var->dtdv_ctfid,
 			    v2tf(dif_var->dtdv_tf)->get_errmsg());
@@ -656,7 +656,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
 		if (dr->tf->get_typename(dr->ctfid, buf,
 		    sizeof(buf)) != ((char *)buf))
 			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type_var(): failed at getting "
+			    "inferVar(): failed at getting "
 			    "type name %ld: %s\n",
 			    dr->ctfid, dr->tf->get_errmsg());
 
@@ -665,7 +665,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
 
 		if (rv != 0) {
 			fprintf(stderr,
-			    "dt_infer_type_var(): type mismatch "
+			    "inferVar(): type mismatch "
 			    "in variable store: %s != %s\n",
 			    var_type, buf);
 
@@ -686,14 +686,14 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
 			if (dr->sym && strcmp(
 			    dif_var->dtdv_sym, dr->sym) != 0) {
 				fprintf(stderr,
-				    "dt_infer_type_var(): symbol name "
+				    "inferVar(): symbol name "
 				    "mismatch: %s != %s\n",
 				    dif_var->dtdv_sym, dr->sym);
 
 				return (-1);
 			} else if (dr->sym == nullptr) {
 				fprintf(stderr,
-				    "dt_infer_type_var(): sym is nullptr\n");
+				    "inferVar(): sym is nullptr\n");
 				return (-1);
 			}
 		}
@@ -715,7 +715,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dfg_node *dr,
  * which is done using the var_list.
  */
 dfg_node *
-dt_typecheck_vardefs(dfg_node *n, dtrace_difo_t *difo, node_set &defs,
+TypeInference::checkVarDefs(dfg_node *n, dtrace_difo_t *difo, node_set &defs,
     int *empty)
 {
 	dfg_node *node, *onode;
@@ -755,7 +755,7 @@ dt_typecheck_vardefs(dfg_node *n, dtrace_difo_t *difo, node_set &defs,
 		 * allowing us to construct any type we find convenient.
 		 */
 		otype = type;
-		type = dt_infer_type(node);
+		type = inferNode(node);
 
 		/*
 		 * We failed to infer the type to begin with, bail out.

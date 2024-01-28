@@ -69,7 +69,7 @@ static list<uptr<node_vec>> var_nodevecs;
  * of, ensure that the types there are consistent as well.
  */
 int
-dt_var_stack_typecheck(dfg_node *n, dfg_node *dr1, dtrace_difv_t *dif_var)
+TypeInference::checkVarStack(dfg_node *n, dfg_node *dr1, dtrace_difv_t *dif_var)
 {
 	dfg_node *var_stacknode, *node;
 	std::string var_type, type;
@@ -90,10 +90,10 @@ dt_var_stack_typecheck(dfg_node *n, dfg_node *dr1, dtrace_difv_t *dif_var)
 		auto var_nodeset = var_nodevecs.back().get();
 		dif_var->dtdv_stack = (void *)var_nodeset;
 		if (dif_var->dtdv_stack == nullptr)
-			dt_set_progerr(g_dtp, g_pgp, "failed to malloc dtdv_stack");
+			dt_set_progerr(dtp, pgp, "failed to malloc dtdv_stack");
 
 		if (n->stacks.size() == 0)
-			dt_set_progerr(g_dtp, g_pgp, "sl is nullptr, nonsense.");
+			dt_set_progerr(dtp, pgp, "sl is nullptr, nonsense.");
 
 		for (auto node : n->stacks[0].nodes_on_stack) {
 			var_nodeset->push_back(node);
@@ -134,7 +134,7 @@ dt_var_stack_typecheck(dfg_node *n, dfg_node *dr1, dtrace_difv_t *dif_var)
 			if (node->d_type == DIF_TYPE_CTF) {
 				auto opt = node->tf->get_typename(node->ctfid);
 				if (!opt.has_value())
-					dt_set_progerr(g_dtp, g_pgp,
+					dt_set_progerr(dtp, pgp,
 					    "failed at getting type name %ld: %s",
 					    dr1->ctfid, node->tf->get_errmsg());
 
@@ -142,7 +142,7 @@ dt_var_stack_typecheck(dfg_node *n, dfg_node *dr1, dtrace_difv_t *dif_var)
 				opt = var_stacknode->tf->get_typename(
 				    var_stacknode->ctfid);
 				if (!opt.has_value())
-					dt_set_progerr(g_dtp, g_pgp,
+					dt_set_progerr(dtp, pgp,
 					    "failed at getting type name %ld: %s",
 					    var_stacknode->ctfid,
 					    var_stacknode->tf->get_errmsg());
@@ -166,7 +166,7 @@ dt_var_stack_typecheck(dfg_node *n, dfg_node *dr1, dtrace_difv_t *dif_var)
  * is consistent with its types.
  */
 node_vec *
-dt_typecheck_stack(dfg_node *n, vec<stackdata> &stacks, int *empty)
+TypeInference::checkStack(dfg_node *n, vec<stackdata> &stacks, int *empty)
 {
 	node_vec *stack, *ostack;
 	std::string type1, type2;
@@ -184,8 +184,8 @@ dt_typecheck_stack(dfg_node *n, vec<stackdata> &stacks, int *empty)
 		 * Infer types on the stack.
 		 */
 		for (auto n : *stack) {
-			if (dt_infer_type(n) == -1)
-				dt_set_progerr(g_dtp, g_pgp,
+			if (inferNode(n) == -1)
+				dt_set_progerr(dtp, pgp,
 				    "%s(%p[%zu]): failed to infer "
 				    "type for opcode %d at %zu (%p)\n",
 				    __func__, n->difo, n->uidx,

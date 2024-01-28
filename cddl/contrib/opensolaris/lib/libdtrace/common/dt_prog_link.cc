@@ -876,13 +876,14 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
 	int rval;
 	dtrace_actkind_t actkind;
 	dtrace_diftype_t saved_rtype;
+	TypeInference ti(dtp, pgp);
 
 	rval = dt_compute_dfg(dtp, pgp, ecbdesc, difo);
 	if (rval != 0)
 		return (rval);
 
 	saved_rtype = difo->dtdo_rtype;
-	rval = dt_prog_infer_types(dtp, pgp, difo);
+	rval = ti.inferDIFO(difo);
 	if (rval != 0)
 		return (rval);
 

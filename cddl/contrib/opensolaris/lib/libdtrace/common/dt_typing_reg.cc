@@ -66,7 +66,7 @@ namespace dtrace {
  * are consistent.
  */
 dfg_node *
-dt_typecheck_regdefs(dfg_node *n, node_set &defs, int *empty)
+TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
 {
 	dfg_node *node, *onode;
 	std::string s1, s2;
@@ -137,7 +137,7 @@ dt_typecheck_regdefs(dfg_node *n, node_set &defs, int *empty)
 			continue;
 		}
 
-		type = dt_infer_type(node);
+		type = inferNode(node);
 
 		/*
 		 * We failed to infer the type to begin with, bail out.
@@ -174,7 +174,7 @@ dt_typecheck_regdefs(dfg_node *n, node_set &defs, int *empty)
 				auto opt = other_node->tf->get_typename(
 				    other_node->ctfid);
 				if (!opt.has_value())
-					dt_set_progerr(g_dtp, g_pgp,
+					dt_set_progerr(dtp, pgp,
 					    "dt_typecheck_regdefs(): failed at "
 					    "getting type name node %ld: %s",
 					    other_node->ctfid,
@@ -209,7 +209,7 @@ dt_typecheck_regdefs(dfg_node *n, node_set &defs, int *empty)
 				 */
 				auto opt = onode->tf->get_typename(onode->ctfid);
 				if (!opt.has_value())
-					dt_set_progerr(g_dtp, g_pgp,
+					dt_set_progerr(dtp, pgp,
 					    "dt_typecheck_regdefs(%p[%zu]): failed at "
 					    "getting type name node %ld: %s",
 					    n->difo, n->uidx, onode->ctfid,
@@ -231,7 +231,7 @@ dt_typecheck_regdefs(dfg_node *n, node_set &defs, int *empty)
 				 */
 				auto opt = node->tf->get_typename(node->ctfid);
 				if (!opt.has_value())
-					dt_set_progerr(g_dtp, g_pgp,
+					dt_set_progerr(dtp, pgp,
 					    "dt_typecheck_regdefs(%p[%zu]): failed at "
 					    "getting type name node %ld: %s",
 					    n->difo, n->uidx, node->ctfid,
@@ -241,7 +241,7 @@ dt_typecheck_regdefs(dfg_node *n, node_set &defs, int *empty)
 				ctype_str = "unknown (ERROR)";
 			}
 
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%p[%zu]: failed to typecheck conditional: "
 			    "(branch 1: %s (%zu) != branch 2: %s (%zu))\n",
 			    n->difo, n->uidx, otype_str.c_str(), onode->uidx,
@@ -257,7 +257,7 @@ dt_typecheck_regdefs(dfg_node *n, node_set &defs, int *empty)
 			 */
 			auto opt = node->tf->get_typename(node->ctfid);
 			if (!opt.has_value())
-				dt_set_progerr(g_dtp, g_pgp,
+				dt_set_progerr(dtp, pgp,
 				    "dt_typecheck_regdefs(%p[%zu]): failed at "
 				    "getting type name node %ld: %s",
 				    n->difo, n->uidx, node->ctfid,
@@ -282,7 +282,7 @@ dt_typecheck_regdefs(dfg_node *n, node_set &defs, int *empty)
 			 */
 			opt = onode->tf->get_typename(onode->ctfid);
 			if (!opt.has_value())
-				dt_set_progerr(g_dtp, g_pgp,
+				dt_set_progerr(dtp, pgp,
 				    "dt_typecheck_regdefs(%p[%zu]): failed at "
 				    "getting type onode name %ld: %s",
 				    n->difo, n->uidx, onode->ctfid,
@@ -309,7 +309,7 @@ dt_typecheck_regdefs(dfg_node *n, node_set &defs, int *empty)
 
 			if ((node->sym == nullptr && onode->sym != nullptr) ||
 			    (node->sym != nullptr && onode->sym == nullptr)) {
-				dt_set_progerr(g_dtp, g_pgp,
+				dt_set_progerr(dtp, pgp,
 				    "dt_typecheck_regdefs(%p[%zu]): symbol is "
 				    "missing in a node\n",
 				    n->difo, n->uidx);
@@ -321,7 +321,7 @@ dt_typecheck_regdefs(dfg_node *n, node_set &defs, int *empty)
 			 * because of the above check.
 			 */
 			if (node->sym && strcmp(node->sym, onode->sym) != 0) {
-				dt_set_progerr(g_dtp, g_pgp,
+				dt_set_progerr(dtp, pgp,
 				    "dt_typecheck_regdefs(%p[%zu]): nodes have "
 				    "different symbols: %s != %s\n",
 				    n->difo, n->uidx, node->sym, onode->sym);

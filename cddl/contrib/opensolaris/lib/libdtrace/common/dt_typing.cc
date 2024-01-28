@@ -63,8 +63,11 @@
 
 namespace dtrace {
 
-dtrace_hdl_t *g_dtp;
-dtrace_prog_t *g_pgp;
+TypeInference::TypeInference(dtrace_hdl_t *_dtp, dtrace_prog_t *_pgp)
+    : dtp(_dtp)
+    , pgp(_pgp)
+{
+}
 
 static int
 dt_setx_value(dtrace_difo_t *difo, dif_instr_t instr)
@@ -86,7 +89,7 @@ dt_setx_value(dtrace_difo_t *difo, dif_instr_t instr)
  * This is the main part of the type inference algorithm.
  */
 int
-dt_infer_type(dfg_node *n)
+TypeInference::inferNode(dfg_node *n)
 {
 	dfg_node *dn1, *dn2, *dnv, *tc_n,
 	    *symnode, *other, *var_stacknode, *node,
@@ -231,19 +234,19 @@ dt_infer_type(dfg_node *n)
 	instr = n->get_instruction();
 	opcode = DIF_INSTR_OP(instr);
 
-	dn1 = dt_typecheck_regdefs(n, n->r1_defs, &empty);
+	dn1 = checkRegDefs(n, n->r1_defs, &empty);
 	if (dn1 == nullptr && empty == 0) {
 		fprintf(stderr,
-		    "dt_infer_type(%s, %zu@%p): inferring types "
+		    "inferNode(%s, %zu@%p): inferring types "
 		    "for r1defs failed\n",
 		    insname[opcode].c_str(), n->uidx, n->difo);
 		return (-1);
 	}
 
-	dn2 = dt_typecheck_regdefs(n, n->r2_defs, &empty);
+	dn2 = checkRegDefs(n, n->r2_defs, &empty);
 	if (dn2 == nullptr && empty == 0) {
 		fprintf(stderr,
-		    "dt_infer_type(%s, %zu@%p): inferring types "
+		    "inferNode(%s, %zu@%p): inferring types "
 		    "for r2defs failed\n",
 		    insname[opcode].c_str(), n->uidx, n->difo);
 		return (-1);
@@ -252,16 +255,16 @@ dt_infer_type(dfg_node *n)
 	dnv = dt_typecheck_vardefs(n, difo, n->var_defs, &empty);
 	if (dnv == nullptr && empty == 0) {
 		fprintf(stderr,
-		    "dt_infer_type(%s, %zu@%p): inferring types "
+		    "inferNode(%s, %zu@%p): inferring types "
 		    "for vardefs failed\n",
 		    insname[opcode].c_str(), n->uidx, n->difo);
 		return (-1);
 	}
 
-	stack = dt_typecheck_stack(n, n->stacks, &empty);
+	stack = checkStack(n, n->stacks, &empty);
 	if (stack == nullptr && empty == 0) {
 		fprintf(stderr,
-		    "dt_infer_type(%s, %zu@%p): inferring types "
+		    "inferNode(%s, %zu@%p): inferring types "
 		    "for stack failed\n",
 		    insname[opcode].c_str(), n->uidx, n->difo);
 		return (-1);
@@ -283,7 +286,7 @@ dt_infer_type(dfg_node *n)
 		 */
 		if (dn1 == nullptr) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): dn1 is nullptr\n",
+			    "inferNode(%s, %zu@%p): dn1 is nullptr\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
 		}
@@ -293,14 +296,14 @@ dt_infer_type(dfg_node *n)
 		 */
 		if (dn1->sym == nullptr) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): dn1 symbol is empty\n",
+			    "inferNode(%s, %zu@%p): dn1 symbol is empty\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
 		}
 
 		mip = dt_mip_from_sym(dn1);
 		if (mip == nullptr) {
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s(%s, %zu@%p): failed to get mip: %s.%s: %s\n",
 			    __func__, insname[opcode].c_str(), n->uidx, n->difo,
 			    dn1->tf->get_typename(dn1->ctfid)
@@ -327,7 +330,7 @@ dt_infer_type(dfg_node *n)
 		sym = DIF_INSTR_SYMBOL(instr);
 		if (sym >= difo->dtdo_symlen) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): "
+			    "inferNode(%s, %zu@%p): "
 			    "sym (%u) >= symlen (%" PRIu64 ")\n",
 			    insname[opcode].c_str(), n->uidx, n->difo, sym,
 			    difo->dtdo_symlen);
@@ -337,8 +340,8 @@ dt_infer_type(dfg_node *n)
 		n->tf = dt_typefile_D();
 		n->ctfid = n->tf->get_ctfid("uint64_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to get "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to get "
 			    "type uint64_t: %s",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    n->tf->get_errmsg());
@@ -360,7 +363,7 @@ dt_infer_type(dfg_node *n)
 		sym = DIF_INSTR_SYMBOL(instr);
 		if (sym >= difo->dtdo_symlen) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): "
+			    "inferNode(%s, %zu@%p): "
 			    "sym (%u) >= symlen (%" PRIu64 ")\n",
 			    insname[opcode].c_str(), n->uidx, n->difo, sym,
 			    difo->dtdo_symlen);
@@ -369,8 +372,8 @@ dt_infer_type(dfg_node *n)
 
 		l = strlcpy(symname, difo->dtdo_symtab + sym, sizeof(symname));
 		if (l >= sizeof(symname))
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): "
 			    "length (%zu) >= %zu when copying type name",
 			    insname[opcode].c_str(), n->uidx, n->difo, l,
 			    sizeof(symname));
@@ -380,8 +383,8 @@ dt_infer_type(dfg_node *n)
 
 			tmpbuf = (char *)malloc(sizeof(symname));
 			if (tmpbuf == nullptr)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): "
 				    "malloc() failed: %s",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    strerror(errno));
@@ -417,8 +420,8 @@ dt_infer_type(dfg_node *n)
 		n->ctfid = dt_autoresolve_ctfid(n->edp->dted_probe.dtpd_mod,
 		    symname, &n->tf);
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to get "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to get "
 			    "type %s: %s",
 			    insname[opcode].c_str(), n->uidx, n->difo, symname,
 			    n->tf->get_errmsg());
@@ -482,14 +485,14 @@ dt_infer_type(dfg_node *n)
 		 */
 		if (dn1 == nullptr) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): dn1 is nullptr\n",
+			    "inferNode(%s, %zu@%p): dn1 is nullptr\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
 		}
 
 		if (dn2 == nullptr) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): dn2 is nullptr\n",
+			    "inferNode(%s, %zu@%p): dn2 is nullptr\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
 		}
@@ -515,7 +518,7 @@ dt_infer_type(dfg_node *n)
 				other = dn1;
 			} else {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p) nosym: types can "
+				    "inferNode(%s, %zu@%p) nosym: types can "
 				    "not be compared\n",
 				    insname[opcode].c_str(), n->uidx, n->difo);
 				return (-1);
@@ -525,7 +528,7 @@ dt_infer_type(dfg_node *n)
 			if (opcode == DIF_OP_ADD &&
 			    (k == CTF_K_STRUCT || k == CTF_K_UNION) &&
 			    other->integer.has_value()) {
-				mip = dt_mip_by_offset(g_dtp, tc_n->tf,
+				mip = dt_mip_by_offset(dtp, tc_n->tf,
 				    tc_n->ctfid, other->integer.value());
 				if (mip == nullptr) {
 					n->d_type = tc_n->d_type;
@@ -578,8 +581,8 @@ dt_infer_type(dfg_node *n)
 
 			if (other->d_type == DIF_TYPE_BOTTOM ||
 			    symnode->d_type == DIF_TYPE_BOTTOM)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): unexpected bottom "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): unexpected bottom "
 				    "type (binary arithmetic operation)",
 				    insname[opcode].c_str(), n->uidx, n->difo);
 
@@ -591,7 +594,7 @@ dt_infer_type(dfg_node *n)
 
 			if (res == -1) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): types can not be "
+				    "inferNode(%s, %zu@%p): types can not be "
 				    "compared\n",
 				    insname[opcode].c_str(), n->uidx, n->difo);
 				return (-1);
@@ -602,16 +605,16 @@ dt_infer_type(dfg_node *n)
 			 */
 			if (other->tf->get_typename(other->ctfid, buf,
 			    sizeof(buf)) != ((char *)buf))
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): failed at getting "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): failed at getting "
 				    "type name %ld for other: %s",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    other->ctfid, other->tf->get_errmsg());
 
 			if (res == 1) {
 				if (strcmp(buf, "uint64_t") != 0)
-					dt_set_progerr(g_dtp, g_pgp,
-					    "dt_infer_type(%s, %zu@%p): the type "
+					dt_set_progerr(dtp, pgp,
+					    "inferNode(%s, %zu@%p): the type "
 					    "of the other node must be uint64_t"
 					    " if symnode->ctfid (%zu@%p) <:"
 					    " other->ctfid (%zu@%p), but it "
@@ -650,8 +653,8 @@ dt_infer_type(dfg_node *n)
 			 */
 			mip = (ctf_membinfo_t *)malloc(sizeof(ctf_membinfo_t));
 			if (mip == nullptr)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): failed to "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): failed to "
 				    "malloc mip",
 				    insname[opcode].c_str(), n->uidx, n->difo);
 
@@ -663,8 +666,8 @@ dt_infer_type(dfg_node *n)
 			type = other->tf->get_reference(other->ctfid);
 			if (other->tf->get_membinfo(type, other->sym,
 			    mip) == 0)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): failed to get "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): failed to get "
 				    "member info for %s(%s): %s",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    buf, other->sym, other->tf->get_errmsg());
@@ -694,7 +697,7 @@ dt_infer_type(dfg_node *n)
 		 */
 		if (dn1 == nullptr) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): dn1 is nullptr\n",
+			    "inferNode(%s, %zu@%p): dn1 is nullptr\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
 		}
@@ -725,8 +728,8 @@ dt_infer_type(dfg_node *n)
 		n->tf = dt_typefile_D();
 		n->ctfid = n->tf->get_ctfid("int8_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to get type "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to get type "
 			    "int8_t: %s",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    n->tf->get_errmsg());
@@ -745,8 +748,8 @@ dt_infer_type(dfg_node *n)
 		n->tf = dt_typefile_D();
 		n->ctfid = n->tf->get_ctfid("int16_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to get type "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to get type "
 			    "int16_t: %s",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    n->tf->get_errmsg());
@@ -765,8 +768,8 @@ dt_infer_type(dfg_node *n)
 		n->tf = dt_typefile_D();
 		n->ctfid = n->tf->get_ctfid("int32_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to get "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to get "
 			    "type unsigned char: %s",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    n->tf->get_errmsg());
@@ -785,8 +788,8 @@ dt_infer_type(dfg_node *n)
 		n->tf = dt_typefile_D();
 		n->ctfid = n->tf->get_ctfid("uint8_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to get type "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to get type "
 			    "uint8_t: %s",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    n->tf->get_errmsg());
@@ -805,8 +808,8 @@ dt_infer_type(dfg_node *n)
 		n->tf = dt_typefile_D();
 		n->ctfid = n->tf->get_ctfid("uint16_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to get type "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to get type "
 			    "uint16_t: %s",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    n->tf->get_errmsg());
@@ -825,8 +828,8 @@ dt_infer_type(dfg_node *n)
 		n->tf = dt_typefile_D();
 		n->ctfid = n->tf->get_ctfid("uint32_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to get type "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to get type "
 			    "uint32_t: %s",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    n->tf->get_errmsg());
@@ -846,8 +849,8 @@ dt_infer_type(dfg_node *n)
 		n->tf = dt_typefile_D();
 		n->ctfid = n->tf->get_ctfid("uint64_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to get type "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to get type "
 			    "uint64_t: %s",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    n->tf->get_errmsg());
@@ -881,15 +884,15 @@ dt_infer_type(dfg_node *n)
 		assert(dn2 != nullptr);
 
 		if (!dt_var_is_builtin(var)) {
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): %u "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): %u "
 			    "is not a built-in variable",
 			    insname[opcode].c_str(), n->uidx, n->difo, var);
 		}
 
 		if (DIF_INSTR_OP(dn2->get_instruction()) != DIF_OP_SETX) {
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): %%r%u "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): %%r%u "
 			    "is not assigned by a SETX instruction @ %zu",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    DIF_INSTR_R2(instr), dn2->uidx);
@@ -911,8 +914,8 @@ dt_infer_type(dfg_node *n)
 		dif_var = dt_get_var_from_vec(var,
 		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 		if (dif_var == nullptr)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to find variable "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to find variable "
 			    "(%u, %d, %d)",
 			    insname[opcode].c_str(), n->uidx, n->difo, var,
 			    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
@@ -920,7 +923,7 @@ dt_infer_type(dfg_node *n)
 		if (dnv == nullptr) {
 			if (dif_var == nullptr) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): variable and dnv "
+				    "inferNode(%s, %zu@%p): variable and dnv "
 				    "don't exist\n",
 				    insname[opcode].c_str(), n->uidx, n->difo);
 				return (-1);
@@ -937,7 +940,7 @@ dt_infer_type(dfg_node *n)
 		if (dif_var != nullptr) {
 			if (dif_var->dtdv_type.dtdt_kind != dnv->d_type) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): type "
+				    "inferNode(%s, %zu@%p): type "
 				    "mismatch %d != %d\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dif_var->dtdv_type.dtdt_kind, dn1->d_type);
@@ -947,8 +950,8 @@ dt_infer_type(dfg_node *n)
 			if (dif_var->dtdv_ctfid != dnv->ctfid) {
 				if (dnv->tf->get_typename(dnv->ctfid, buf,
 				    sizeof(buf)) != ((char *)buf))
-					dt_set_progerr(g_dtp, g_pgp,
-					    "dt_infer_type(%s, %zu@%p): failed at "
+					dt_set_progerr(dtp, pgp,
+					    "inferNode(%s, %zu@%p): failed at "
 					    "getting type name %ld for dnv: %s",
 					    insname[opcode].c_str(), n->uidx,
 					    n->difo, dnv->ctfid,
@@ -957,15 +960,15 @@ dt_infer_type(dfg_node *n)
 				if (v2tf(dif_var->dtdv_tf)->get_typename(
 				    dif_var->dtdv_ctfid, var_type,
 				    sizeof(var_type)) != ((char *)var_type))
-					dt_set_progerr(g_dtp, g_pgp,
-					    "dt_infer_type(%s, %zu@%p): failed at "
+					dt_set_progerr(dtp, pgp,
+					    "inferNode(%s, %zu@%p): failed at "
 					    "getting type name %ld for dif_var: %s",
 					    insname[opcode].c_str(), n->uidx,
 					    n->difo, dif_var->dtdv_ctfid,
 					    v2tf(dif_var->dtdv_tf)->get_errmsg());
 
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): variable ctf type "
+				    "inferNode(%s, %zu@%p): variable ctf type "
 				    "mismatch %s != %s\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    buf, var_type);
@@ -974,7 +977,7 @@ dt_infer_type(dfg_node *n)
 
 			if (dnv->sym && dif_var->dtdv_sym == nullptr) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): symbol "
+				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != nullptr\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dnv->sym);
@@ -983,7 +986,7 @@ dt_infer_type(dfg_node *n)
 
 			if (dnv->sym == nullptr && dif_var->dtdv_sym) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): symbol "
+				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch nullptr != %s\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dif_var->dtdv_sym);
@@ -992,7 +995,7 @@ dt_infer_type(dfg_node *n)
 
 			if (strcmp(dif_var->dtdv_sym, dnv->sym) != 0) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): symbol "
+				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != %s\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dnv->sym, dif_var->dtdv_sym);
@@ -1027,7 +1030,7 @@ dt_infer_type(dfg_node *n)
 				return (n->d_type);
 			} else if (dif_var == nullptr) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): variable %d and "
+				    "inferNode(%s, %zu@%p): variable %d and "
 				    "dn1 don't exist\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    var);
@@ -1044,7 +1047,7 @@ dt_infer_type(dfg_node *n)
 		if (dif_var != nullptr) {
 			if (dif_var->dtdv_type.dtdt_kind != dn1->d_type) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): type "
+				    "inferNode(%s, %zu@%p): type "
 				    "mismatch %d != %d\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dif_var->dtdv_type.dtdt_kind, dn1->d_type);
@@ -1053,7 +1056,7 @@ dt_infer_type(dfg_node *n)
 
 			if (v2tf(dif_var->dtdv_tf) != dn1->tf) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): variable typefile "
+				    "inferNode(%s, %zu@%p): variable typefile "
 				    "is %s, but dn1 typefile is %s\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    v2tf(dif_var->dtdv_tf)->name().c_str(),
@@ -1064,8 +1067,8 @@ dt_infer_type(dfg_node *n)
 			if (dif_var->dtdv_ctfid != dn1->ctfid) {
 				if (dn1->tf->get_typename(dn1->ctfid, buf,
 				    sizeof(buf)) != ((char *)buf))
-					dt_set_progerr(g_dtp, g_pgp,
-					    "dt_infer_type(%s, %zu@%p): failed at "
+					dt_set_progerr(dtp, pgp,
+					    "inferNode(%s, %zu@%p): failed at "
 					    "getting type name %ld: %s\n",
 					    insname[opcode].c_str(), n->uidx,
 					    n->difo, dn1->ctfid,
@@ -1074,15 +1077,15 @@ dt_infer_type(dfg_node *n)
 				if (v2tf(dif_var->dtdv_tf)->get_typename(
 				    dif_var->dtdv_ctfid, var_type,
 				    sizeof(var_type)) != ((char *)var_type))
-					dt_set_progerr(g_dtp, g_pgp,
-					    "dt_infer_type(%s, %zu@%p): failed at "
+					dt_set_progerr(dtp, pgp,
+					    "inferNode(%s, %zu@%p): failed at "
 					    "getting type name %ld: %s\n",
 					    insname[opcode].c_str(), n->uidx,
 					    n->difo, dn1->ctfid,
 					    v2tf(dif_var->dtdv_tf)->get_errmsg());
 
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): variable ctf type "
+				    "inferNode(%s, %zu@%p): variable ctf type "
 				    "mismatch %s != %s\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    buf, var_type);
@@ -1091,7 +1094,7 @@ dt_infer_type(dfg_node *n)
 
 			if (dn1->sym && dif_var->dtdv_sym == nullptr) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): symbol "
+				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != nullptr\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dn1->sym);
@@ -1100,7 +1103,7 @@ dt_infer_type(dfg_node *n)
 
 			if (dn1->sym == nullptr && dif_var->dtdv_sym) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): symbol "
+				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch nullptr != %s\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dif_var->dtdv_sym);
@@ -1109,7 +1112,7 @@ dt_infer_type(dfg_node *n)
 
 			if (strcmp(dif_var->dtdv_sym, dn1->sym) != 0) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): symbol "
+				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != %s\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dn1->sym, dif_var->dtdv_sym);
@@ -1138,8 +1141,8 @@ dt_infer_type(dfg_node *n)
 		dif_var = dt_get_var_from_vec(var,
 		    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 		if (dif_var == nullptr)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to find variable "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to find variable "
 			    "(%u, %d, %d)",
 			    insname[opcode].c_str(), n->uidx, n->difo, var,
 			    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
@@ -1147,7 +1150,7 @@ dt_infer_type(dfg_node *n)
 		if (dn1 == nullptr) {
 			if (dif_var == nullptr) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): variable "
+				    "inferNode(%s, %zu@%p): variable "
 				    "and dn1 don't exist\n",
 				    insname[opcode].c_str(), n->uidx, n->difo);
 				return (-1);
@@ -1164,7 +1167,7 @@ dt_infer_type(dfg_node *n)
 		if (dif_var != nullptr) {
 			if (dif_var->dtdv_type.dtdt_kind != dn1->d_type) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): type "
+				    "inferNode(%s, %zu@%p): type "
 				    "mismatch %d != %d\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dif_var->dtdv_type.dtdt_kind, dn1->d_type);
@@ -1174,8 +1177,8 @@ dt_infer_type(dfg_node *n)
 			if (dif_var->dtdv_ctfid != dn1->ctfid) {
 				if (dn1->tf->get_typename(dn1->ctfid, buf,
 				    sizeof(buf)) != ((char *)buf))
-					dt_set_progerr(g_dtp, g_pgp,
-					    "dt_infer_type(%s, %zu@%p): failed at "
+					dt_set_progerr(dtp, pgp,
+					    "inferNode(%s, %zu@%p): failed at "
 					    "getting type name %ld: %s\n",
 					    insname[opcode].c_str(), n->uidx,
 					    n->difo, dn1->ctfid,
@@ -1184,15 +1187,15 @@ dt_infer_type(dfg_node *n)
 				if (v2tf(dif_var->dtdv_tf)->get_typename(
 				    dif_var->dtdv_ctfid, var_type,
 				    sizeof(var_type)) != ((char *)var_type))
-					dt_set_progerr(g_dtp, g_pgp,
-					    "dt_infer_type(%s, %zu@%p): failed at "
+					dt_set_progerr(dtp, pgp,
+					    "inferNode(%s, %zu@%p): failed at "
 					    "getting type name %ld: %s\n",
 					    insname[opcode].c_str(), n->uidx,
 					    n->difo, dn1->ctfid,
 					    v2tf(dif_var->dtdv_tf)->get_errmsg());
 
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): variable ctf type "
+				    "inferNode(%s, %zu@%p): variable ctf type "
 				    "mismatch %s != %s\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    buf, var_type);
@@ -1201,7 +1204,7 @@ dt_infer_type(dfg_node *n)
 
 			if (dn1->sym && dif_var->dtdv_sym == nullptr) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): symbol "
+				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != nullptr\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dn1->sym);
@@ -1210,7 +1213,7 @@ dt_infer_type(dfg_node *n)
 
 			if (dn1->sym == nullptr && dif_var->dtdv_sym) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): symbol "
+				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch nullptr != %s\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dif_var->dtdv_sym);
@@ -1219,7 +1222,7 @@ dt_infer_type(dfg_node *n)
 
 			if (strcmp(dif_var->dtdv_sym, dn1->sym) != 0) {
 				fprintf(stderr,
-				    "dt_infer_type(%s, %zu@%p): symbol "
+				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != %s\n",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dn1->sym, dif_var->dtdv_sym);
@@ -1259,7 +1262,7 @@ dt_infer_type(dfg_node *n)
 		 */
 		if (dt_var_is_builtin(var)) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): trying to store to a "
+			    "inferNode(%s, %zu@%p): trying to store to a "
 			    "builtin variable\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
@@ -1267,7 +1270,7 @@ dt_infer_type(dfg_node *n)
 
 		if (dn2 == nullptr) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): dn2 is nullptr in stgs.\n",
+			    "inferNode(%s, %zu@%p): dn2 is nullptr in stgs.\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
 		}
@@ -1276,13 +1279,13 @@ dt_infer_type(dfg_node *n)
 		    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
 
 		if (dif_var == nullptr)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to find "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to find "
 			    "variable (%u, %d, %d)",
 			    insname[opcode].c_str(), n->uidx, n->difo, var,
 			    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
 
-		if (dt_infer_type_var(g_dtp, n->difo, dn2, dif_var) == -1)
+		if (inferVar(n->difo, dn2, dif_var) == -1)
 			return (-1);
 
 		n->ctfid = dif_var->dtdv_ctfid;
@@ -1312,7 +1315,7 @@ dt_infer_type(dfg_node *n)
 
 		if (dn2 == nullptr) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): dn2 is nullptr in stts.\n",
+			    "inferNode(%s, %zu@%p): dn2 is nullptr in stts.\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
 		}
@@ -1320,13 +1323,13 @@ dt_infer_type(dfg_node *n)
 		dif_var = dt_get_var_from_vec(var,
 		    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 		if (dif_var == nullptr)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to find "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to find "
 			    "variable (%u, %d, %d)",
 			    insname[opcode].c_str(), n->uidx, n->difo, var,
 			    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 
-		if (dt_infer_type_var(g_dtp, n->difo, dn2, dif_var) == -1)
+		if (inferVar(n->difo, dn2, dif_var) == -1)
 			return (-1);
 
 		n->ctfid = dif_var->dtdv_ctfid;
@@ -1356,7 +1359,7 @@ dt_infer_type(dfg_node *n)
 
 		if (dn2 == nullptr) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): dn2 is nullptr in stls.\n",
+			    "inferNode(%s, %zu@%p): dn2 is nullptr in stls.\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
 		}
@@ -1364,13 +1367,13 @@ dt_infer_type(dfg_node *n)
 		dif_var = dt_get_var_from_vec(var,
 		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 		if (dif_var == nullptr)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to find "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to find "
 			    "variable (%u, %d, %d)",
 			    insname[opcode].c_str(), n->uidx, n->difo, var,
 			    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 
-		if (dt_infer_type_var(g_dtp, n->difo, dn2, dif_var) == -1)
+		if (inferVar(n->difo, dn2, dif_var) == -1)
 			return (-1);
 
 		n->ctfid = dn2->ctfid;
@@ -1392,7 +1395,7 @@ dt_infer_type(dfg_node *n)
 		 * ----------------------------------------
 		 *       call subr, %r1 => %r1 : t
 		 */
-		return (dt_infer_type_subr(n, stack));
+		return (inferSubr(n, stack));
 
 	case DIF_OP_LDGAA:
 		var = DIF_INSTR_VAR(instr);
@@ -1400,8 +1403,8 @@ dt_infer_type(dfg_node *n)
 		dif_var = dt_get_var_from_vec(var,
 		    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
 		if (dif_var == nullptr)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to find "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to find "
 			    "variable (%u, %d, %d)",
 			    insname[opcode].c_str(), n->uidx, n->difo, var,
 			    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
@@ -1411,7 +1414,7 @@ dt_infer_type(dfg_node *n)
 		 */
 		if (n->stacks.empty()) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): stack list is "
+			    "inferNode(%s, %zu@%p): stack list is "
 			    "empty in ldgaa\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
@@ -1420,10 +1423,10 @@ dt_infer_type(dfg_node *n)
 		/*
 		 * Make sure the stack contains what we expect
 		 */
-		if (dt_var_stack_typecheck(n, dnv, dif_var) == -1)
+		if (checkVarStack(n, dnv, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(g_dtp, n->difo, dnv, dif_var) == -1)
+		if (inferVar(n->difo, dnv, dif_var) == -1)
 			return (-1);
 
 		if (dnv) {
@@ -1447,8 +1450,8 @@ dt_infer_type(dfg_node *n)
 		dif_var = dt_get_var_from_vec(var,
 		    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
 		if (dif_var == nullptr)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): "
 			    "failed to find variable (%u, %d, %d)",
 			    insname[opcode].c_str(), n->uidx, n->difo, var,
 			    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
@@ -1458,7 +1461,7 @@ dt_infer_type(dfg_node *n)
 		 */
 		if (n->stacks.empty()) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): stack list is "
+			    "inferNode(%s, %zu@%p): stack list is "
 			    "empty in ldgaa\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
@@ -1467,10 +1470,10 @@ dt_infer_type(dfg_node *n)
 		/*
 		 * Make sure the stack contains what we expect
 		 */
-		if (dt_var_stack_typecheck(n, dnv, dif_var) == -1)
+		if (checkVarStack(n, dnv, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(g_dtp, n->difo, dnv, dif_var) == -1)
+		if (inferVar(n->difo, dnv, dif_var) == -1)
 			return (-1);
 
 		if (dnv) {
@@ -1494,7 +1497,7 @@ dt_infer_type(dfg_node *n)
 	case DIF_OP_STGAA:
 		if (dn2 == nullptr) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): dn2 is nullptr in "
+			    "inferNode(%s, %zu@%p): dn2 is nullptr in "
 			    "stgaa.\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
@@ -1505,8 +1508,8 @@ dt_infer_type(dfg_node *n)
 		dif_var = dt_get_var_from_vec(var,
 		    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
 		if (dif_var == nullptr)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): "
 			    "failed to find variable (%u, %d, %d)",
 			    insname[opcode].c_str(), n->uidx, n->difo, var,
 			    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
@@ -1520,10 +1523,10 @@ dt_infer_type(dfg_node *n)
 		 *  x[tid] = 2;
 		 */
 
-		if (dt_var_stack_typecheck(n, dn2, dif_var) == -1)
+		if (checkVarStack(n, dn2, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(g_dtp, n->difo, dn2, dif_var) == -1)
+		if (inferVar(n->difo, dn2, dif_var) == -1)
 			return (-1);
 
 		if (dn2->d_type != DIF_TYPE_BOTTOM) {
@@ -1545,7 +1548,7 @@ dt_infer_type(dfg_node *n)
 	case DIF_OP_STTAA:
 		if (dn2 == nullptr) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): dn2 is nullptr in sttaa.\n",
+			    "inferNode(%s, %zu@%p): dn2 is nullptr in sttaa.\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
 		}
@@ -1555,8 +1558,8 @@ dt_infer_type(dfg_node *n)
 		dif_var = dt_get_var_from_vec(var,
 		    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
 		if (dif_var == nullptr)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to find "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to find "
 			    "variable (%u, %d, %d)",
 			    insname[opcode].c_str(), n->uidx, n->difo, var,
 			    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
@@ -1569,10 +1572,10 @@ dt_infer_type(dfg_node *n)
 		 *  self->x[curthread] = 1;
 		 *  self->x[tid] = 2;
 		 */
-		if (dt_var_stack_typecheck(n, dn2, dif_var) == -1)
+		if (checkVarStack(n, dn2, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(g_dtp, n->difo, dn2, dif_var) == -1)
+		if (inferVar(n->difo, dn2, dif_var) == -1)
 			return (-1);
 
 		n->ctfid = dn2->ctfid;
@@ -1620,7 +1623,7 @@ dt_infer_type(dfg_node *n)
 			 */
 			mip = dt_mip_from_sym(dn1);
 			if (mip == nullptr) {
-				dt_set_progerr(g_dtp, g_pgp,
+				dt_set_progerr(dtp, pgp,
 				    "%s(%s, %zu@%p): failed to get mip from symbol (%s)",
 				    __func__, insname[opcode].c_str(), n->uidx,
 				    n->difo, dn1->sym);
@@ -1666,7 +1669,7 @@ dt_infer_type(dfg_node *n)
 	case DIF_OP_PUSHTR:
 		if (dn1 == nullptr) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu@%p): pushtr dn1 is nullptr\n",
+			    "inferNode(%s, %zu@%p): pushtr dn1 is nullptr\n",
 			    insname[opcode].c_str(), n->uidx, n->difo);
 			return (-1);
 		}
@@ -1678,7 +1681,7 @@ dt_infer_type(dfg_node *n)
 
 			mip = dt_mip_from_sym(dn1);
 			if (mip == nullptr) {
-				dt_set_progerr(g_dtp, g_pgp,
+				dt_set_progerr(dtp, pgp,
 				    "%s(%s, %zu@%p): failed to get mip from symbol (%s)",
 				    __func__, insname[opcode].c_str(), n->uidx,
 				    n->difo, dn1->sym);
@@ -1744,15 +1747,15 @@ dt_infer_type(dfg_node *n)
 		 * didn't do so by having a string or an uninitialized node.
 		 */
 		if (dn1->d_type == DIF_TYPE_STRING)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): can't store from a "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): can't store from a "
 			    "string type (loc %zu)",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    dn1->uidx);
 
 		if (dn1->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): can't store "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): can't store "
 			    "from type none (loc %zu)",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    dn1->uidx);
@@ -1789,8 +1792,8 @@ dt_infer_type(dfg_node *n)
 			if (dif_var->dtdv_id != ovar->dtdv_id ||
 			    dif_var->dtdv_scope != ovar->dtdv_scope ||
 			    dif_var->dtdv_kind != ovar->dtdv_kind) {
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): node has a "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): node has a "
 				    "mismatch in varsources: "
 				    "(%u, %u, %u) != (%u, %u, %u)",
 				    insname[opcode].c_str(), n->uidx, n->difo,
@@ -1800,24 +1803,24 @@ dt_infer_type(dfg_node *n)
 			}
 
 			if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_CTF)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): instruction only "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): instruction only "
 				    "makes sense on CTF variable types, got %d",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dif_var->dtdv_type.dtdt_kind);
 
 			if (dif_var->dtdv_type.dtdt_kind !=
 			    ovar->dtdv_type.dtdt_kind)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): node has a "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): node has a "
 				    "mismatch in variable types: %d != %d",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dif_var->dtdv_type.dtdt_kind,
 				    ovar->dtdv_type.dtdt_kind);
 
 			if (dif_var->dtdv_tf != ovar->dtdv_tf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): node has a "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): node has a "
 				    "mismatch in variable typefiles: %s != %s",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    v2tf(dif_var->dtdv_tf)->name().c_str(),
@@ -1825,8 +1828,8 @@ dt_infer_type(dfg_node *n)
 
 			if (v2tf(dif_var->dtdv_tf)->get_typename(dif_var->dtdv_ctfid,
 			    buf, sizeof(buf)) != ((char *)buf))
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): failed getting "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): failed getting "
 				    "type name %ld: %s",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dif_var->dtdv_ctfid,
@@ -1834,16 +1837,16 @@ dt_infer_type(dfg_node *n)
 
 			if (v2tf(ovar->dtdv_tf)->get_typename(ovar->dtdv_ctfid,
 			    buf, sizeof(var_type)) != ((char *)var_type))
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): failed getting "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): failed getting "
 				    "type name %ld: %s",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    ovar->dtdv_ctfid,
 				    v2tf(ovar->dtdv_tf)->get_errmsg());
 
 			if (dif_var->dtdv_ctfid != ovar->dtdv_ctfid) {
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): node has a "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): node has a "
 				    "mismatch in varsource types: %s != %s",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    buf, var_type);
@@ -1851,15 +1854,15 @@ dt_infer_type(dfg_node *n)
 		}
 
 		if (dif_var == nullptr)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): register [%%r%d] "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): register [%%r%d] "
 			    "is not within a variable",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    n->get_rd());
 
 		if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_CTF)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): variable %zu is not of "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): variable %zu is not of "
 			    "a CTF type",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    dif_var->dtdv_id);
@@ -1871,8 +1874,8 @@ dt_infer_type(dfg_node *n)
 		 * unions and arrays at some point too.
 		 */
 		if (varkind != CTF_K_STRUCT)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): expected a struct CTF "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): expected a struct CTF "
 			    "kind, got %d",
 			    insname[opcode].c_str(), n->uidx, n->difo, varkind);
 
@@ -1882,8 +1885,8 @@ dt_infer_type(dfg_node *n)
 		 */
 		mip = (ctf_membinfo_t *)malloc(sizeof(ctf_membinfo_t));
 		if (mip == nullptr)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): malloc failed on "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): malloc failed on "
 			    "mip: %s",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    strerror(errno));
@@ -1892,8 +1895,8 @@ dt_infer_type(dfg_node *n)
 
 		if (v2tf(dif_var->dtdv_tf)->get_membinfo(dif_var->dtdv_ctfid,
 		    dn1->sym, mip) == 0)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu@%p): failed to get "
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed to get "
 			    "member info: %s",
 			    insname[opcode].c_str(), n->uidx, n->difo,
 			    v2tf(dif_var->dtdv_tf)->get_errmsg());
@@ -1915,16 +1918,16 @@ dt_infer_type(dfg_node *n)
 
 			if (dn1->tf->get_typename(dn1->ctfid, buf,
 			    sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): failed getting "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): failed getting "
 				    "type_name of %d: %s",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dn1->ctfid, dn1->tf->get_errmsg());
 
 			if (v2tf(dif_var->dtdv_tf)->get_typename(dif_var->dtdv_ctfid,
 			    var_type, sizeof(var_type)) != (char *)var_type)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): failed getting "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): failed getting "
 				    "type_name of %d: %s",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    dif_var->dtdv_ctfid,
@@ -1933,8 +1936,8 @@ dt_infer_type(dfg_node *n)
 			auto ktf = dt_typefile_kernel();
 			dst_ctfid = ktf->get_ctfid(dst_type[insid].c_str());
 			if (dst_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): failed getting "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): failed getting "
 				    "ctfid from %s for %s: %s",
 				    insname[opcode].c_str(), n->uidx, n->difo,
 				    ktf->name().c_str(),
@@ -1942,8 +1945,8 @@ dt_infer_type(dfg_node *n)
 
 			if (v2tf(dif_var->dtdv_tf)->type_compat_with(dst_ctfid,
 			    dn1->tf, dn1->ctfid) == 0)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu@%p): types %s "
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): types %s "
 				    "(variable field) and %s "
 				    "(instruction %zu) are not compatible",
 				    insname[opcode].c_str(), n->uidx, n->difo,
@@ -1956,7 +1959,7 @@ dt_infer_type(dfg_node *n)
 		return (n->d_type);
 	} /* case DIF_OP_STX */
 	default:
-		dt_set_progerr(g_dtp, g_pgp, "unhandled instruction: %u",
+		dt_set_progerr(dtp, pgp, "unhandled instruction: %u",
 		    opcode);
 	}
 
@@ -1964,7 +1967,7 @@ dt_infer_type(dfg_node *n)
 }
 
 int
-dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
+TypeInference::inferDIFO(dtrace_difo_t *difo)
 {
 	dfg_node *node = nullptr;
 	int type = -1;
@@ -2002,12 +2005,9 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 	if (dtp == nullptr)
 		return (EDT_COMPILER);
 
-	g_dtp = dtp;
-	g_pgp = pgp;
-
 	difo->dtdo_types = (char **)malloc(sizeof(char *) * difo->dtdo_len);
 	if (difo->dtdo_types == nullptr)
-		dt_set_progerr(g_dtp, g_pgp, "failed to malloc dtdo_types");
+		dt_set_progerr(dtp, pgp, "failed to malloc dtdo_types");
 
 	for (auto &node : dfg_nodes) {
 		if (node.get() == r0node)
@@ -2019,13 +2019,13 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 		if (node->difo_buf() != difo->dtdo_buf)
 			continue;
 
-		type = dt_infer_type(node.get());
+		type = inferNode(node.get());
 		assert(type == -1 ||
 		    type == DIF_TYPE_CTF || type == DIF_TYPE_STRING ||
 		    type == DIF_TYPE_NONE || type == DIF_TYPE_BOTTOM);
 
 		if (type == -1)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "failed to infer a type for %zu@%p\n",
 			    node->uidx, node->difo);
 
@@ -2037,8 +2037,8 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 
 			auto opt = node->tf->get_typename(node->ctfid);
 			if (!opt.has_value())
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_prog_infer_types(): failed at getting "
+				dt_set_progerr(dtp, pgp,
+				    "inferDIFO(): failed at getting "
 				    "type name %ld: %s (DIFO %p, node %zu)",
 				    node->ctfid, node->tf->get_errmsg(),
 				    node->difo, node->uidx);
@@ -2054,9 +2054,6 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 		else
 			difo->dtdo_types[node->uidx] = strdup("ERROR");
 	}
-
-	g_pgp = nullptr;
-	g_dtp = nullptr;
 
 	return (0);
 }
