@@ -41,24 +41,13 @@
 #include <dt_list.h>
 
 namespace dtrace {
-
-using dfg_list = std::list<std::unique_ptr<dfg_node>>;
-
-extern dfg_list dfg_nodes;
-extern std::vector<std::unique_ptr<basic_block>> basic_blocks;
-extern std::vector<std::unique_ptr<dtrace_difv_t>> var_vector;
-extern dfg_node *r0node;
-
 extern int dt_subr_clobbers(uint16_t);
 extern int dt_clobbers_reg(dif_instr_t, uint8_t);
 extern int dt_var_is_builtin(uint16_t);
-extern int dt_clobbers_var(dif_instr_t, dfg_node_data &);
-extern dtrace_difv_t *dt_get_var_from_vec(uint16_t, int, int);
+extern int dt_clobbers_var(dif_instr_t, DFGNodeData &);
 extern void dt_get_varinfo(dif_instr_t, uint16_t *, int *, int *);
-extern void dt_insert_var(dtrace_difv_t *);
 extern int dt_var_uninitialized(dtrace_difv_t *);
-extern void dt_populate_varlist(dtrace_hdl_t *, dtrace_difo_t *);
-extern ssize_t dt_get_stack(std::vector<basic_block *> &, dfg_node *);
+extern ssize_t dt_get_stack(std::vector<BasicBlock *> &, DFGNode *);
 }
 
 #endif /* _DT_LINKER_SUBR_H_ */

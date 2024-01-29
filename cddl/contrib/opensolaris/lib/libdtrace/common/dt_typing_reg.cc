@@ -36,39 +36,37 @@
  * SUCH DAMAGE.
  */
 
-#include <dt_typing.hh>
-
 #include <sys/types.h>
 #include <sys/dtrace.h>
 
-#include <dtrace.h>
-#include <dt_impl.h>
-#include <dt_program.h>
-#include <dt_list.h>
-#include <dt_linker_subr.hh>
+#include <assert.h>
 #include <dt_basic_block.hh>
 #include <dt_dfg.hh>
+#include <dt_hypertrace_linker.hh>
+#include <dt_impl.h>
+#include <dt_linker_subr.hh>
+#include <dt_list.h>
+#include <dt_program.h>
 #include <dt_typefile.hh>
+#include <dt_typing.hh>
 #include <dt_typing_helpers.hh>
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <stddef.h>
+#include <dtrace.h>
 #include <err.h>
 #include <errno.h>
-#include <assert.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 namespace dtrace {
-
 /*
  * dt_typecheck_regdefs() takes in a list of nodes that define
  * the current node we are looking at and ensures that their types
  * are consistent.
  */
-dfg_node *
-TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
+DFGNode *
+TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, int *empty)
 {
-	dfg_node *node, *onode;
+	DFGNode *node, *onode;
 	std::string s1, s2;
 	int type, otype;
 	int class1, class2;
@@ -85,9 +83,10 @@ TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
 	 * If we only have a r0node in our list of definitions,
 	 * we will return the r0node and have the type as BOTTOM.
 	 */
+	auto *r0node = linkerContext.getR0Node();
 	if (defs.size() == 1 && *defs.begin() == r0node) {
 		*empty = 0;
-		return (r0node);
+		return (const_cast<DFGNode *>(r0node));
 	}
 
 	if (defs.size() > 0)
@@ -131,7 +130,7 @@ TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
 		 *       giving us the desired type-checking behaviour, making
 		 *       sure that all branches have consistent register defns.
 		 */
-		if (node->d_type == DIF_TYPE_BOTTOM) {
+		if (node->dType == DIF_TYPE_BOTTOM) {
 			type = otype;
 			node = onode;
 			continue;
@@ -150,14 +149,14 @@ TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
 			continue;
 
 		if (type == DIF_TYPE_STRING || otype == DIF_TYPE_STRING) {
-			dfg_node *str_node, *other_node;
+			DFGNode *str_node, *other_node;
 			int string_type, other_type;
 
 			str_node = type == DIF_TYPE_STRING ? node : onode;
 			other_node = type == DIF_TYPE_STRING ? onode : node;
 
-			string_type = str_node->d_type;
-			other_type = other_node->d_type;
+			string_type = str_node->dType;
+			other_type = other_node->dType;
 
 			if (other_type == DIF_TYPE_BOTTOM)
 				continue;
@@ -171,14 +170,14 @@ TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
 				/*
 				 * Get the CTF type name
 				 */
-				auto opt = other_node->tf->get_typename(
+				auto opt = other_node->tf->getTypename(
 				    other_node->ctfid);
 				if (!opt.has_value())
 					dt_set_progerr(dtp, pgp,
 					    "dt_typecheck_regdefs(): failed at "
 					    "getting type name node %ld: %s",
 					    other_node->ctfid,
-					    other_node->tf->get_errmsg());
+					    other_node->tf->getErrMsg());
 
 				s1 = std::move(opt.value());
 
@@ -207,13 +206,13 @@ TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
 				/*
 				 * Get the CTF type name
 				 */
-				auto opt = onode->tf->get_typename(onode->ctfid);
+				auto opt = onode->tf->getTypename(onode->ctfid);
 				if (!opt.has_value())
 					dt_set_progerr(dtp, pgp,
 					    "dt_typecheck_regdefs(%p[%zu]): failed at "
 					    "getting type name node %ld: %s",
 					    n->difo, n->uidx, onode->ctfid,
-					    onode->tf->get_errmsg());
+					    onode->tf->getErrMsg());
 				otype_str = std::move(opt.value());
 			} else {
 				otype_str = "unknown (ERROR)";
@@ -229,13 +228,13 @@ TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
 				/*
 				 * Get the CTF type name
 				 */
-				auto opt = node->tf->get_typename(node->ctfid);
+				auto opt = node->tf->getTypename(node->ctfid);
 				if (!opt.has_value())
 					dt_set_progerr(dtp, pgp,
 					    "dt_typecheck_regdefs(%p[%zu]): failed at "
 					    "getting type name node %ld: %s",
 					    n->difo, n->uidx, node->ctfid,
-					    node->tf->get_errmsg());
+					    node->tf->getErrMsg());
 				ctype_str = std::move(opt.value());
 			} else {
 				ctype_str = "unknown (ERROR)";
@@ -255,13 +254,13 @@ TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
 			/*
 			 * We get the type name for reporting purposes.
 			 */
-			auto opt = node->tf->get_typename(node->ctfid);
+			auto opt = node->tf->getTypename(node->ctfid);
 			if (!opt.has_value())
 				dt_set_progerr(dtp, pgp,
 				    "dt_typecheck_regdefs(%p[%zu]): failed at "
 				    "getting type name node %ld: %s",
 				    n->difo, n->uidx, node->ctfid,
-				    node->tf->get_errmsg());
+				    node->tf->getErrMsg());
 
 			s1 = std::move(opt.value());
 
@@ -272,7 +271,7 @@ TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
 			if (onode == nullptr)
 				continue;
 
-			if (onode->d_type == DIF_TYPE_BOTTOM)
+			if (onode->dType == DIF_TYPE_BOTTOM)
 				continue;
 
 			assert(onode->tf != nullptr);
@@ -280,13 +279,13 @@ TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
 			 * Get the previous' node's inferred type for
 			 * error reporting.
 			 */
-			opt = onode->tf->get_typename(onode->ctfid);
+			opt = onode->tf->getTypename(onode->ctfid);
 			if (!opt.has_value())
 				dt_set_progerr(dtp, pgp,
 				    "dt_typecheck_regdefs(%p[%zu]): failed at "
 				    "getting type onode name %ld: %s",
 				    n->difo, n->uidx, onode->ctfid,
-				    onode->tf->get_errmsg());
+				    onode->tf->getErrMsg());
 
 			/*
 			 * Fail to typecheck if the types don't match 100%.
@@ -296,9 +295,9 @@ TypeInference::checkRegDefs(dfg_node *n, node_set &defs, int *empty)
 			 * However, we know that any base CTF type can be
 			 * reliably zeroed (non-struct, non-union).
 			 */
-			if ((!node->isnull && !onode->isnull) &&
-			    dt_type_subtype(node->tf, node->ctfid, onode->tf,
-			    onode->ctfid, &which)) {
+			if ((!node->isNull && !onode->isNull) &&
+			    getSubtypeRelation(node->tf, node->ctfid, onode->tf,
+			    onode->ctfid, which)) {
 				fprintf(stderr,
 				    "dt_typecheck_regdefs(%p[%zu]): types %s (%zu) "
 				    "and %s (%zu) do not match\n",

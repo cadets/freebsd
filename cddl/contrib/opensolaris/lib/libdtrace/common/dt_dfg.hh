@@ -39,47 +39,28 @@
 #ifndef _DT_IFG_H_
 #define _DT_IFG_H_
 
-#include <sys/dtrace.h>
-
-#include <dtrace.h>
-
 #include <sys/types.h>
 #include <sys/dtrace.h>
 
 #include <dtrace.h>
 
-#include <dt_basic_block.hh>
-#include <dt_typefile.hh>
-#include <dt_dfg.hh>
-
 #ifndef __cplusplus
 #error "This file should only be included from C++"
 #endif
 
-#include <optional>
-#include <set>
-#include <unordered_set>
-#include <vector>
+#include <dt_cxxdefs.hh>
 
 namespace dtrace {
-
-class dfg_node;
-
-template <typename T> using uset = std::unordered_set<T>;
-template <typename T> using vec = std::vector<T>;
-using node_set = uset<dfg_node *>;
-using node_vec = vec<dfg_node *>;
-
-enum dfg_node_kind {
+enum DFGNodeKind {
 	DT_NKIND_IGNORE = -1,
 	DT_NKIND_REG = 1,
 	DT_NKIND_VAR = 2,
 	DT_NKIND_STACK = 3
 };
 
-class dfg_node_data {
+class DFGNodeData {
     public:
-	dfg_node_kind kind = DT_NKIND_IGNORE; /* kind (see below) */
+	DFGNodeKind kind = DT_NKIND_IGNORE; /* kind (see below) */
 
     private:
 	union {
@@ -98,20 +79,20 @@ class dfg_node_data {
 	uint8_t &varkind() { return (this->u.v.varkind); }
 };
 
-class stackdata {
+class StackData {
     public:
-	vec<basic_block *> identifier;
-	node_vec nodes_on_stack;
+	Vec<BasicBlock *> identifier;
+	NodeVec nodesOnStack;
 
     public:
-	stackdata(vec<basic_block *> &);
-	~stackdata() = default;
+	StackData(Vec<BasicBlock *> &);
+	~StackData() = default;
 };
 
 /*
  * Data-flow graph node.
  */
-class dfg_node {
+class DFGNode {
     public:
 	size_t uidx; /* index of the use site */
 
@@ -119,48 +100,46 @@ class dfg_node {
 	 * Vectors of various IFG nodes. They contain backpointers to various
 	 * kinds of definitions in the IFG.
 	 */
-	node_set r1_defs;      /* type flow for r1 */
-	node_set r2_defs;      /* type flow for r2 */
-	node_set r1_data_defs; /* data flow for r1 */
-	node_set r2_data_defs; /* data flow for r2 */
-	node_set var_defs;     /* vector of variable defns in DIFO */
-	node_set r1_children;  /* which r1s do we define */
-	node_set r2_children;  /* which r2s do we define */
-	node_set usetx_defs;   /* usetx insn vector defining the node */
+	NodeSet r1Defs;	    /* type flow for r1 */
+	NodeSet r2Defs;	    /* type flow for r2 */
+	NodeSet r1DataDefs; /* data flow for r1 */
+	NodeSet r2DataDefs; /* data flow for r2 */
+	NodeSet varDefs;    /* vector of variable defns in DIFO */
+	NodeSet r1Children; /* which r1s do we define */
+	NodeSet r2Children; /* which r2s do we define */
+	NodeSet usetxDefs;  /* usetx insn vector defining the node */
 
-	vec<dtrace_difv_t *> var_sources; /* variable origin (if exists) */
+	Vec<dtrace_difv_t *> varSources; /* variable origin (if exists) */
 
-	int d_type = DIF_TYPE_NONE;	/* D type */
-	typefile *tf = nullptr;		/* reference to the type's type file */
-	ctf_id_t ctfid = CTF_ERR;	/* CTF type */
-	char *sym = nullptr;		/* symbol (if applicable) */
-	ctf_membinfo_t *mip = nullptr;	/* CTF member info (type, offs) */
+	int dType = DIF_TYPE_NONE;     /* D type */
+	Typefile *tf = nullptr;	       /* reference to the type's type file */
+	ctf_id_t ctfid = CTF_ERR;      /* CTF type */
+	char *sym = nullptr;	       /* symbol (if applicable) */
+	ctf_membinfo_t *mip = nullptr; /* CTF member info (type, offs) */
 
 	dtrace_hdl_t *dtp = nullptr;
-	dtrace_ecbdesc_t *edp = nullptr;	/* node's ecbdesc */
-	dtrace_prog_t *program = nullptr;	/* program this node belongs to */
-	dtrace_difo_t *difo = nullptr;		/* DIFO which this node belongs to */
-	basic_block *bb = nullptr;		 /* basic block that the node is in */
-	vec<stackdata> stacks;		 /* list of pushtr/pushtv nodes */
-	dfg_node_data node_data;	 /* node data (reg, var, stack) */
-	bool relocated = false;			 /* relocated or not? */
-	bool isnull = true;			 /* can this node contain NULL? */
-	std::optional<uint64_t> integer; /* integer value from setx */
+	dtrace_ecbdesc_t *edp = nullptr;  /* node's ecbdesc */
+	dtrace_prog_t *program = nullptr; /* program this node belongs to */
+	dtrace_difo_t *difo = nullptr;	  /* DIFO which this node belongs to */
+	BasicBlock *bb = nullptr;	  /* basic block that the node is in */
+	Vec<StackData> stacks;		  /* list of pushtr/pushtv nodes */
+	DFGNodeData nodeData;		  /* node data (reg, var, stack) */
+	bool isRelocated = false;	  /* relocated or not? */
+	bool isNull = true;		  /* can this node contain NULL? */
+	std::optional<uint64_t> integer;  /* integer value from setx */
 
     public:
-	dfg_node(dtrace_hdl_t *, dtrace_prog_t *, dtrace_ecbdesc_t *,
-	    dtrace_difo_t *, basic_block *, uint_t);
-	~dfg_node() = default;
+	DFGNode(dtrace_hdl_t *, dtrace_prog_t *, dtrace_ecbdesc_t *,
+	    dtrace_difo_t *, BasicBlock *, uint_t);
+	~DFGNode() = default;
 
-	dif_instr_t *difo_buf() { return (this->difo->dtdo_buf); }
-	uint8_t get_rd(void);
-	dif_instr_t get_instruction(void) const;
-	dfg_node *find_child(dfg_node *);
+	dif_instr_t *DIFOBuf() { return (this->difo->dtdo_buf); }
+	uint8_t getRD(void);
+	dif_instr_t getInstruction(void) const;
+	DFGNode *findChild(DFGNode *);
 };
 
-extern void get_node_data(dif_instr_t, dfg_node_data &);
-extern int dt_compute_dfg(dtrace_hdl_t *, dtrace_prog_t *, dtrace_ecbdesc_t *,
-    dtrace_difo_t *);
+extern void get_node_data(dif_instr_t, DFGNodeData &);
 }
 
 #endif /* _DT_IFG_H_ */

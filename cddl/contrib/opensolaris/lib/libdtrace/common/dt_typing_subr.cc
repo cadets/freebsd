@@ -36,58 +36,50 @@
  * SUCH DAMAGE.
  */
 
-#include <dt_typing.hh>
-
 #include <sys/types.h>
 #include <sys/dtrace.h>
 
-#include <dtrace.h>
-#include <dt_impl.h>
-#include <dt_program.h>
-#include <dt_list.h>
-#include <dt_linker_subr.hh>
+#include <assert.h>
 #include <dt_basic_block.hh>
 #include <dt_dfg.hh>
+#include <dt_hypertrace_linker.hh>
+#include <dt_impl.h>
+#include <dt_linker_subr.hh>
+#include <dt_list.h>
+#include <dt_program.h>
 #include <dt_typefile.hh>
+#include <dt_typing.hh>
 #include <dt_typing_helpers.hh>
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <stddef.h>
+#include <dtrace.h>
 #include <err.h>
 #include <errno.h>
-#include <assert.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 namespace dtrace {
-
 void
-TypeInference::argCmpWith(dfg_node *arg, typefile **tfs, size_t ntfs,
-    const char *type, char *buf, size_t bufsize, const char *loc,
-    int subtype_relation)
+TypeInference::argCmpWith(DFGNode *arg, Vec<Typefile *> &tfs,
+    const std::string &type, const std::string &loc, int subtype_relation)
 {
-	ctf_id_t arg_ctfid;
-	ctf_id_t arg_kind;
-	int which, rv;
-	ctf_id_t passed_arg_ctfid;
-	ctf_id_t passed_arg_kind;
-	typefile *tf;
-
-	tf = dt_get_typename_tfcheck(arg, tfs, ntfs, buf, bufsize, loc);
-
-	arg_ctfid = tf->get_ctfid(type);
+	char buf[1024] = { 0 };
+	auto *cloc = loc.c_str();
+	Typefile *tf = linkerContext.getTypenameChecked(arg, tfs, buf,
+	    sizeof(buf), loc);
+	ctf_id_t arg_ctfid = tf->getCtfID(type.c_str());
 	if (arg_ctfid == CTF_ERR)
-		dt_set_progerr(g_dtp, g_pgp, "%s: failed to get type %s: %s",
-		    loc, type, tf->get_errmsg());
+		dt_set_progerr(dtp, pgp, "%s: failed to get type %s: %s", cloc,
+		    type.c_str(), tf->getErrMsg());
 
-	arg_kind = dt_type_strip_typedef(tf, &arg_ctfid);
+	ctf_id_t arg_kind = tf->stripTypedef(arg_ctfid);
 	assert(arg_kind != CTF_K_TYPEDEF);
-
-	passed_arg_ctfid = arg->ctfid;
-	passed_arg_kind = dt_type_strip_typedef(arg->tf, &passed_arg_ctfid);
-
+	ctf_id_t passed_arg_ctfid = arg->ctfid;
+	ctf_id_t passed_arg_kind = arg->tf->stripTypedef(passed_arg_ctfid);
 	assert(passed_arg_kind != CTF_K_TYPEDEF);
-	if ((strcmp(type, "void *") == 0 || strcmp(type, "uintptr_t") == 0) &&
-	    strcmp(buf, "void *") && strcmp(buf, "uintptr_t")) {
+	std::string s = std::string(buf);
+
+	if ((type == "void *" || type == "uintptr_t") &&
+	    (s != "void *" && s != "uintptr_t")) {
 		/*
 		 * Since this is a void * / uintptr_t, any pointer will do, as D
 		 * allows us to implicitly cast any pointer to void * /
@@ -95,108 +87,97 @@ TypeInference::argCmpWith(dfg_node *arg, typefile **tfs, size_t ntfs,
 		 */
 		if (passed_arg_kind != CTF_K_POINTER &&
 		    passed_arg_kind != CTF_K_ARRAY)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "%s: %s (%s) can't be cast to void *", loc, buf,
+			dt_set_progerr(dtp, pgp,
+			    "%s: %s (%s) can't be cast to void *", cloc, buf,
 			    tf->name().c_str());
 
 		return;
 	}
 
 	if (arg_kind != passed_arg_kind)
-		dt_set_progerr(g_dtp, g_pgp, "%s (argkind): %s (%s) != %s (%s)",
-		    loc, type, tf->name().c_str(), buf,
+		dt_set_progerr(dtp, pgp, "%s (argkind): %s (%s) != %s (%s)",
+		    cloc, type.c_str(), tf->name().c_str(), buf,
 		    arg->tf->name().c_str());
 
 	if (arg_kind == CTF_K_INTEGER) {
-		rv = dt_type_subtype(arg->tf, arg->ctfid, tf, arg_ctfid,
-		    &which);
+		int which = 0;
+		auto rv = getSubtypeRelation(arg->tf, arg->ctfid, tf, arg_ctfid,
+		    which);
 		if (rv != 0 || ((which & subtype_relation) == 0))
-			dt_set_progerr(g_dtp, g_pgp, "%s: %s (%s) != %s (%s)",
-			    loc, type, tf->name().c_str(), buf,
+			dt_set_progerr(dtp, pgp, "%s: %s (%s) != %s (%s)", cloc,
+			    type.c_str(), tf->name().c_str(), buf,
 			    arg->tf->name().c_str());
 	} else {
 		/*
 		 * If the argument type is wrong, fail to type check.
 		 */
-		if (arg->tf->type_compat_with(arg->ctfid, tf, arg_ctfid) == 0)
-			dt_set_progerr(g_dtp, g_pgp, "%s: %s (%s) != %s (%s)",
-			    loc, type, tf->name().c_str(), buf,
+		if (arg->tf->typeIsCompatibleWith(arg->ctfid, tf, arg_ctfid) ==
+		    0)
+			dt_set_progerr(dtp, pgp, "%s: %s (%s) != %s (%s)", cloc,
+			    type.c_str(), tf->name().c_str(), buf,
 			    arg->tf->name().c_str());
 	}
 }
 
 int
-TypeInference::inferSubr(dfg_node *n, node_vec *stack)
+TypeInference::inferSubr(DFGNode *n, NodeVec *stack)
 {
-	uint16_t subr;
-	dif_instr_t instr;
-	dfg_node *arg0, *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7,
-	    *arg8;
-	char buf[4096] = { 0 };
-	ctf_id_t arg_ctfid, arg_kind;
+	DFGNode *arg0, *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8;
 	size_t i = 0;
 
-	umap<uint32_t, std::string> subr_name = {
-		{DIF_SUBR_RAND,                 "rand()"},
-		{DIF_SUBR_MUTEX_OWNED,          "mutex_owned()"},
-		{DIF_SUBR_MUTEX_OWNER,          "mutex_owner()"},
-		{DIF_SUBR_MUTEX_TYPE_ADAPTIVE,  "mutex_type_adaptive()"},
-		{DIF_SUBR_MUTEX_TYPE_SPIN,      "mutex_type_spin()"},
-		{DIF_SUBR_RW_READ_HELD,         "rw_read_held()"},
-		{DIF_SUBR_RW_WRITE_HELD,        "rw_write_held()"},
-		{DIF_SUBR_RW_ISWRITER,          "rw_iswriter()"},
-		{DIF_SUBR_COPYIN,               "copyin()"},
-		{DIF_SUBR_COPYINSTR,            "copyinstr()"},
-		{DIF_SUBR_SPECULATION,          "speculation()"},
-		{DIF_SUBR_PROGENYOF,            "progenyof()"},
-		{DIF_SUBR_STRLEN,               "strlen()"},
-		{DIF_SUBR_COPYOUT,              "copyout()"},
-		{DIF_SUBR_COPYOUTSTR,           "copyoutstr()"},
-		{DIF_SUBR_ALLOCA,               "alloca()"},
-		{DIF_SUBR_BCOPY,                "bcopy()"},
-		{DIF_SUBR_COPYINTO,             "copyinto()"},
-		{DIF_SUBR_MSGDSIZE,             "msgdsize()"},
-		{DIF_SUBR_MSGSIZE,              "msgsize()"},
-		{DIF_SUBR_GETMAJOR,             "getmajor()"},
-		{DIF_SUBR_GETMINOR,             "getminor()"},
-		{DIF_SUBR_DDI_PATHNAME,         "ddi_pathname()"},
-		{DIF_SUBR_STRJOIN,              "strjoin()"},
-		{DIF_SUBR_LLTOSTR,              "lltostr()"},
-		{DIF_SUBR_BASENAME,             "basename()"},
-		{DIF_SUBR_DIRNAME,              "dirname()"},
-		{DIF_SUBR_CLEANPATH,            "cleanpath()"},
-		{DIF_SUBR_STRCHR,               "strchr()"},
-		{DIF_SUBR_STRRCHR,              "strrchr()"},
-		{DIF_SUBR_STRSTR,               "strstr()"},
-		{DIF_SUBR_STRTOK,               "strtok()"},
-		{DIF_SUBR_SUBSTR,               "substr()"},
-		{DIF_SUBR_INDEX,                "index()"},
-		{DIF_SUBR_RINDEX,               "rindex()"},
-		{DIF_SUBR_HTONS,                "htons()"},
-		{DIF_SUBR_HTONL,                "htonl()"},
-		{DIF_SUBR_HTONLL,               "htonll()"},
-		{DIF_SUBR_NTOHS,                "ntohs()"},
-		{DIF_SUBR_NTOHL,                "ntohl()"},
-		{DIF_SUBR_NTOHLL,               "ntohll()"},
-		{DIF_SUBR_INET_NTOP,            "inet_ntop()"},
-		{DIF_SUBR_INET_NTOA,            "inet_ntoa()"},
-		{DIF_SUBR_INET_NTOA6,           "inet_ntoa6()"},
-		{DIF_SUBR_TOUPPER,              "toupper()"},
-		{DIF_SUBR_TOLOWER,              "tolower()"},
-		{DIF_SUBR_MEMREF,               "memref()"},
-		{DIF_SUBR_SX_SHARED_HELD,       "sx_shared_held()"},
-		{DIF_SUBR_SX_EXCLUSIVE_HELD,    "sx_exclusive_held()"},
-		{DIF_SUBR_SX_ISEXCLUSIVE,       "sx_isexclusive()"},
-		{DIF_SUBR_MEMSTR,               "memstr()"},
-		{DIF_SUBR_GETF,                 "getf()"},
-		{DIF_SUBR_JSON,                 "json()"},
-		{DIF_SUBR_STRTOLL,              "strtoll()"},
-		{DIF_SUBR_RANDOM,               "random()"},
-		{DIF_SUBR_PTINFO,               "ptinfo()"}
-	};
+	umap<uint32_t, std::string> subr_name = { { DIF_SUBR_RAND, "rand()" },
+		{ DIF_SUBR_MUTEX_OWNED, "mutex_owned()" },
+		{ DIF_SUBR_MUTEX_OWNER, "mutex_owner()" },
+		{ DIF_SUBR_MUTEX_TYPE_ADAPTIVE, "mutex_type_adaptive()" },
+		{ DIF_SUBR_MUTEX_TYPE_SPIN, "mutex_type_spin()" },
+		{ DIF_SUBR_RW_READ_HELD, "rw_read_held()" },
+		{ DIF_SUBR_RW_WRITE_HELD, "rw_write_held()" },
+		{ DIF_SUBR_RW_ISWRITER, "rw_iswriter()" },
+		{ DIF_SUBR_COPYIN, "copyin()" },
+		{ DIF_SUBR_COPYINSTR, "copyinstr()" },
+		{ DIF_SUBR_SPECULATION, "speculation()" },
+		{ DIF_SUBR_PROGENYOF, "progenyof()" },
+		{ DIF_SUBR_STRLEN, "strlen()" },
+		{ DIF_SUBR_COPYOUT, "copyout()" },
+		{ DIF_SUBR_COPYOUTSTR, "copyoutstr()" },
+		{ DIF_SUBR_ALLOCA, "alloca()" }, { DIF_SUBR_BCOPY, "bcopy()" },
+		{ DIF_SUBR_COPYINTO, "copyinto()" },
+		{ DIF_SUBR_MSGDSIZE, "msgdsize()" },
+		{ DIF_SUBR_MSGSIZE, "msgsize()" },
+		{ DIF_SUBR_GETMAJOR, "getmajor()" },
+		{ DIF_SUBR_GETMINOR, "getminor()" },
+		{ DIF_SUBR_DDI_PATHNAME, "ddi_pathname()" },
+		{ DIF_SUBR_STRJOIN, "strjoin()" },
+		{ DIF_SUBR_LLTOSTR, "lltostr()" },
+		{ DIF_SUBR_BASENAME, "basename()" },
+		{ DIF_SUBR_DIRNAME, "dirname()" },
+		{ DIF_SUBR_CLEANPATH, "cleanpath()" },
+		{ DIF_SUBR_STRCHR, "strchr()" },
+		{ DIF_SUBR_STRRCHR, "strrchr()" },
+		{ DIF_SUBR_STRSTR, "strstr()" },
+		{ DIF_SUBR_STRTOK, "strtok()" },
+		{ DIF_SUBR_SUBSTR, "substr()" }, { DIF_SUBR_INDEX, "index()" },
+		{ DIF_SUBR_RINDEX, "rindex()" }, { DIF_SUBR_HTONS, "htons()" },
+		{ DIF_SUBR_HTONL, "htonl()" }, { DIF_SUBR_HTONLL, "htonll()" },
+		{ DIF_SUBR_NTOHS, "ntohs()" }, { DIF_SUBR_NTOHL, "ntohl()" },
+		{ DIF_SUBR_NTOHLL, "ntohll()" },
+		{ DIF_SUBR_INET_NTOP, "inet_ntop()" },
+		{ DIF_SUBR_INET_NTOA, "inet_ntoa()" },
+		{ DIF_SUBR_INET_NTOA6, "inet_ntoa6()" },
+		{ DIF_SUBR_TOUPPER, "toupper()" },
+		{ DIF_SUBR_TOLOWER, "tolower()" },
+		{ DIF_SUBR_MEMREF, "memref()" },
+		{ DIF_SUBR_SX_SHARED_HELD, "sx_shared_held()" },
+		{ DIF_SUBR_SX_EXCLUSIVE_HELD, "sx_exclusive_held()" },
+		{ DIF_SUBR_SX_ISEXCLUSIVE, "sx_isexclusive()" },
+		{ DIF_SUBR_MEMSTR, "memstr()" }, { DIF_SUBR_GETF, "getf()" },
+		{ DIF_SUBR_JSON, "json()" }, { DIF_SUBR_STRTOLL, "strtoll()" },
+		{ DIF_SUBR_RANDOM, "random()" },
+		{ DIF_SUBR_PTINFO, "ptinfo()" } };
 
-	instr = n->get_instruction();
-	subr = DIF_INSTR_SUBR(instr);
+	dif_instr_t instr = n->getInstruction();
+	uint16_t subr = DIF_INSTR_SUBR(instr);
+	Vec<Typefile *> tfsToCheck = { dt_typefile_D(), dt_typefile_kernel() };
 
 	/*
 	 * The return typefile of a call instruction will always be the
@@ -226,13 +207,13 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 	 */
 	switch (subr) {
 	case DIF_SUBR_RAND:
-		n->ctfid = n->tf->get_ctfid("uint64_t");
+		n->ctfid = n->tf->getCtfID("uint64_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type uint64_t: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_MUTEX_OWNED:
@@ -243,18 +224,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, t_mtx, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
+		argCmpWith(arg0, tfsToCheck, t_mtx, subr_name[subr],
+		    SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("int");
+		n->ctfid = n->tf->getCtfID("int");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "%s: failed to get type int: %s", subr_name[subr].c_str(),
-			    n->tf->get_errmsg());
+			dt_set_progerr(dtp, pgp,
+			    "%s: failed to get type int: %s",
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_MUTEX_OWNER:
@@ -263,18 +242,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, t_mtx, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
+		argCmpWith(arg0, tfsToCheck, t_mtx, subr_name[subr],
+		    SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid(t_thread);
+		n->ctfid = n->tf->getCtfID(t_thread.c_str());
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get thread type: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_RW_READ_HELD:
@@ -283,18 +260,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, t_rw, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
+		argCmpWith(arg0, tfsToCheck, t_rw, subr_name[subr],
+		    SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("int");
+		n->ctfid = n->tf->getCtfID("int");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "%s: failed to get type int: %s", subr_name[subr].c_str(),
-			    n->tf->get_errmsg());
+			dt_set_progerr(dtp, pgp,
+			    "%s: failed to get type int: %s",
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_RW_WRITE_HELD:
@@ -303,18 +278,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, t_rw, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
+		argCmpWith(arg0, tfsToCheck, t_rw, subr_name[subr],
+		    SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("int");
+		n->ctfid = n->tf->getCtfID("int");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "%s: failed to get type int: %s", subr_name[subr].c_str(),
-			    n->tf->get_errmsg());
+			dt_set_progerr(dtp, pgp,
+			    "%s: failed to get type int: %s",
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_RW_ISWRITER:
@@ -323,18 +296,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, t_rw, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
+		argCmpWith(arg0, tfsToCheck, t_rw, subr_name[subr],
+		    SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("int");
+		n->ctfid = n->tf->getCtfID("int");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "%s: failed to get type int: %s", subr_name[subr].c_str(),
-			    n->tf->get_errmsg());
+			dt_set_progerr(dtp, pgp,
+			    "%s: failed to get type int: %s",
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_COPYIN:
@@ -343,10 +314,7 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "uintptr_t", subr_name[subr],
 		    SUBTYPE_EQUAL);
 
 		/*
@@ -354,19 +322,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		argCmpWith(arg1,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg1, tfsToCheck, "size_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("void *");
+		n->ctfid = n->tf->getCtfID("void *");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type void *: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_COPYINSTR:
@@ -375,10 +340,7 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "uintptr_t", subr_name[subr],
 		    SUBTYPE_EQUAL);
 
 		/*
@@ -387,24 +349,21 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		if (stack->size() > 1) {
 			arg1 = (*stack)[i++];
 			assert(arg1->tf != nullptr);
-			argCmpWith(arg1,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
+			argCmpWith(arg1, tfsToCheck, "size_t", subr_name[subr],
 			    SUBTYPE_SND | SUBTYPE_EQUAL);
 		}
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 
 	case DIF_SUBR_SPECULATION:
-		n->ctfid = n->tf->get_ctfid("int");
+		n->ctfid = n->tf->getCtfID("int");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "%s: failed to get type int: %s", subr_name[subr].c_str(),
-			    n->tf->get_errmsg());
+			dt_set_progerr(dtp, pgp,
+			    "%s: failed to get type int: %s",
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_PROGENYOF:
@@ -413,19 +372,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "pid_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "pid_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("int");
+		n->ctfid = n->tf->getCtfID("int");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "%s: failed to get type int: %s", subr_name[subr].c_str(),
-			    n->tf->get_errmsg());
+			dt_set_progerr(dtp, pgp,
+			    "%s: failed to get type int: %s",
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_STRLEN:
@@ -433,23 +389,20 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 * We expect a "const char *" as an argument.
 		 */
 		arg0 = (*stack)[i++];
-		if (arg0->d_type == DIF_TYPE_CTF)
-			argCmpWith(arg0,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
-			    SUBTYPE_EQUAL);
-		else if (arg0->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+		if (arg0->dType == DIF_TYPE_CTF)
+			argCmpWith(arg0, tfsToCheck, "const char *",
+			    subr_name[subr], SUBTYPE_EQUAL);
+		else if (arg0->dType == DIF_TYPE_NONE)
+			dt_set_progerr(dtp, pgp, "%s: arg0 type is NONE",
 			    subr_name[subr].c_str());
 
-		n->ctfid = n->tf->get_ctfid("size_t");
+		n->ctfid = n->tf->getCtfID("size_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type size_t: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_COPYOUT:
@@ -458,20 +411,15 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
+		argCmpWith(arg0, tfsToCheck, "void *", subr_name[subr],
+		    SUBTYPE_NONE);
 
 		/*
 		 * We expect a "uintptr_t" as a second argument.
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		argCmpWith(arg1,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg1, tfsToCheck, "uintptr_t", subr_name[subr],
 		    SUBTYPE_EQUAL);
 
 		/*
@@ -479,13 +427,10 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg2 = (*stack)[i++];
 		assert(arg2->tf != nullptr);
-		argCmpWith(arg2,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg2, tfsToCheck, "size_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
-		n->d_type = DIF_TYPE_NONE;
+		n->dType = DIF_TYPE_NONE;
 		break;
 
 	case DIF_SUBR_COPYOUTSTR:
@@ -494,14 +439,11 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 
-		if (arg0->d_type == DIF_TYPE_CTF)
-			argCmpWith(arg0,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "char *", buf, sizeof(buf), subr_name[subr].c_str(),
+		if (arg0->dType == DIF_TYPE_CTF)
+			argCmpWith(arg0, tfsToCheck, "char *", subr_name[subr],
 			    SUBTYPE_EQUAL);
-		else if (arg0->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+		else if (arg0->dType == DIF_TYPE_NONE)
+			dt_set_progerr(dtp, pgp, "%s: arg0 type is NONE",
 			    subr_name[subr].c_str());
 
 		/*
@@ -509,10 +451,7 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		argCmpWith(arg1,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg1, tfsToCheck, "uintptr_t", subr_name[subr],
 		    SUBTYPE_EQUAL);
 
 		/*
@@ -520,13 +459,10 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg2 = (*stack)[i++];
 		assert(arg2->tf != nullptr);
-		argCmpWith(arg2,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg2, tfsToCheck, "size_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
-		n->d_type = DIF_TYPE_NONE;
+		n->dType = DIF_TYPE_NONE;
 		break;
 
 	case DIF_SUBR_ALLOCA:
@@ -535,19 +471,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "size_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("void *");
+		n->ctfid = n->tf->getCtfID("void *");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type void *: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_BCOPY:
@@ -556,33 +489,26 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
+		argCmpWith(arg0, tfsToCheck, "void *", subr_name[subr],
+		    SUBTYPE_NONE);
 
 		/*
 		 * We expect a "void *" as a second argument.
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		argCmpWith(arg1,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
+		argCmpWith(arg1, tfsToCheck, "void *", subr_name[subr],
+		    SUBTYPE_NONE);
 
 		/*
 		 * We expect a "size_t" as a third argument.
 		 */
 		arg2 = (*stack)[i++];
 		assert(arg2->tf != nullptr);
-		argCmpWith(arg2,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg2, tfsToCheck, "size_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
-		n->d_type = DIF_TYPE_NONE;
+		n->dType = DIF_TYPE_NONE;
 		break;
 
 	case DIF_SUBR_COPYINTO:
@@ -591,10 +517,7 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "uintptr_t", subr_name[subr],
 		    SUBTYPE_EQUAL);
 
 		/*
@@ -602,10 +525,7 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		argCmpWith(arg1,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg1, tfsToCheck, "size_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
 		/*
@@ -613,12 +533,10 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg2 = (*stack)[i++];
 		assert(arg2->tf != nullptr);
-		argCmpWith(arg2,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
+		argCmpWith(arg2, tfsToCheck, "void *", subr_name[subr],
+		    SUBTYPE_NONE);
 
-		n->d_type = DIF_TYPE_NONE;
+		n->dType = DIF_TYPE_NONE;
 		break;
 
 	case DIF_SUBR_MSGDSIZE:
@@ -628,19 +546,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "mblk_t *", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "mblk_t *", subr_name[subr],
 		    SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("size_t");
+		n->ctfid = n->tf->getCtfID("size_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type size_t: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_GETMAJOR:
@@ -654,23 +569,18 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
+		argCmpWith(arg0, tfsToCheck, "void *", subr_name[subr],
+		    SUBTYPE_NONE);
 
 		/*
 		 * We expect a "int64_t" as a second argument.
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		argCmpWith(arg1,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "int64_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg1, tfsToCheck, "int64_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 
 	case DIF_SUBR_LLTOSTR:
@@ -679,10 +589,7 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "int64_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "int64_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
 		/*
@@ -691,14 +598,11 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		if (stack->size() > 1) {
 			arg1 = (*stack)[i++];
 			assert(arg1->tf != nullptr);
-			argCmpWith(arg1,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
+			argCmpWith(arg1, tfsToCheck, "int", subr_name[subr],
 			    SUBTYPE_ANY);
 		}
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 
 	case DIF_SUBR_CLEANPATH:
@@ -709,17 +613,14 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 
-		if (arg0->d_type == DIF_TYPE_CTF)
-			argCmpWith(arg0,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
-			    SUBTYPE_EQUAL);
-		else if (arg0->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+		if (arg0->dType == DIF_TYPE_CTF)
+			argCmpWith(arg0, tfsToCheck, "const char *",
+			    subr_name[subr], SUBTYPE_EQUAL);
+		else if (arg0->dType == DIF_TYPE_NONE)
+			dt_set_progerr(dtp, pgp, "%s: arg0 type is NONE",
 			    subr_name[subr].c_str());
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 
 	case DIF_SUBR_STRRCHR:
@@ -728,14 +629,11 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 * We expect a "const char *" as an argument.
 		 */
 		arg0 = (*stack)[i++];
-		if (arg0->d_type == DIF_TYPE_CTF)
-			argCmpWith(arg0,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
-			    SUBTYPE_EQUAL);
-		else if (arg0->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+		if (arg0->dType == DIF_TYPE_CTF)
+			argCmpWith(arg0, tfsToCheck, "const char *",
+			    subr_name[subr], SUBTYPE_EQUAL);
+		else if (arg0->dType == DIF_TYPE_NONE)
+			dt_set_progerr(dtp, pgp, "%s: arg0 type is NONE",
 			    subr_name[subr].c_str());
 
 		/*
@@ -743,13 +641,10 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		argCmpWith(arg1,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "char", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg1, tfsToCheck, "char", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 
 	case DIF_SUBR_SUBSTR:
@@ -757,14 +652,11 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 * We expect a "const char *" as an argument.
 		 */
 		arg0 = (*stack)[i++];
-		if (arg0->d_type == DIF_TYPE_CTF)
-			argCmpWith(arg0,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
-			    SUBTYPE_EQUAL);
-		else if (arg0->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+		if (arg0->dType == DIF_TYPE_CTF)
+			argCmpWith(arg0, tfsToCheck, "const char *",
+			    subr_name[subr], SUBTYPE_EQUAL);
+		else if (arg0->dType == DIF_TYPE_NONE)
+			dt_set_progerr(dtp, pgp, "%s: arg0 type is NONE",
 			    subr_name[subr].c_str());
 
 		/*
@@ -772,10 +664,7 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		argCmpWith(arg1,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg1, tfsToCheck, "int", subr_name[subr],
 		    SUBTYPE_ANY);
 
 		/*
@@ -784,14 +673,11 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		if (stack->size() > 2) {
 			arg2 = (*stack)[i++];
 			assert(arg2->tf != nullptr);
-			argCmpWith(arg2,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
+			argCmpWith(arg2, tfsToCheck, "int", subr_name[subr],
 			    SUBTYPE_ANY);
 		}
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 
 	case DIF_SUBR_RINDEX:
@@ -800,14 +686,11 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 * We expect a "const char *" as an argument.
 		 */
 		arg0 = (*stack)[i++];
-		if (arg0->d_type == DIF_TYPE_CTF)
-			argCmpWith(arg0,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
-			    SUBTYPE_EQUAL);
-		else if (arg0->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+		if (arg0->dType == DIF_TYPE_CTF)
+			argCmpWith(arg0, tfsToCheck, "const char *",
+			    subr_name[subr], SUBTYPE_EQUAL);
+		else if (arg0->dType == DIF_TYPE_NONE)
+			dt_set_progerr(dtp, pgp, "%s: arg0 type is NONE",
 			    subr_name[subr].c_str());
 
 		/*
@@ -815,14 +698,11 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 
-		if (arg0->d_type == DIF_TYPE_CTF)
-			argCmpWith(arg1,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
-			    SUBTYPE_EQUAL);
-		else if (arg0->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp, "%s: arg1 type is NONE",
+		if (arg0->dType == DIF_TYPE_CTF)
+			argCmpWith(arg1, tfsToCheck, "const char *",
+			    subr_name[subr], SUBTYPE_EQUAL);
+		else if (arg0->dType == DIF_TYPE_NONE)
+			dt_set_progerr(dtp, pgp, "%s: arg1 type is NONE",
 			    subr_name[subr].c_str());
 
 		/*
@@ -831,20 +711,17 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		if (stack->size() > 2) {
 			arg2 = (*stack)[i++];
 			assert(arg2->tf != nullptr);
-			argCmpWith(arg2,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
+			argCmpWith(arg2, tfsToCheck, "int", subr_name[subr],
 			    SUBTYPE_ANY);
 		}
 
-		n->ctfid = n->tf->get_ctfid("int");
+		n->ctfid = n->tf->getCtfID("int");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "%s: failed to get type int: %s", subr_name[subr].c_str(),
-			    n->tf->get_errmsg());
+			dt_set_progerr(dtp, pgp,
+			    "%s: failed to get type int: %s",
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_NTOHS:
@@ -854,19 +731,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "uint16_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "uint16_t", subr_name[subr],
 		    SUBTYPE_ANY);
 
-		n->ctfid = n->tf->get_ctfid("uint16_t");
+		n->ctfid = n->tf->getCtfID("uint16_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type uint16_t: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_NTOHL:
@@ -876,19 +750,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "uint32_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "uint32_t", subr_name[subr],
 		    SUBTYPE_ANY);
 
-		n->ctfid = n->tf->get_ctfid("uint32_t");
+		n->ctfid = n->tf->getCtfID("uint32_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type uint32_t: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_NTOHLL:
@@ -898,19 +769,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "uint64_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "uint64_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("uint64_t");
+		n->ctfid = n->tf->getCtfID("uint64_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type uint64_t: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_INET_NTOP:
@@ -919,10 +787,7 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "int", subr_name[subr],
 		    SUBTYPE_ANY);
 
 		/*
@@ -930,12 +795,10 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		argCmpWith(arg1,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
+		argCmpWith(arg1, tfsToCheck, "void *", subr_name[subr],
+		    SUBTYPE_NONE);
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 
 	case DIF_SUBR_INET_NTOA:
@@ -944,13 +807,10 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "in_addr_t *", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "in_addr_t *", subr_name[subr],
 		    SUBTYPE_EQUAL);
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 
 	case DIF_SUBR_INET_NTOA6:
@@ -959,13 +819,10 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "struct in6_addr *", buf, sizeof(buf), subr_name[subr].c_str(),
-		    SUBTYPE_EQUAL);
+		argCmpWith(arg0, tfsToCheck, "struct in6_addr *",
+		    subr_name[subr], SUBTYPE_EQUAL);
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 
 	case DIF_SUBR_TOLOWER:
@@ -975,17 +832,14 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 
-		if (arg0->d_type == DIF_TYPE_CTF)
-			argCmpWith(arg0,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
-			    SUBTYPE_EQUAL);
-		else if (arg0->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+		if (arg0->dType == DIF_TYPE_CTF)
+			argCmpWith(arg0, tfsToCheck, "const char *",
+			    subr_name[subr], SUBTYPE_EQUAL);
+		else if (arg0->dType == DIF_TYPE_NONE)
+			dt_set_progerr(dtp, pgp, "%s: arg0 type is NONE",
 			    subr_name[subr].c_str());
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 
 	case DIF_SUBR_MEMREF:
@@ -994,29 +848,24 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
+		argCmpWith(arg0, tfsToCheck, "void *", subr_name[subr],
+		    SUBTYPE_NONE);
 
 		/*
 		 * We expect a "size_t" as a second argument.
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		argCmpWith(arg1,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg1, tfsToCheck, "size_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("uintptr_t *");
+		n->ctfid = n->tf->getCtfID("uintptr_t *");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type uintptr_t *: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_SX_SHARED_HELD:
@@ -1027,18 +876,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, t_sx, buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_EQUAL);
+		argCmpWith(arg0, tfsToCheck, t_sx, subr_name[subr],
+		    SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("int");
+		n->ctfid = n->tf->getCtfID("int");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "%s: failed to get type int: %s", subr_name[subr].c_str(),
-			    n->tf->get_errmsg());
+			dt_set_progerr(dtp, pgp,
+			    "%s: failed to get type int: %s",
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_MEMSTR:
@@ -1047,20 +894,15 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "void *", buf, sizeof(buf), subr_name[subr].c_str(), SUBTYPE_NONE);
+		argCmpWith(arg0, tfsToCheck, "void *", subr_name[subr],
+		    SUBTYPE_NONE);
 
 		/*
 		 * We expect a "char" as a second argument.
 		 */
 		arg1 = (*stack)[i++];
 		assert(arg1->tf != nullptr);
-		argCmpWith(arg1,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "char", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg1, tfsToCheck, "char", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
 		/*
@@ -1068,13 +910,10 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg2 = (*stack)[i++];
 		assert(arg2->tf != nullptr);
-		argCmpWith(arg2,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "size_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg2, tfsToCheck, "size_t", subr_name[subr],
 		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 
 	case DIF_SUBR_GETF:
@@ -1083,19 +922,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "int", subr_name[subr],
 		    SUBTYPE_ANY);
 
-		n->ctfid = n->tf->get_ctfid("file_t *");
+		n->ctfid = n->tf->getCtfID("file_t *");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type file_t *: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_STRTOLL:
@@ -1103,14 +939,11 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 * We expect a "const char *" as an argument.
 		 */
 		arg0 = (*stack)[i++];
-		if (arg0->d_type == DIF_TYPE_CTF)
-			argCmpWith(arg0,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
-			    SUBTYPE_EQUAL);
-		else if (arg0->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+		if (arg0->dType == DIF_TYPE_CTF)
+			argCmpWith(arg0, tfsToCheck, "const char *",
+			    subr_name[subr], SUBTYPE_EQUAL);
+		else if (arg0->dType == DIF_TYPE_NONE)
+			dt_set_progerr(dtp, pgp, "%s: arg0 type is NONE",
 			    subr_name[subr].c_str());
 
 		/*
@@ -1119,30 +952,27 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		if (stack->size() > 1) {
 			arg1 = (*stack)[i++];
 			assert(arg1->tf != nullptr);
-			argCmpWith(arg1,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "int", buf, sizeof(buf), subr_name[subr].c_str(),
+			argCmpWith(arg1, tfsToCheck, "int", subr_name[subr],
 			    SUBTYPE_ANY);
 		}
 
-		n->ctfid = n->tf->get_ctfid("int64_t");
+		n->ctfid = n->tf->getCtfID("int64_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type int64_t: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_RANDOM:
-		n->ctfid = n->tf->get_ctfid("uint64_t");
+		n->ctfid = n->tf->getCtfID("uint64_t");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type uint64_t: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_PTINFO:
@@ -1151,19 +981,16 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 */
 		arg0 = (*stack)[i++];
 		assert(arg0->tf != nullptr);
-		argCmpWith(arg0,
-		    (typefile *[]) { dt_typefile_mod("D"),
-		                          dt_typefile_kernel() },
-		    2, "uintptr_t", buf, sizeof(buf), subr_name[subr].c_str(),
+		argCmpWith(arg0, tfsToCheck, "uintptr_t", subr_name[subr],
 		    SUBTYPE_EQUAL);
 
-		n->ctfid = n->tf->get_ctfid("void *");
+		n->ctfid = n->tf->getCtfID("void *");
 		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
+			dt_set_progerr(dtp, pgp,
 			    "%s: failed to get type void *: %s",
-			    subr_name[subr].c_str(), n->tf->get_errmsg());
+			    subr_name[subr].c_str(), n->tf->getErrMsg());
 
-		n->d_type = DIF_TYPE_CTF;
+		n->dType = DIF_TYPE_CTF;
 		break;
 
 	case DIF_SUBR_STRTOK:
@@ -1174,37 +1001,31 @@ TypeInference::inferSubr(dfg_node *n, node_vec *stack)
 		 * We expect a "const char *" as an argument.
 		 */
 		arg0 = (*stack)[i++];
-		if (arg0->d_type == DIF_TYPE_CTF)
-			argCmpWith(arg0,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
-			    SUBTYPE_EQUAL);
-		else if (arg0->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+		if (arg0->dType == DIF_TYPE_CTF)
+			argCmpWith(arg0, tfsToCheck, "const char *",
+			    subr_name[subr], SUBTYPE_EQUAL);
+		else if (arg0->dType == DIF_TYPE_NONE)
+			dt_set_progerr(dtp, pgp, "%s: arg0 type is NONE",
 			    subr_name[subr].c_str());
 
 		/*
 		 * We expect a "const char *" as the second argument.
 		 */
 		arg1 = (*stack)[i++];
-		if (arg1->d_type == DIF_TYPE_CTF)
-			argCmpWith(arg1,
-			    (typefile *[]) { dt_typefile_mod("D"),
-			                          dt_typefile_kernel() },
-			    2, "const char *", buf, sizeof(buf), subr_name[subr].c_str(),
-			    SUBTYPE_EQUAL);
-		else if (arg0->d_type == DIF_TYPE_NONE)
-			dt_set_progerr(g_dtp, g_pgp, "%s: arg1 type is NONE",
+		if (arg1->dType == DIF_TYPE_CTF)
+			argCmpWith(arg1, tfsToCheck, "const char *",
+			    subr_name[subr], SUBTYPE_EQUAL);
+		else if (arg1->dType == DIF_TYPE_NONE)
+			dt_set_progerr(dtp, pgp, "%s: arg1 type is NONE",
 			    subr_name[subr].c_str());
 
-		n->d_type = DIF_TYPE_STRING;
+		n->dType = DIF_TYPE_STRING;
 		break;
 	default:
 		return (-1);
 	}
 
-	return (n->d_type);
+	return (n->dType);
+}
 }
 
-}

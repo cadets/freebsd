@@ -58,23 +58,23 @@
 
 namespace dtrace {
 
-list<uptr<typefile>> typefiles;
+list<UPtr<Typefile>> typefiles;
 
-typefile::typefile(dtrace_hdl_t *_dtp, dt_module_t *_mod, std::string _modname)
+Typefile::Typefile(dtrace_hdl_t *_dtp, dt_module_t *_mod, std::string _modname)
     : dtp(_dtp)
     , modhdl(_mod)
     , modname(_modname)
 {
 }
 
-typefile::typefile(dtrace_hdl_t *_dtp, dt_module_t *_mod, const char *_modname)
+Typefile::Typefile(dtrace_hdl_t *_dtp, dt_module_t *_mod, const char *_modname)
     : dtp(_dtp)
     , modhdl(_mod)
     , modname(std::string(_modname))
 {
 }
 
-typefile::typefile(dtrace_hdl_t *_dtp, dt_module_t *_mod, char *_modname)
+Typefile::Typefile(dtrace_hdl_t *_dtp, dt_module_t *_mod, char *_modname)
     : dtp(_dtp)
     , modhdl(_mod)
     , modname(std::string(_modname))
@@ -85,7 +85,7 @@ void
 dt_typefile_openall(dtrace_hdl_t *dtp)
 {
 	dt_module_t *mod;
-	typefile *typef;
+	Typefile *typef;
 	int again;
 	int kld;
 	struct kld_file_stat kldinfo;
@@ -95,7 +95,7 @@ dt_typefile_openall(dtrace_hdl_t *dtp)
 	if (mod == nullptr)
 		return;
 
-	typefiles.push_back(std::make_unique<typefile>(dtp, mod, "D"));
+	typefiles.push_back(std::make_unique<Typefile>(dtp, mod, "D"));
 	if (typefiles.back() == nullptr)
 		errx(EXIT_FAILURE, "dt_typefile_openall(): allocation failed");
 
@@ -103,7 +103,7 @@ dt_typefile_openall(dtrace_hdl_t *dtp)
 	if (mod == nullptr)
 		return;
 
-	typefiles.push_back(std::make_unique<typefile>(dtp, mod, "C"));
+	typefiles.push_back(std::make_unique<Typefile>(dtp, mod, "C"));
 	if (typefiles.back() == nullptr)
 		errx(EXIT_FAILURE, "dt_typefile_openall(): allocation failed");
 
@@ -124,11 +124,11 @@ dt_typefile_openall(dtrace_hdl_t *dtp)
 
 		if (strcmp("kernel", kldinfo.name) == 0) {
 			typefiles.push_front(
-			    std::make_unique<typefile>(dtp, mod, kldinfo.name));
+			    std::make_unique<Typefile>(dtp, mod, kldinfo.name));
 			typef = typefiles.front().get();
 		} else {
 			typefiles.push_back(
-			    std::make_unique<typefile>(dtp, mod, kldinfo.name));
+			    std::make_unique<Typefile>(dtp, mod, kldinfo.name));
 			typef = typefiles.back().get();
 		}
 
@@ -139,7 +139,7 @@ dt_typefile_openall(dtrace_hdl_t *dtp)
 }
 
 ctf_id_t
-typefile::get_ctfid(const char *type) const
+Typefile::getCtfID(const char *type) const
 {
 	std::string t = std::string(type);
 	ctf_file_t *ctfp;
@@ -181,7 +181,7 @@ typefile::get_ctfid(const char *type) const
 }
 
 char *
-typefile::get_typename(ctf_id_t id, char *buf, size_t buf_size) const
+Typefile::getTypename(ctf_id_t id, char *buf, size_t buf_size) const
 {
 	ctf_file_t *ctfp;
 
@@ -196,7 +196,7 @@ typefile::get_typename(ctf_id_t id, char *buf, size_t buf_size) const
 }
 
 ctf_id_t
-typefile::get_reference(ctf_id_t id) const
+Typefile::getReference(ctf_id_t id) const
 {
 	ctf_file_t *ctfp;
 
@@ -211,7 +211,7 @@ typefile::get_reference(ctf_id_t id) const
 }
 
 ssize_t
-typefile::get_size(ctf_id_t id) const
+Typefile::getSize(ctf_id_t id) const
 {
 	ctf_file_t *ctfp;
 
@@ -226,7 +226,7 @@ typefile::get_size(ctf_id_t id) const
 }
 
 const char *
-typefile::get_errmsg(void) const
+Typefile::getErrMsg(void) const
 {
 	ctf_file_t *ctfp;
 
@@ -241,7 +241,7 @@ typefile::get_errmsg(void) const
 }
 
 ctf_file_t *
-typefile::get_membinfo(ctf_id_t type, const char *s, ctf_membinfo_t *mp) const
+Typefile::getMembInfo(ctf_id_t type, const char *s, ctf_membinfo_t *mp) const
 {
 	ctf_file_t *ctfp;
 
@@ -274,7 +274,7 @@ typefile::get_membinfo(ctf_id_t type, const char *s, ctf_membinfo_t *mp) const
 }
 
 ctf_id_t
-typefile::get_kind(ctf_id_t type) const
+Typefile::getKind(ctf_id_t type) const
 {
 	ctf_file_t *ctfp;
 
@@ -288,14 +288,14 @@ typefile::get_kind(ctf_id_t type) const
 	return (ctf_type_kind(ctfp, type));
 }
 
-typefile *
+Typefile *
 dt_typefile_first(void)
 {
 
 	return (typefiles.front().get());
 }
 
-typefile *
+Typefile *
 dt_typefile_kernel(void)
 {
 	dt_module_t *mod;
@@ -311,7 +311,7 @@ dt_typefile_kernel(void)
 	return (nullptr);
 }
 
-typefile *
+Typefile *
 dt_typefile_D(void)
 {
 	dt_module_t *mod;
@@ -328,7 +328,7 @@ dt_typefile_D(void)
 }
 
 ctf_id_t
-typefile::resolve(ctf_id_t type)
+Typefile::resolve(ctf_id_t type)
 {
 	ctf_file_t *ctfp;
 
@@ -343,7 +343,7 @@ typefile::resolve(ctf_id_t type)
 }
 
 int
-typefile::get_encoding(ctf_id_t type, ctf_encoding_t *ep)
+Typefile::getEncoding(ctf_id_t type, ctf_encoding_t *ep)
 {
 	ctf_file_t *ctfp;
 
@@ -358,13 +358,13 @@ typefile::get_encoding(ctf_id_t type, ctf_encoding_t *ep)
 }
 
 const std::string &
-typefile::name(void) const
+Typefile::name(void) const
 {
 
 	return (this->modname);
 }
 
-typefile *
+Typefile *
 dt_typefile_mod(const char *mod)
 {
 	dt_module_t *_mod;
@@ -385,7 +385,7 @@ dt_typefile_mod(const char *mod)
 }
 
 int
-typefile::type_compat_with(ctf_id_t id, const typefile *other,
+Typefile::typeIsCompatibleWith(ctf_id_t id, const Typefile *other,
     ctf_id_t other_id)
 {
 	ctf_file_t *ctfp, *ctfp_other;
@@ -406,15 +406,15 @@ static int
 process_struct_member(const char *name, ctf_id_t type, ulong_t offset,
     void *uarg)
 {
-	auto *types = static_cast<vec<ctf_id_t> *>(uarg);
+	auto *types = static_cast<Vec<ctf_id_t> *>(uarg);
 	assert(types != nullptr);
 
 	types->push_back(type);
 	return (0);
 }
 
-vec<ctf_id_t> *
-typefile::build_struct(ctf_id_t id)
+Vec<ctf_id_t> *
+Typefile::buildStruct(ctf_id_t id)
 {
 	if (this->dtp == nullptr || this->modhdl == nullptr)
 		return (nullptr);
@@ -423,7 +423,7 @@ typefile::build_struct(ctf_id_t id)
 	if (ctfp == nullptr)
 		return (nullptr);
 
-	this->struct_info[id] = vec<ctf_id_t>();
+	this->struct_info[id] = Vec<ctf_id_t>();
 	auto *types = &this->struct_info[id];
 
 	/*
@@ -438,19 +438,19 @@ typefile::build_struct(ctf_id_t id)
 }
 
 ctf_file_t *
-typefile::get_ctfp(void)
+Typefile::getCtfPointer(void)
 {
 
 	return (dt_module_getctf(this->dtp, this->modhdl));
 }
 
 ctf_arinfo_t *
-typefile::get_array_info(ctf_id_t id)
+Typefile::getArrayInfo(ctf_id_t id)
 {
 	ctf_file_t *ctfp;
 	ctf_arinfo_t *ai;
 
-	ctfp = this->get_ctfp();
+	ctfp = this->getCtfPointer();
 	if (ctfp == nullptr)
 		return (nullptr);
 
@@ -468,14 +468,99 @@ typefile::get_array_info(ctf_id_t id)
 }
 
 const std::optional<std::string>
-typefile::get_typename(ctf_id_t id) const
+Typefile::getTypename(ctf_id_t id) const
 {
 	char buf[DT_TYPE_NAMELEN] = { 0 };
-	if (this->get_typename(id, buf, sizeof(buf)) != (char *)buf) {
+	if (this->getTypename(id, buf, sizeof(buf)) != (char *)buf) {
 		return (std::nullopt);
 	}
 
 	return (std::make_optional<std::string>(buf));
+}
+
+ctf_id_t
+Typefile::stripReference(ctf_id_t &orig_id, size_t &n_stars)
+{
+	ctf_id_t kind;
+	ctf_id_t id;
+	size_t n_redirects;
+
+	kind = getKind(orig_id);
+	n_stars = 0;
+
+	if (kind != CTF_K_TYPEDEF && kind != CTF_K_POINTER &&
+	    kind != CTF_K_ARRAY)
+		return (kind);
+
+	id = orig_id;
+	n_redirects = 0;
+
+again:
+	while (kind == CTF_K_TYPEDEF || kind == CTF_K_POINTER) {
+		id = getReference(id);
+		if (id == CTF_ERR) {
+			fprintf(stderr,
+			    "dt_typefile_reference() failed with: %s\n",
+			    getErrMsg());
+			return (CTF_ERR);
+		}
+
+		if (kind == CTF_K_POINTER)
+			n_redirects++;
+
+		kind = getKind(id);
+	}
+
+	assert(kind != CTF_K_TYPEDEF && kind != CTF_K_POINTER);
+	if (kind == CTF_K_ARRAY) {
+		ctf_arinfo_t *ai;
+
+		ai = getArrayInfo(id);
+		if (ai == nullptr)
+			return (CTF_ERR);
+
+		id = ai->ctr_contents;
+		free(ai);
+
+		n_redirects++;
+		kind = getKind(id); /* update our kind */
+		goto again;
+	}
+
+	n_stars = n_redirects;
+	orig_id = id;
+	return (kind);
+}
+
+ctf_id_t
+Typefile::stripTypedef(ctf_id_t &orig_id)
+{
+	ctf_id_t kind;
+	ctf_id_t id;
+
+	kind = getKind(orig_id);
+
+	if (kind != CTF_K_TYPEDEF)
+		return (kind);
+
+	id = orig_id;
+
+	while (kind == CTF_K_TYPEDEF) {
+		id = getReference(id);
+		if (id == CTF_ERR) {
+			fprintf(stderr,
+			    "dt_typefile_reference() failed with: %s\n",
+			    getErrMsg());
+			return (CTF_ERR);
+		}
+
+		kind = getKind(id);
+	}
+
+	assert(kind != CTF_K_TYPEDEF);
+	orig_id = id;
+
+	return (kind);
 }
 
 }

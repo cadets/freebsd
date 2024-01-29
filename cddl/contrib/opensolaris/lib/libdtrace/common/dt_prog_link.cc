@@ -34,8 +34,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/types.h>
@@ -55,9 +53,11 @@
 #include <dt_linker_subr.hh>
 #include <dt_typefile.hh>
 #include <dt_typing.hh>
+#include <dt_hypertrace_linker.hh>
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <err.h>
@@ -67,28 +67,20 @@
 #include <sys/sysctl.h>
 #endif
 
-char t_mtx[MAXPATHLEN];
-char t_rw[MAXPATHLEN];
-char t_sx[MAXPATHLEN];
-char t_thread[MAXPATHLEN];
-
 namespace dtrace {
 
+using std::array;
 template <typename T> using vec = std::vector<T>;
 template <typename T> using uptr = std::unique_ptr<T>;
 
-dfg_list dfg_nodes;
-vec<uptr<basic_block>> basic_blocks;
-vec<uptr<dtrace_difv_t>> var_vector;
-dfg_node *r0node = nullptr;
+HyperTraceLinker::HyperTraceLinker(dtrace_hdl_t *_dtp, dtrace_prog_t *_pgp)
+    : dtp(_dtp)
+    , pgp(_pgp)
+{
+}
 
-typedef struct dtrace_ecbdesclist {
-	dt_list_t next;
-	dtrace_ecbdesc_t *ecbdesc;
-} dtrace_ecbdesclist_t;
-
-static void
-patch_usetxs(dtrace_hdl_t *dtp, dfg_node *n)
+void
+HyperTraceLinker::patchUsetxDefs(DFGNode *n)
 {
 	uint8_t rd, opcode;
 	dif_instr_t instr;
@@ -106,11 +98,11 @@ patch_usetxs(dtrace_hdl_t *dtp, dfg_node *n)
 
 	offset = n->mip->ctm_offset / 8 /* bytes */;
 
-	for (auto node : n->usetx_defs) {
-		if (node->relocated)
+	for (auto node : n->usetxDefs) {
+		if (node->isRelocated)
 			continue;
 
-		instr = node->get_instruction();
+		instr = node->getInstruction();
 		opcode = DIF_INSTR_OP(instr);
 		if (opcode != DIF_OP_USETX)
 			errx(EXIT_FAILURE, "opcode (%d) is not usetx", opcode);
@@ -131,37 +123,13 @@ patch_usetxs(dtrace_hdl_t *dtp, dfg_node *n)
 			errx(EXIT_FAILURE, "failed to insert %u into inttab",
 			    offset);
 
-		node->difo_buf()[node->uidx] = DIF_INSTR_SETX(index, rd);
-		node->relocated = true;
+		node->DIFOBuf()[node->uidx] = DIF_INSTR_SETX(index, rd);
+		node->isRelocated = true;
 	}
 }
 
-static void
-dt_prepare_typestrings(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
-{
-	char __kernel[] = "kernel`";
-	size_t __kernel_len = strlen(__kernel);
-
-	if (strncmp(mtx_str, __kernel, __kernel_len) != 0)
-		dt_set_progerr(dtp, pgp,
-		    "mtx_str does not start with \"kernel`\" (%s)", mtx_str);
-
-	if (strncmp(rw_str, __kernel, __kernel_len) != 0)
-		dt_set_progerr(dtp, pgp,
-		    "rw_str does not start with \"kernel`\" (%s)", rw_str);
-
-	if (strncmp(sx_str, __kernel, __kernel_len) != 0)
-		dt_set_progerr(dtp, pgp,
-		    "sx_str does not start with \"kernel`\" (%s)", sx_str);
-
-	memcpy(t_mtx, mtx_str + __kernel_len, MAXPATHLEN - __kernel_len);
-	memcpy(t_rw, rw_str + __kernel_len, MAXPATHLEN - __kernel_len);
-	memcpy(t_sx, sx_str + __kernel_len, MAXPATHLEN - __kernel_len);
-	memcpy(t_thread, thread_str, MAXPATHLEN);
-}
-
-static void
-relocate_uloadadd(dtrace_hdl_t *dtp, dfg_node *node)
+void
+HyperTraceLinker::relocateUloadOrAdd(DFGNode *node)
 {
 	size_t size, kind;
 	ctf_id_t ctfid;
@@ -170,7 +138,7 @@ relocate_uloadadd(dtrace_hdl_t *dtp, dfg_node *node)
 	ctf_encoding_t encoding;
 	dif_instr_t instr, new_instr;
 
-	instr = node->get_instruction();
+	instr = node->getInstruction();
 	opcode = DIF_INSTR_OP(instr);
 
 	if (opcode == DIF_OP_ADD) {
@@ -178,8 +146,8 @@ relocate_uloadadd(dtrace_hdl_t *dtp, dfg_node *node)
 	}
 
 	ctfid = node->tf->resolve(node->mip->ctm_type);
-	size = node->tf->get_size(ctfid);
-	kind = node->tf->get_kind(ctfid);
+	size = node->tf->getSize(ctfid);
+	kind = node->tf->getKind(ctfid);
 
 
 	/*
@@ -198,7 +166,7 @@ relocate_uloadadd(dtrace_hdl_t *dtp, dfg_node *node)
 
 		new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
 	} else {
-		if (node->tf->get_encoding(ctfid, &encoding) != 0)
+		if (node->tf->getEncoding(ctfid, &encoding) != 0)
 			errx(EXIT_FAILURE, "failed to get encoding for %ld",
 			    ctfid);
 
@@ -247,7 +215,7 @@ usetx_relo:
 
 	if (node->mip == nullptr) {
 		if (node->sym == nullptr) {
-			node->relocated = true;
+			node->isRelocated = true;
 			return;
 		}
 
@@ -255,31 +223,30 @@ usetx_relo:
 		assert(mip != nullptr);
 
 		memset(mip, 0, sizeof(*mip));
-		auto type = node->tf->get_reference(node->ctfid);
-		if (node->tf->get_membinfo(type, node->sym, mip) == 0) {
-			dt_set_progerr(node->dtp, node->program,
+		auto type = node->tf->getReference(node->ctfid);
+		if (node->tf->getMembInfo(type, node->sym, mip) == 0) {
+			dt_set_progerr(dtp, pgp,
 			    "%s(%p[%zu]): failed to get mip: %s.%s: %s\n",
 			    __func__, node->difo, node->uidx,
-			    node->tf->get_typename(node->ctfid)
+			    node->tf->getTypename(node->ctfid)
 				.value_or("UNKNOWN")
 				.c_str(),
-			    node->sym, node->tf->get_errmsg());
+			    node->sym, node->tf->getErrMsg());
 		}
 
 		node->mip = mip;
 	}
 
-	patch_usetxs(dtp, node);
+	patchUsetxDefs(node);
 
 	if (opcode != DIF_OP_ADD)
-		node->difo_buf()[node->uidx] = new_instr;
-	node->relocated = true;
+		node->DIFOBuf()[node->uidx] = new_instr;
+	node->isRelocated = true;
 }
 
-static void
-relocate_retpush(dtrace_hdl_t *dtp, dfg_node *node,
-    dtrace_actkind_t actkind, dtrace_actdesc_t *ad,
-    dtrace_diftype_t *orig_rtype)
+void
+HyperTraceLinker::relocateRetOrPush(DFGNode *node, dtrace_actkind_t actkind,
+    dtrace_actdesc_t *ad, dtrace_diftype_t *orig_rtype)
 {
 
 	/*
@@ -289,23 +256,20 @@ relocate_retpush(dtrace_hdl_t *dtp, dfg_node *node,
 	if (node->mip == nullptr)
 		return;
 
-	patch_usetxs(dtp, node);
+	patchUsetxDefs(node);
 }
 
-static void
-relocate_push(dtrace_hdl_t *dtp, dfg_node *node, dtrace_actkind_t actkind,
+void
+HyperTraceLinker::relocatePush(DFGNode *node, dtrace_actkind_t actkind,
     dtrace_actdesc_t *ad, dtrace_diftype_t *orig_rtype)
 {
 
-	relocate_retpush(dtp, node, actkind, ad, orig_rtype);
+	relocateRetOrPush(node, actkind, ad, orig_rtype);
 }
 
 static void
-ret_cleanup(dfg_node *node, dtrace_diftype_t *rtype)
+retCleanup(DFGNode *node, dtrace_diftype_t *rtype)
 {
-	dif_instr_t instr;
-	uint8_t opcode;
-
 	/*
 	 * We only need to clean up things if we return by reference
 	 * currently.
@@ -314,9 +278,9 @@ ret_cleanup(dfg_node *node, dtrace_diftype_t *rtype)
 	    (rtype->dtdt_flags & DIF_TF_BYUREF) == 0)
 		return;
 
-	for (auto n : node->r1_defs) {
-		instr = n->get_instruction();
-		opcode = DIF_INSTR_OP(instr);
+	for (auto n : node->r1Defs) {
+		dif_instr_t instr = n->getInstruction();
+		uint8_t opcode = DIF_INSTR_OP(instr);
 
 		switch (opcode) {
 		case DIF_OP_ULOAD:
@@ -330,19 +294,18 @@ ret_cleanup(dfg_node *node, dtrace_diftype_t *rtype)
 		case DIF_OP_LDUW:
 		case DIF_OP_LDSW:
 		case DIF_OP_LDX:
-			n->difo_buf()[n->uidx] = DIF_INSTR_NOP;
+			n->DIFOBuf()[n->uidx] = DIF_INSTR_NOP;
 			break;
 		}
 	}
 }
 
-static void
-relocate_ret(dtrace_hdl_t *dtp, dfg_node *node, dtrace_actkind_t actkind,
+void
+HyperTraceLinker::relocateRet(DFGNode *node, dtrace_actkind_t actkind,
     dtrace_actdesc_t *ad, dtrace_diftype_t *orig_rtype)
 {
 	dtrace_diftype_t *rtype;
 	dtrace_difo_t *difo;
-	dtrace_prog_t *pgp;
 	ctf_id_t return_ctfid;
 	int ctf_kind;
 
@@ -353,12 +316,12 @@ relocate_ret(dtrace_hdl_t *dtp, dfg_node *node, dtrace_actkind_t actkind,
 	difo = node->difo;
 	rtype = &difo->dtdo_rtype;
 
-	rtype->dtdt_kind = node->d_type;
-	if (node->d_type == DIF_TYPE_CTF)
+	rtype->dtdt_kind = node->dType;
+	if (node->dType == DIF_TYPE_CTF)
 		rtype->dtdt_ckind = node->ctfid;
-	else if (node->d_type == DIF_TYPE_STRING)
+	else if (node->dType == DIF_TYPE_STRING)
 		rtype->dtdt_ckind = DT_STR_TYPE(dtp);
-	else if (node->d_type == DIF_TYPE_BOTTOM)
+	else if (node->dType == DIF_TYPE_BOTTOM)
 		/*
 		 * If we have a bottom type, we really
 		 * don't care which CTF type the host
@@ -369,7 +332,7 @@ relocate_ret(dtrace_hdl_t *dtp, dfg_node *node, dtrace_actkind_t actkind,
 	else
 		errx(EXIT_FAILURE,
 		    "unexpected node->din_type (%x) at location %zu",
-		    node->d_type, node->uidx);
+		    node->dType, node->uidx);
 
 	assert(actkind != DTRACEACT_NONE);
 	if (actkind != DTRACEACT_DIFEXPR)
@@ -404,7 +367,7 @@ relocate_ret(dtrace_hdl_t *dtp, dfg_node *node, dtrace_actkind_t actkind,
 		 */
 	default:
 		if (node->mip == nullptr && rtype->dtdt_kind == DIF_TYPE_CTF) {
-			ctf_kind = node->tf->get_kind(node->ctfid);
+			ctf_kind = node->tf->getKind(node->ctfid);
 
 			/*
 			 * XXX(dstolfa, important): Is this a sensible thing to
@@ -421,10 +384,10 @@ relocate_ret(dtrace_hdl_t *dtp, dfg_node *node, dtrace_actkind_t actkind,
 				rtype->dtdt_flags |= DIF_TF_BYREF;
 			}
 
-			ret_cleanup(node, rtype);
+			retCleanup(node, rtype);
 
 			if (rtype->dtdt_flags & DIF_TF_BYREF) {
-				return_ctfid = node->tf->get_reference(
+				return_ctfid = node->tf->getReference(
 				    node->ctfid);
 				/*
 				 * FIXME:. This is very much a heuristic. This
@@ -433,10 +396,10 @@ relocate_ret(dtrace_hdl_t *dtp, dfg_node *node, dtrace_actkind_t actkind,
 				return_ctfid = return_ctfid == CTF_ERR ?
 				    node->ctfid :
 				    return_ctfid;
-				rtype->dtdt_size = node->tf->get_size(
+				rtype->dtdt_size = node->tf->getSize(
 				    return_ctfid);
 			} else {
-				rtype->dtdt_size = node->tf->get_size(
+				rtype->dtdt_size = node->tf->getSize(
 				    node->ctfid);
 			}
 		} else if (rtype->dtdt_kind == DIF_TYPE_BOTTOM) {
@@ -454,36 +417,36 @@ relocate_ret(dtrace_hdl_t *dtp, dfg_node *node, dtrace_actkind_t actkind,
 	/*
 	 * Safety guard
 	 */
-	if (node->d_type == DIF_TYPE_STRING) {
+	if (node->dType == DIF_TYPE_STRING) {
 		rtype->dtdt_flags |= DIF_TF_BYREF;
 		rtype->dtdt_ckind = CTF_ERR;
 	}
 
-	relocate_retpush(dtp, node, actkind, ad, orig_rtype);
+	relocateRetOrPush(node, actkind, ad, orig_rtype);
 }
 
 static void
-patch_setxs(node_set *setx_defs1, node_set *setx_defs2)
+patchSETXInstructions(NodeSet *setx_defs1, NodeSet *setx_defs2)
 {
-	node_set::iterator it1, it2;
+	NodeSet::iterator it1, it2;
 	for (it1 = setx_defs1->begin(), it2 = setx_defs2->begin();
 	     it1 != setx_defs1->end() && it2 != setx_defs2->end();
 	     ++it1, ++it2) {
 		auto sd1 = *it1;
 		auto sd2 = *it2;
 
-		sd1->difo_buf()[sd1->uidx] = DIF_INSTR_NOP;
-		sd2->difo_buf()[sd2->uidx] = DIF_INSTR_NOP;
+		sd1->DIFOBuf()[sd1->uidx] = DIF_INSTR_NOP;
+		sd2->DIFOBuf()[sd2->uidx] = DIF_INSTR_NOP;
 	}
 }
 
 static bool
-check_setxs(node_set *setx_defs1, node_set *setx_defs2)
+checkSETXDefs(NodeSet *setx_defs1, NodeSet *setx_defs2)
 {
-	dfg_node *sd1, *sd2;
+	DFGNode *sd1, *sd2;
 	dif_instr_t instr1, instr2;
 	uint8_t op1, op2;
-	node_set::iterator it1, it2;
+	NodeSet::iterator it1, it2;
 
 	for (it1 = setx_defs1->begin(), it2 = setx_defs2->begin();
 	     it1 != setx_defs1->end() && it2 != setx_defs2->end();
@@ -491,8 +454,8 @@ check_setxs(node_set *setx_defs1, node_set *setx_defs2)
 		sd1 = *it1;
 		sd2 = *it2;
 
-		instr1 = sd1->get_instruction();
-		instr2 = sd2->get_instruction();
+		instr1 = sd1->getInstruction();
+		instr2 = sd2->getInstruction();
 
 		op1 = DIF_INSTR_OP(instr1);
 		op2 = DIF_INSTR_OP(instr2);
@@ -507,10 +470,9 @@ check_setxs(node_set *setx_defs1, node_set *setx_defs2)
 	return (true);
 }
 
-static void
-relocate_dfg_node(dfg_node *node, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
-    dtrace_actkind_t actkind, dtrace_actdesc_t *ad, dtrace_difo_t *difo,
-    dtrace_diftype_t *orig_rtype)
+void
+HyperTraceLinker::relocateDFGNode(DFGNode *node, dtrace_actkind_t actkind,
+    dtrace_actdesc_t *ad, dtrace_difo_t *difo, dtrace_diftype_t *orig_rtype)
 {
 	dif_instr_t instr;
 	uint8_t opcode;
@@ -518,16 +480,16 @@ relocate_dfg_node(dfg_node *node, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	if (node->difo != difo)
 		return;
 
-	instr = node->get_instruction();
+	instr = node->getInstruction();
 	opcode = DIF_INSTR_OP(instr);
 
 	switch (opcode) {
 	case DIF_OP_RET:
-		relocate_ret(dtp, node, actkind, ad, orig_rtype);
+		relocateRet(node, actkind, ad, orig_rtype);
 		break;
 
 	case DIF_OP_PUSHTR:
-		relocate_push(dtp, node, actkind, ad, orig_rtype);
+		relocatePush(node, actkind, ad, orig_rtype);
 		break;
 
 	case DIF_OP_PUSHTV: {
@@ -541,22 +503,22 @@ relocate_dfg_node(dfg_node *node, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 		rv = DIF_INSTR_R2(instr);
 
 		newinstr = DIF_INSTR_PUSHTS(DIF_OP_PUSHTV,
-		    node->d_type, rv, rs);
-		node->difo_buf()[node->uidx] = newinstr;
+		    node->dType, rv, rs);
+		node->DIFOBuf()[node->uidx] = newinstr;
 		break;
 	}
 
 	case DIF_OP_ADD:
 	case DIF_OP_ULOAD:
 	case DIF_OP_UULOAD:
-		relocate_uloadadd(dtp, node);
+		relocateUloadOrAdd(node);
 		break;
 
 	case DIF_OP_TYPECAST: {
 		dif_instr_t idef1, idef2;
 		uint8_t opdef1, opdef2;
 		uint8_t r11, r12, r21, r22, currd, rd;
-		node_set *setx_defs1, *setx_defs2, *defs;
+		NodeSet *setx_defs1, *setx_defs2, *defs;
 		std::string symname;
 		uint16_t sym;
 		size_t l;
@@ -567,12 +529,12 @@ relocate_dfg_node(dfg_node *node, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 		 * actually execute it as an instruction. We will
 		 * collapse the nops later.
 		 */
-		node->difo_buf()[node->uidx] = DIF_INSTR_NOP;
+		node->DIFOBuf()[node->uidx] = DIF_INSTR_NOP;
 
 		if (node->uidx < 2)
 			goto end;
 
-		patch_usetxs(dtp, node);
+		patchUsetxDefs(node);
 		sym = DIF_INSTR_SYMBOL(instr);
 		currd = DIF_INSTR_RD(instr);
 
@@ -591,8 +553,8 @@ relocate_dfg_node(dfg_node *node, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 		 * sign extension is needed -- however we don't actually want to
 		 * do this for an uintptr_t.
 		 */
-		for (auto ndef1 : node->r1_defs) {
-			idef1 = ndef1->get_instruction();
+		for (auto ndef1 : node->r1Defs) {
+			idef1 = ndef1->getInstruction();
 			opdef1 = DIF_INSTR_OP(idef1);
 
 			if (opdef1 != DIF_OP_SRA)
@@ -609,8 +571,8 @@ relocate_dfg_node(dfg_node *node, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 			setx_defs1 = nullptr;
 
 			if (r11 == currd) {
-				defs = &ndef1->r1_defs;
-				setx_defs1 = &ndef1->r2_defs;
+				defs = &ndef1->r1Defs;
+				setx_defs1 = &ndef1->r2Defs;
 			}
 
 			if (r21 == currd) {
@@ -620,15 +582,15 @@ relocate_dfg_node(dfg_node *node, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 				 */
 				assert(defs == nullptr);
 				assert(setx_defs1 == nullptr);
-				defs = &ndef1->r2_defs;
-				setx_defs1 = &ndef1->r1_defs;
+				defs = &ndef1->r2Defs;
+				setx_defs1 = &ndef1->r1Defs;
 			}
 
 			if (defs == nullptr)
 				continue;
 
 			for (auto ndef2 : *defs) {
-				idef2 = ndef2->get_instruction();
+				idef2 = ndef2->getInstruction();
 				opdef2 = DIF_INSTR_OP(idef2);
 
 				if (opdef2 != DIF_OP_SLL)
@@ -641,26 +603,26 @@ relocate_dfg_node(dfg_node *node, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 
 				setx_defs2 = nullptr;
 				if (r12 == rd)
-					setx_defs2 = &ndef2->r2_defs;
+					setx_defs2 = &ndef2->r2Defs;
 
 				if (r22 == rd)
-					setx_defs2 = &ndef2->r1_defs;
+					setx_defs2 = &ndef2->r1Defs;
 
 				if (setx_defs2 == nullptr)
 					continue;
 
-				if (!check_setxs(setx_defs1, setx_defs2))
+				if (!checkSETXDefs(setx_defs1, setx_defs2))
 					continue;
 
-				ndef2->difo_buf()[ndef2->uidx] = DIF_INSTR_NOP;
-				ndef1->difo_buf()[ndef1->uidx] = DIF_INSTR_NOP;
+				ndef2->DIFOBuf()[ndef2->uidx] = DIF_INSTR_NOP;
+				ndef1->DIFOBuf()[ndef1->uidx] = DIF_INSTR_NOP;
 
-				patch_setxs(setx_defs1, setx_defs2);
+				patchSETXInstructions(setx_defs1, setx_defs2);
 			}
 		}
 
 end:
-		node->relocated = true;
+		node->isRelocated = true;
 		break;
 	}
 
@@ -669,10 +631,9 @@ end:
 	}
 }
 
-static int
-dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
-    dtrace_actkind_t actkind, dtrace_actdesc_t *ad, dtrace_difo_t *difo,
-    dtrace_diftype_t *orig_rtype)
+int
+HyperTraceLinker::relocateProgram(dtrace_actkind_t actkind,
+    dtrace_actdesc_t *ad, dtrace_difo_t *difo, dtrace_diftype_t *orig_rtype)
 {
 	int i, index;
 
@@ -693,75 +654,68 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 		}
 	}
 
-	for (auto &n : dfg_nodes) {
+	for (auto &n : dfgNodes) {
 		if (n.get() == r0node)
 			continue;
-		relocate_dfg_node(n.get(), dtp, pgp, actkind, ad, difo,
+		relocateDFGNode(n.get(), actkind, ad, difo,
 		    orig_rtype);
 	}
 
 	return (0);
 }
 
-static void
-dt_update_usetx_bb(dtrace_difo_t *difo, basic_block *bb, dfg_node *n)
+void
+HyperTraceLinker::updateUsetxDefsInBB(dtrace_difo_t *difo, BasicBlock *bb, DFGNode *n)
 {
-	dif_instr_t instr;
-	uint8_t opcode;
-
 	if (n->sym == nullptr)
 		errx(EXIT_FAILURE, "usetx din_sym should not be nullptr");
 
-	for (auto &node : dfg_nodes) {
+	for (auto &node : dfgNodes) {
 		if (node.get() == r0node)
 			continue;
 
-		instr = node->get_instruction();
-		opcode = DIF_INSTR_OP(instr);
+		dif_instr_t instr = node->getInstruction();
+		uint8_t opcode = DIF_INSTR_OP(instr);
 
 		if (node.get() == n)
 			continue;
-
 		if (node->difo != difo)
 			continue;
-
 		if (n->uidx >= node->uidx)
 			continue;
-
 		if (node->uidx < bb->start || node->uidx > bb->end)
 			continue;
-
 		if (opcode == DIF_OP_ULOAD    ||
 		    opcode == DIF_OP_UULOAD   ||
 		    opcode == DIF_OP_RET      ||
 		    opcode == DIF_OP_PUSHTR   ||
 		    opcode == DIF_OP_ADD      ||
 		    opcode == DIF_OP_TYPECAST) {
-			auto usetx_node = node->find_child(n);
+			auto usetx_node = node->findChild(n);
 			if (usetx_node != n)
 				continue;
 
-			node->usetx_defs.insert(n);
+			node->usetxDefs.insert(n);
 		}
 	}
 }
 
-static void
-dt_update_usetxs(dtrace_difo_t *difo, basic_block *bb, dfg_node *n)
+void
+HyperTraceLinker::updateUsetxDefs(dtrace_difo_t *difo, BasicBlock *bb, DFGNode *n)
 {
-	dt_update_usetx_bb(difo, bb, n);
+	updateUsetxDefsInBB(difo, bb, n);
 
 	for (auto child : bb->children) {
-		dt_update_usetxs(difo, child.first, n);
+		updateUsetxDefs(difo, child.first, n);
 	}
 }
 
-static void
-dt_prog_infer_usetxs(dtrace_difo_t *difo)
+void
+HyperTraceLinker::inferUsetxDefs(dtrace_difo_t *difo)
 {
-	basic_block *bb = static_cast<basic_block *>(difo->dtdo_bb);
+	BasicBlock *bb = static_cast<BasicBlock *>(difo->dtdo_bb);
 
-	for (auto it = dfg_nodes.rbegin(); it != dfg_nodes.rend(); ++it) {
+	for (auto it = dfgNodes.rbegin(); it != dfgNodes.rend(); ++it) {
 		auto n = it->get();
 		assert(n != nullptr);
 
@@ -771,40 +725,28 @@ dt_prog_infer_usetxs(dtrace_difo_t *difo)
 		if (n->difo != difo)
 			continue;
 
-		dif_instr_t instr = n->get_instruction();
+		dif_instr_t instr = n->getInstruction();
 		uint8_t opcode = DIF_INSTR_OP(instr);
 
 		if (opcode != DIF_OP_USETX)
 			continue;
 
-		dt_update_usetxs(difo, bb, n);
+		updateUsetxDefs(difo, bb, n);
 	}
 }
 
-static void
-dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo,
-    dtrace_diftype_t **biggest_type)
+void
+HyperTraceLinker::assembleProgram(dtrace_difo_t *difo,
+    array<umap<uint32_t, dtrace_diftype_t>, DIFV_NSCOPES> &biggest_type)
 {
-	size_t inthash_size;
-	uint64_t *otab;
-	size_t i;
-	dtrace_difv_t *var, *vlvar;
-	uint32_t id;
-	uint8_t scope;
-
-	var = vlvar = nullptr;
-	i = 0;
-	otab = nullptr;
-	inthash_size = 0;
-
 	if (difo->dtdo_inthash != nullptr) {
-		inthash_size = dt_inttab_size(difo->dtdo_inthash);
+		size_t inthash_size = dt_inttab_size(difo->dtdo_inthash);
 		if (inthash_size == 0) {
 			fprintf(stderr, "inthash_size is 0\n");
 			return;
 		}
 
-		otab = difo->dtdo_inttab;
+		uint64_t *otab = difo->dtdo_inttab;
 		difo->dtdo_inttab = (uint64_t *)dt_alloc(dtp,
 		    sizeof(uint64_t) * inthash_size);
 		if (difo->dtdo_inttab == nullptr)
@@ -825,41 +767,39 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo,
 	 * is one where we store to a variable before loading it, so this
 	 * information should already be available.
 	 */
-	for (i = 0; i < difo->dtdo_varlen; i++) {
-		var = &difo->dtdo_vartab[i];
+	for (auto i = 0; i < difo->dtdo_varlen; i++) {
+		dtrace_difv_t *var = &difo->dtdo_vartab[i];
 
 		if (dt_var_is_builtin(var->dtdv_id))
 			continue;
 
-		vlvar = dt_get_var_from_vec(var->dtdv_id,
+		dtrace_difv_t *vlvar = getVarFromVarVec(var->dtdv_id,
 		    var->dtdv_scope, var->dtdv_kind);
 		assert(vlvar != nullptr);
 
 		var->dtdv_type = vlvar->dtdv_type;
-		id = var->dtdv_id;
-		scope = var->dtdv_scope;
+		auto id = var->dtdv_id;
+		auto scope = var->dtdv_scope;
 
-		biggest_type[scope][id] = biggest_type[scope][id].dtdt_size >=
-			var->dtdv_type.dtdt_size ?
-			  biggest_type[scope][id] :
-			  var->dtdv_type;
+		assert(scope < DIFV_NSCOPES);
+		auto bt_size = biggest_type[scope][id].dtdt_size;
+		auto vt_size = var->dtdv_type.dtdt_size;
+		if (bt_size < vt_size)
+			biggest_type[scope][id] = var->dtdv_type;
 	}
 }
 
 static void
-finalize_vartab(dtrace_difo_t *difo, dtrace_diftype_t **biggest_type)
+finalizeVartab(dtrace_difo_t *difo,
+    array<umap<uint32_t, dtrace_diftype_t>, DIFV_NSCOPES> &biggest_type)
 {
-	size_t i;
-	dtrace_difv_t *var;
-
 	/*
 	 * Re-patch the variable table to ensure that we have uniform types
 	 * across all of the references of the variable. Without this, the
 	 * kernel verifier will fail.
 	 */
-	for (i = 0; i < difo->dtdo_varlen; i++) {
-		var = &difo->dtdo_vartab[i];
-
+	for (auto i = 0; i < difo->dtdo_varlen; i++) {
+		dtrace_difv_t *var = &difo->dtdo_vartab[i];
 		if (dt_var_is_builtin(var->dtdv_id))
 			continue;
 
@@ -868,17 +808,17 @@ finalize_vartab(dtrace_difo_t *difo, dtrace_diftype_t **biggest_type)
 
 }
 
-static int
-process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
-    dtrace_difo_t *difo, dtrace_ecbdesc_t *ecbdesc,
-    dtrace_diftype_t **biggest_vartype)
+int
+HyperTraceLinker::processDIFO(dtrace_actdesc_t *ad, dtrace_difo_t *difo,
+    dtrace_ecbdesc_t *ecbdesc,
+    array<umap<uint32_t, dtrace_diftype_t>, DIFV_NSCOPES> &biggest_vartype)
 {
 	int rval;
 	dtrace_actkind_t actkind;
 	dtrace_diftype_t saved_rtype;
-	TypeInference ti(dtp, pgp);
+	TypeInference ti(*this, dtp, pgp);
 
-	rval = dt_compute_dfg(dtp, pgp, ecbdesc, difo);
+	rval = computeDFG(ecbdesc, difo);
 	if (rval != 0)
 		return (rval);
 
@@ -887,50 +827,35 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
 	if (rval != 0)
 		return (rval);
 
-	dt_prog_infer_usetxs(difo);
+	inferUsetxDefs(difo);
 
 	actkind = ad == nullptr ? DTRACEACT_DIFEXPR : ad->dtad_kind;
-	rval = dt_prog_relocate(dtp, pgp, actkind, ad, difo, &saved_rtype);
+	rval = relocateProgram(actkind, ad, difo, &saved_rtype);
 	if (rval != 0)
 		return (rval);
 
-	dt_prog_assemble(dtp, pgp, difo, biggest_vartype);
+	assembleProgram(difo, biggest_vartype);
 	return (0);
 }
 
-}
-
 int
-dtrace_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+HyperTraceLinker::link(void)
 {
-	using namespace dtrace;
 
-	dt_stmt_t *stp = nullptr;
-	dtrace_stmtdesc_t *sdp = nullptr;
-	dtrace_actdesc_t *ad = nullptr;
+	dt_stmt_t *stp;
+	dtrace_stmtdesc_t *sdp;
+	dtrace_actdesc_t *ad;
 	dtrace_ecbdesc_t *ecbdesc;
 	dtrace_preddesc_t *pred;
 	std::unordered_set<dtrace_ecbdesc_t *> processed_ecbdescs;
-	int rval = 0;
-	int err = 0;
-	int i;
-	dtrace_diftype_t *biggest_vartype[DIFV_NSCOPES];
+	int rval, err, i;
+	array<umap<uint32_t, dtrace_diftype_t>, DIFV_NSCOPES> biggest_vartype;
 
 	dt_typefile_openall(dtp);
-	if (err)
-		errx(EXIT_FAILURE, "failed to open CTF files: %s\n",
-		    strerror(errno));
-
-	dt_prepare_typestrings(dtp, pgp);
-
-	dfg_nodes.clear();
-	basic_blocks.clear();
-	var_vector.clear();
-
-	dfg_nodes.push_front(std::make_unique<dfg_node>(dtp, pgp, nullptr,
+	dfgNodes.push_front(std::make_unique<DFGNode>(dtp, pgp, nullptr,
 	    nullptr, nullptr, UINT_MAX));
-	r0node = dfg_nodes.front().get();
-	r0node->d_type = DIF_TYPE_BOTTOM;
+	r0node = dfgNodes.front().get();
+	r0node->dType = DIF_TYPE_BOTTOM;
 
 	/*
 	 * Regenerate the identifier, since it's no longer the same program. Set
@@ -939,39 +864,22 @@ dtrace_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	memcpy(pgp->dp_srcident, pgp->dp_ident, DT_PROG_IDENTLEN);
 	dt_prog_generate_ident(pgp);
 
-	for (i = 0; i < DIFV_NSCOPES; i++) {
-		biggest_vartype[i] = (dtrace_diftype_t *)malloc(
-		    sizeof(dtrace_diftype_t) * DIF_VARIABLE_MAX);
-		if (biggest_vartype[i] == nullptr)
-			dt_set_progerr(dtp, pgp,
-			    "could not allocate biggest_vartype\n");
-
-		memset(biggest_vartype[i], 0,
-		    sizeof(dtrace_diftype_t) * DIF_VARIABLE_MAX);
-	}
-
 	for (stp = (dt_stmt_t *)dt_list_next(&pgp->dp_stmts); stp;
 	     stp = (dt_stmt_t *)dt_list_next(stp)) {
 		sdp = stp->ds_desc;
 
-		if (sdp == nullptr) {
-			for (i = 0; i < DIFV_NSCOPES; i++)
-				free(biggest_vartype[i]);
+		if (sdp == nullptr)
 			return (dt_set_errno(dtp, EDT_NOSTMT));
-		}
 
 		ecbdesc = sdp->dtsd_ecbdesc;
-		if (ecbdesc == nullptr) {
-			for (i = 0; i < DIFV_NSCOPES; i++)
-				free(biggest_vartype[i]);
+		if (ecbdesc == nullptr)
 			return (dt_set_errno(dtp, EDT_DIFINVAL));
-		}
 
 		pred = &ecbdesc->dted_pred;
 		assert(pred != nullptr);
 
 		if (pred->dtpdd_difo != nullptr)
-			dt_populate_varlist(dtp, pred->dtpdd_difo);
+			populateVariablesFromDIFO(pred->dtpdd_difo);
 
 		/*
 		 * Nothing to do if the action is missing
@@ -983,11 +891,8 @@ dtrace_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		 * If we are in a state where we have the first action, but not
 		 * a last action we bail out. This should not happen.
 		 */
-		if (sdp->dtsd_action_last == nullptr) {
-			for (i = 0; i < DIFV_NSCOPES; i++)
-				free(biggest_vartype[i]);
+		if (sdp->dtsd_action_last == nullptr)
 			return (dt_set_errno(dtp, EDT_ACTLAST));
-		}
 
 		/*
 		 * We populate the variable list before we actually do a pass
@@ -1007,7 +912,7 @@ dtrace_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (ad->dtad_difo == nullptr)
 				continue;
 
-			dt_populate_varlist(dtp, ad->dtad_difo);
+			populateVariablesFromDIFO(ad->dtad_difo);
 		}
 	}
 	/*
@@ -1016,31 +921,22 @@ dtrace_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	for (stp = (dt_stmt_t *)dt_list_next(&pgp->dp_stmts); stp;
 	     stp = (dt_stmt_t *)dt_list_next(stp)) {
 		sdp = stp->ds_desc;
-		if (sdp == nullptr) {
-			for (i = 0; i < DIFV_NSCOPES; i++)
-				free(biggest_vartype[i]);
+		if (sdp == nullptr)
 			return (dt_set_errno(dtp, EDT_NOSTMT));
-		}
 
 		ecbdesc = sdp->dtsd_ecbdesc;
-		if (ecbdesc == nullptr) {
-			for (i = 0; i < DIFV_NSCOPES; i++)
-				free(biggest_vartype[i]);
+		if (ecbdesc == nullptr)
 			return (dt_set_errno(dtp, EDT_DIFINVAL));
-		}
 
 		pred = &ecbdesc->dted_pred;
 		assert(pred != nullptr);
 
 		if (pred->dtpdd_difo != nullptr) {
 			if (!processed_ecbdescs.contains(ecbdesc)) {
-				rval = process_difo(dtp, pgp, nullptr,
-				    pred->dtpdd_difo, ecbdesc, biggest_vartype);
-				if (rval != 0) {
-					for (i = 0; i < DIFV_NSCOPES; i++)
-						free(biggest_vartype[i]);
+				rval = processDIFO(nullptr, pred->dtpdd_difo,
+				    ecbdesc, biggest_vartype);
+				if (rval != 0)
 					return (dt_set_errno(dtp, rval));
-				}
 
 				processed_ecbdescs.insert(ecbdesc);
 			}
@@ -1055,11 +951,8 @@ dtrace_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		 * If we are in a state where we have the first action, but not
 		 * a last action we bail out. This should not happen.
 		 */
-		if (sdp->dtsd_action_last == nullptr) {
-			for (i = 0; i < DIFV_NSCOPES; i++)
-				free(biggest_vartype[i]);
+		if (sdp->dtsd_action_last == nullptr)
 			return (dt_set_errno(dtp, EDT_ACTLAST));
-		}
 
 		/*
 		 * We go over each action and apply the relocations in each
@@ -1071,13 +964,10 @@ dtrace_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (ad->dtad_difo == nullptr)
 				continue;
 
-			rval = process_difo(dtp, pgp, ad, ad->dtad_difo,
-			    ecbdesc, biggest_vartype);
-			if (rval != 0) {
-				for (i = 0; i < DIFV_NSCOPES; i++)
-					free(biggest_vartype[i]);
+			rval = processDIFO(ad, ad->dtad_difo, ecbdesc,
+			    biggest_vartype);
+			if (rval != 0)
 				return (dt_set_errno(dtp, rval));
-			}
 		}
 	}
 
@@ -1092,7 +982,7 @@ dtrace_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		pred = &ecbdesc->dted_pred;
 
 		if (pred->dtpdd_difo != nullptr)
-			finalize_vartab(pred->dtpdd_difo, biggest_vartype);
+			finalizeVartab(pred->dtpdd_difo, biggest_vartype);
 
 		/*
 		 * Nothing to do if the action is missing
@@ -1109,12 +999,18 @@ dtrace_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (ad->dtad_difo == nullptr)
 				continue;
 
-			finalize_vartab(ad->dtad_difo, biggest_vartype);
+			finalizeVartab(ad->dtad_difo, biggest_vartype);
 		}
 	}
 
-	for (i = 0; i < DIFV_NSCOPES; i++)
-		free(biggest_vartype[i]);
-
 	return (0);
+}
+
+}
+
+int
+hypertrace_link(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+{
+	dtrace::HyperTraceLinker l(dtp, pgp);
+	return (l.link());
 }

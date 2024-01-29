@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2020, 2021 Domagoj Stolfa
+ * Copyright (c) 2024 Domagoj Stolfa
  *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory (Department of Computer Science and
@@ -36,62 +36,40 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _DT_TYPING_H_
-#define _DT_TYPING_H_
-
-#include <sys/dtrace.h>
-#include <dtrace.h>
-
-#define DTC_BOTTOM  -1
-#define DTC_INT      0
-#define DTC_STRUCT   1
-#define DTC_STRING   2
-#define DTC_FORWARD  3
-#define DTC_UNION    4
-#define DTC_ENUM     5
+#ifndef _DT_CXXDEFS_HH_
+#define _DT_CXXDEFS_HH_
 
 #ifndef __cplusplus
 #error "This file should only be included from C++"
 #endif
 
-#include <dt_cxxdefs.hh>
-#include <dt_dfg.hh>
-
-#include <string>
+#include <optional>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <list>
 
 namespace dtrace {
-class TypeInference {
-    private:
-	dtrace_hdl_t *dtp;
-	dtrace_prog_t *pgp;
+class DFGNode;
+class BasicBlock;
+class Typefile;
+class TypeInference;
+class HyperTraceLinker;
 
-	std::string t_mtx;
-	std::string t_rw;
-	std::string t_sx;
-	std::string t_thread;
+template <typename T> using USet = std::unordered_set<T>;
+template <typename K, typename T> using umap = std::unordered_map<K, T>;
+template <typename T> using Vec = std::vector<T>;
+template <typename T> using Opt = std::optional<T>;
+template <typename T> using UPtr = std::unique_ptr<T>;
 
-	HyperTraceLinker &linkerContext;
+using NodeSet = USet<DFGNode *>;
+using NodeVec = Vec<DFGNode *>;
+using DFGList = std::list<std::unique_ptr<DFGNode>>;
 
-    private:
-	int inferNode(DFGNode *);
-	int inferSubr(DFGNode *, NodeVec *);
-	int inferVar(dtrace_difo_t *, DFGNode *, dtrace_difv_t *);
-	int checkVarStack(DFGNode *, DFGNode *, dtrace_difv_t *);
-	NodeVec *checkStack(DFGNode *, Vec<StackData> &, int *);
-	DFGNode *checkRegDefs(DFGNode *, NodeSet &, int *);
-	DFGNode *checkVarDefs(DFGNode *, dtrace_difo_t *, NodeSet &, int *);
-	void argCmpWith(DFGNode *, Vec<Typefile *> &, const std::string &,
-	    const std::string &, int);
-	void setBuiltinType(DFGNode *, uint16_t, uint8_t);
-	int ctfTypeCompare(Typefile *, ctf_id_t, Typefile *, ctf_id_t);
-
-    public:
-	TypeInference(HyperTraceLinker &, dtrace_hdl_t *, dtrace_prog_t *);
-	int inferDIFO(dtrace_difo_t *);
-	int getSubtypeRelation(Typefile *, ctf_id_t, Typefile *, ctf_id_t, int &);
-	int typeCompare(DFGNode *, DFGNode *);
-};
-
+using std::pair;
+using std::list;
+using std::array;
 }
 
-#endif /* _DT_TYPING_H_ */
+#endif /* _DT_CXXDEFS_HH_ */

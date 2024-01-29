@@ -48,19 +48,10 @@
 #error "This file should only be included from C++"
 #endif
 
-#include <memory>
-#include <vector>
+#include <dt_cxxdefs.hh>
 
 namespace dtrace {
-
-const size_t DT_BB_MAX = 8192;
-
-template<typename T>
-using vec = std::vector<T>;
-
-using std::pair;
-
-class basic_block {
+class BasicBlock {
     public:
 	static size_t index;
 
@@ -74,17 +65,16 @@ class basic_block {
 	 * that particular child in this particular vector was visited, rather
 	 * than caring if the basic block itself was visited at some point.
 	 */
-	vec<pair<basic_block *, bool>> children;
-	vec<pair<basic_block *, bool>> parents;
+	Vec<pair<BasicBlock *, bool>> children;
+	Vec<pair<BasicBlock *, bool>> parents;
 
     public:
-	basic_block(dtrace_difo_t *);
+	BasicBlock(dtrace_difo_t *);
 	dif_instr_t *difo_buf() { return (this->difo->dtdo_buf); }
 };
 
 extern void dt_compute_bb(dtrace_difo_t *);
 extern void dt_compute_cfg(dtrace_difo_t *);
-
 }
 
 #endif /* _DT_BASIC_BLOCK_H_ */

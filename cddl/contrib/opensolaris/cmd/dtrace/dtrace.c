@@ -2055,7 +2055,7 @@ again:
 		pthread_mutex_destroy(&g_benchlistmtx);
 		dtrace_close(g_dtp);
 		exit(0);
-	} else if (dtrace_relocate(g_dtp, dcp->dc_prog) == 0) {
+	} else if (hypertrace_link(g_dtp, dcp->dc_prog) == 0) {
 		if (g_verbose)
 			dtrace_dump_actions(dcp->dc_prog);
 		verictx = dt_verictx_init(g_dtp);
@@ -2347,7 +2347,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	}
 
 
-	if (dtrace_relocate(g_dtp, dcp->dc_prog) != 0)
+	if (hypertrace_link(g_dtp, dcp->dc_prog) != 0)
 		dfatal("Failed to apply relocations");
 
 	if (g_verbose) {

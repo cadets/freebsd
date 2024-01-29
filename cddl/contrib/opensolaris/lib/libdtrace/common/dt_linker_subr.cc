@@ -31,6 +31,7 @@
 #include <assert.h>
 #include <dt_basic_block.hh>
 #include <dt_dfg.hh>
+#include <dt_hypertrace_linker.hh>
 #include <dt_impl.h>
 #include <dt_linker_subr.hh>
 #include <dt_module.h>
@@ -162,7 +163,7 @@ dt_var_is_builtin(uint16_t var)
 }
 
 int
-dt_clobbers_var(dif_instr_t instr, dfg_node_data &data)
+dt_clobbers_var(dif_instr_t instr, DFGNodeData &data)
 {
 	uint8_t opcode;
 	uint16_t v;
@@ -209,9 +210,9 @@ dt_clobbers_var(dif_instr_t instr, dfg_node_data &data)
 }
 
 dtrace_difv_t *
-dt_get_var_from_vec(uint16_t varid, int scope, int kind)
+HyperTraceLinker::getVarFromVarVec(uint16_t varid, int scope, int kind)
 {
-	for (auto &v : var_vector) {
+	for (auto &v : varVector) {
 		if (v->dtdv_scope == scope && v->dtdv_kind == kind &&
 		    v->dtdv_id == varid)
 			return (v.get());
@@ -266,8 +267,8 @@ dt_get_varinfo(dif_instr_t instr, uint16_t *varid, int *scope, int *kind)
 }
 
 void
-dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
-    uint8_t scope, uint8_t kind)
+HyperTraceLinker::insertVar(dtrace_difo_t *difo, uint16_t varid, uint8_t scope,
+    uint8_t kind)
 {
 	dtrace_difv_t *var = nullptr;
 	dtrace_difv_t *difv;
@@ -280,7 +281,7 @@ dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
 	 * we will simply break out of the loop and move onto
 	 * the next instruction.
 	 */
-	for (auto &v : var_vector) {
+	for (auto &v : varVector) {
 		if (v->dtdv_scope == scope && v->dtdv_kind == kind &&
 		    v->dtdv_id == varid) {
 			var = v.get();
@@ -302,8 +303,8 @@ dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
 	 * into the newly allocated region.
 	 */
 	if (var == nullptr) {
-		var_vector.push_back(std::make_unique<dtrace_difv_t>());
-		var = var_vector.back().get();
+		varVector.push_back(std::make_unique<dtrace_difv_t>());
+		var = varVector.back().get();
 		if (var == nullptr)
 			errx(EXIT_FAILURE, "failed to allocate a new variable");
 		memset(var, 0, sizeof(dtrace_difv_t));
@@ -346,7 +347,7 @@ dt_var_uninitialized(dtrace_difv_t *difv)
 }
 
 void
-dt_insert_var_by_difv(dtrace_hdl_t *dtp, dtrace_difv_t *difv)
+HyperTraceLinker::insertVar(dtrace_difv_t *difv)
 {
 	dtrace_difv_t *var = nullptr;
 	ctf_file_t *d_ctfp;
@@ -358,7 +359,7 @@ dt_insert_var_by_difv(dtrace_hdl_t *dtp, dtrace_difv_t *difv)
 	 * we will simply break out of the loop and move onto
 	 * the next instruction.
 	 */
-	for (auto &v : var_vector) {
+	for (auto &v : varVector) {
 		if (v->dtdv_scope == difv->dtdv_scope &&
 		    v->dtdv_kind == difv->dtdv_kind &&
 		    v->dtdv_id == difv->dtdv_id) {
@@ -376,14 +377,13 @@ dt_insert_var_by_difv(dtrace_hdl_t *dtp, dtrace_difv_t *difv)
 	 * into the newly allocated region.
 	 */
 	if (var == nullptr) {
-		var_vector.push_back(std::make_unique<dtrace_difv_t>());
-		var = var_vector.back().get();
+		varVector.push_back(std::make_unique<dtrace_difv_t>());
+		var = varVector.back().get();
 		if (var == nullptr)
 			errx(EXIT_FAILURE, "failed to allocate a new variable");
 		memset(var, 0, sizeof(dtrace_difv_t));
 		var->dtdv_ctfid = CTF_ERR;
 	}
-
 
 	assert(var->dtdv_ctfid == CTF_ERR);
 	memcpy(var, difv, sizeof(dtrace_difv_t));
@@ -412,7 +412,7 @@ dt_insert_var_by_difv(dtrace_hdl_t *dtp, dtrace_difv_t *difv)
 }
 
 void
-dt_populate_varlist(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
+HyperTraceLinker::populateVariablesFromDIFO(dtrace_difo_t *difo)
 {
 	dtrace_difv_t *difv;
 	size_t i;
@@ -422,7 +422,7 @@ dt_populate_varlist(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 	for (i = 0; i < difo->dtdo_varlen; i++) {
 		difv = &difo->dtdo_vartab[i];
-		dt_insert_var_by_difv(dtp, difv);
+		insertVar(difv);
 	}
 
 	for (i = 0; i < difo->dtdo_len; i++) {
@@ -434,37 +434,37 @@ dt_populate_varlist(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		case DIF_OP_LDGS:
 			varid = DIF_INSTR_VAR(instr);
 			if (!dt_var_is_builtin(varid))
-				dt_insert_var_by_tup(dtp, difo, varid,
-				    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
+				insertVar(difo, varid, DIFV_SCOPE_GLOBAL,
+				    DIFV_KIND_SCALAR);
 			break;
 
 		case DIF_OP_LDLS:
 		case DIF_OP_STLS:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var_by_tup(dtp, difo, varid, DIFV_SCOPE_LOCAL,
+			insertVar(difo, varid, DIFV_SCOPE_LOCAL,
 			    DIFV_KIND_SCALAR);
 			break;
 
 		case DIF_OP_LDTS:
 		case DIF_OP_STTS:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var_by_tup(dtp, difo, varid,
-			    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
+			insertVar(difo, varid, DIFV_SCOPE_THREAD,
+			    DIFV_KIND_SCALAR);
 			break;
 
 		case DIF_OP_LDGAA:
 		case DIF_OP_STGAA:
 			varid = DIF_INSTR_VAR(instr);
 			if (!dt_var_is_builtin(varid))
-				dt_insert_var_by_tup(dtp, difo, varid,
-				    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
+				insertVar(difo, varid, DIFV_SCOPE_GLOBAL,
+				    DIFV_KIND_ARRAY);
 			break;
 
 		case DIF_OP_LDTAA:
 		case DIF_OP_STTAA:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var_by_tup(dtp, difo, varid,
-			    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
+			insertVar(difo, varid, DIFV_SCOPE_THREAD,
+			    DIFV_KIND_ARRAY);
 			break;
 
 		default:
@@ -474,7 +474,7 @@ dt_populate_varlist(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 }
 
 ssize_t
-dt_get_stack(vec<basic_block *> &bb_path, dfg_node *n)
+dt_get_stack(Vec<BasicBlock *> &bb_path, DFGNode *n)
 {
 	assert(!bb_path.empty());
 
@@ -485,7 +485,7 @@ dt_get_stack(vec<basic_block *> &bb_path, dfg_node *n)
 		}
 	}
 
-	n->stacks.push_back(stackdata(bb_path));
+	n->stacks.push_back(StackData(bb_path));
 	return (n->stacks.size() - 1);
 }
 

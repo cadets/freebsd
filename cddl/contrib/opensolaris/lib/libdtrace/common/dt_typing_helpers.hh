@@ -44,7 +44,6 @@
 
 #include <dtrace.h>
 #include <dt_program.h>
-#include <dt_typefile.hh>
 
 #define SUBTYPE_NONE  0
 #define SUBTYPE_EQUAL (1 << 0)
@@ -56,35 +55,24 @@
 #error "This file should only be included from C++"
 #endif
 
+#include <dt_typefile.hh>
+
 namespace dtrace {
-
-extern dtrace_hdl_t *g_dtp;
-extern dtrace_prog_t *g_pgp;
-
-extern ctf_id_t dt_type_strip_ref(typefile *, ctf_id_t &, size_t &);
-extern ctf_id_t dt_type_strip_typedef(typefile *, ctf_id_t *);
-extern int dt_ctf_type_compare(typefile *, ctf_id_t, typefile *,
-    ctf_id_t);
-extern int dt_type_subtype(typefile *, ctf_id_t, typefile *, ctf_id_t,
-    int *);
+extern int dt_get_class(Typefile *, ctf_id_t, int);
 extern const char *dt_class_name(int);
-extern int dt_get_class(typefile *, ctf_id_t, int);
-extern int dt_type_compare(dfg_node *, dfg_node *);
-extern typefile *dt_get_typename_tfcheck(dfg_node *, typefile **,
+extern Typefile *dt_get_typename_tfcheck(DFGNode *, Typefile **,
     size_t, char *, size_t, const char *);
-extern void dt_get_typename(dfg_node *, char *, size_t, const char *);
 extern int dt_typecheck_string(dtrace_hdl_t *, int, int, ctf_id_t, ctf_id_t,
-    typefile *, typefile *);
-extern int dt_typecheck_stringii(dtrace_hdl_t *, dfg_node *,
-    dfg_node *);
-extern int dt_typecheck_stringiv(dtrace_hdl_t *, dfg_node *,
+    Typefile *, Typefile *);
+extern int dt_typecheck_stringii(dtrace_hdl_t *, DFGNode *,
+    DFGNode *);
+extern int dt_typecheck_stringiv(dtrace_hdl_t *, DFGNode *,
     dtrace_difv_t *);
-extern ctf_membinfo_t *dt_mip_from_sym(dfg_node *);
-extern ctf_membinfo_t *dt_mip_by_offset(dtrace_hdl_t *, typefile *,
+extern ctf_membinfo_t *dt_mip_from_sym(DFGNode *);
+extern ctf_membinfo_t *dt_mip_by_offset(dtrace_hdl_t *, Typefile *,
     ctf_id_t, uint64_t);
 extern ctf_id_t dt_autoresolve_ctfid(const char *, const char *,
-    typefile **);
-
+    Typefile **);
 }
 
 #endif /* _DT_TYPING_HELPERS_HH_ */

@@ -49,6 +49,7 @@
 #include <dt_program.h>
 #include <dt_list.h>
 #include <dt_linker_subr.hh>
+#include <dt_hypertrace_linker.hh>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,21 +58,20 @@
 #include <err.h>
 
 namespace dtrace {
+size_t BasicBlock::index = 0;
 
-size_t basic_block::index = 0;
-
-basic_block::basic_block(dtrace_difo_t *difo)
+BasicBlock::BasicBlock(dtrace_difo_t *difo)
     : difo(difo)
-    , idx(basic_block::index++)
+    , idx(BasicBlock::index++)
     , start(0)
     , end(0)
 {
 }
 
 void
-dt_compute_bb(dtrace_difo_t *difo)
+HyperTraceLinker::computebasicBlocks(dtrace_difo_t *difo)
 {
-	basic_block *bb;
+	BasicBlock *bb;
 	std::vector<bool> leaders(difo->dtdo_len);
 	uint16_t lbl;
 	dif_instr_t instr;
@@ -138,9 +138,9 @@ dt_compute_bb(dtrace_difo_t *difo)
 				bb->end = i - 1;
 			}
 
-			basic_blocks.push_back(
-			    std::make_unique<basic_block>(difo));
-			auto bbp = basic_blocks.back().get();
+			basicBlocks.push_back(
+			    std::make_unique<BasicBlock>(difo));
+			auto bbp = basicBlocks.back().get();
 			if (bb == nullptr) [[unlikely]]
 				difo->dtdo_bb = (void *)bbp;
 
@@ -162,13 +162,13 @@ dt_compute_bb(dtrace_difo_t *difo)
 }
 
 void
-dt_compute_cfg(dtrace_difo_t *difo)
+HyperTraceLinker::computeCFG(dtrace_difo_t *difo)
 {
 	int lbl;
 	uint8_t opcode;
 	dif_instr_t instr;
 
-	for (auto &bb1 : basic_blocks) {
+	for (auto &bb1 : basicBlocks) {
 		assert(bb1 != NULL);
 		if (bb1->difo != difo)
 			continue;
@@ -181,7 +181,7 @@ dt_compute_cfg(dtrace_difo_t *difo)
 		else
 			lbl = -1;
 
-		for (auto &bb2 : basic_blocks) {
+		for (auto &bb2 : basicBlocks) {
 			assert(bb2 != NULL);
 
 			if (bb1 == bb2)

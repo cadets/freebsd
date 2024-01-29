@@ -53,6 +53,7 @@
 #include <dt_linker_subr.hh>
 #include <dt_program.h>
 #include <dtrace.h>
+#include <dt_hypertrace_linker.hh>
 
 #include <stack>
 #include <unordered_map>
@@ -65,20 +66,20 @@ template <typename T> using uset = std::unordered_set<T>;
 template <typename T> using uptr = std::unique_ptr<T>;
 template <typename K, typename T> using hashmap = std::unordered_map<K, T>;
 
-stackdata::stackdata(vec<basic_block *> &ident)
+StackData::StackData(Vec<BasicBlock *> &ident)
     : identifier(ident)
 {
 }
 
-dfg_node::dfg_node(dtrace_hdl_t *_dtp, dtrace_prog_t *pgp,
-    dtrace_ecbdesc_t *_edp, dtrace_difo_t *_difo, basic_block *_bb, uint_t idx)
+DFGNode::DFGNode(dtrace_hdl_t *_dtp, dtrace_prog_t *pgp,
+    dtrace_ecbdesc_t *_edp, dtrace_difo_t *_difo, BasicBlock *_bb, uint_t idx)
     : dtp(_dtp)
     , program(pgp)
     , edp(_edp)
     , difo(_difo)
     , bb(_bb)
     , uidx(idx)
-    , d_type(-1)
+    , dType(-1)
     , sym(nullptr)
     , ctfid(CTF_ERR)
     , mip(nullptr)
@@ -86,7 +87,7 @@ dfg_node::dfg_node(dtrace_hdl_t *_dtp, dtrace_prog_t *pgp,
 }
 
 void
-get_node_data(dif_instr_t instr, dfg_node_data &data)
+get_node_data(dif_instr_t instr, DFGNodeData &data)
 {
 	uint8_t opcode = DIF_INSTR_OP(instr);
 
@@ -196,26 +197,26 @@ get_node_data(dif_instr_t instr, dfg_node_data &data)
  * instruction with a destination register.
  */
 uint8_t
-dfg_node::get_rd(void)
+DFGNode::getRD(void)
 {
 
 	return (DIF_INSTR_RD(this->difo->dtdo_buf[this->uidx]));
 }
 
 dif_instr_t
-dfg_node::get_instruction(void) const
+DFGNode::getInstruction(void) const
 {
 
 	return (this->difo->dtdo_buf[this->uidx]);
 }
 
 static bool
-dt_usite_uses_stack(dfg_node *n)
+dt_usite_uses_stack(DFGNode *n)
 {
 	dif_instr_t instr;
 	uint8_t op;
 
-	instr = n->get_instruction();
+	instr = n->getInstruction();
 	op = DIF_INSTR_OP(instr);
 
 	switch (op) {
@@ -236,13 +237,13 @@ dt_usite_uses_stack(dfg_node *n)
 }
 
 static bool
-dt_usite_contains_var(dfg_node *n, dfg_node_data &data)
+dt_usite_contains_var(DFGNode *n, DFGNodeData &data)
 {
 	dif_instr_t instr;
 	uint16_t v, var;
 	uint8_t opcode, varkind, scope;
 
-	instr = n->get_instruction();
+	instr = n->getInstruction();
 	opcode = DIF_INSTR_OP(instr);
 
 	var = data.var();
@@ -349,7 +350,7 @@ dt_usite_contains_var(dfg_node *n, dfg_node_data &data)
 }
 
 static bool
-dt_usite_contains_reg(dfg_node *n, dfg_node *curnode, uint8_t rd,
+dt_usite_contains_reg(DFGNode *n, DFGNode *curnode, uint8_t rd,
     int *r1, int *r2)
 {
 	dif_instr_t instr = 0;
@@ -358,8 +359,8 @@ dt_usite_contains_reg(dfg_node *n, dfg_node *curnode, uint8_t rd,
 	uint8_t curop;
 	int check;
 
-	curinstr = curnode->get_instruction();
-	instr = n->get_instruction();
+	curinstr = curnode->getInstruction();
+	instr = n->getInstruction();
 
 	*r1 = 0;
 	*r2 = 0;
@@ -476,20 +477,20 @@ dt_usite_contains_reg(dfg_node *n, dfg_node *curnode, uint8_t rd,
 	return (*r1 != 0 || *r2 != 0);
 }
 
-static bool
-dt_update_nodes_bb_var(dtrace_difo_t *difo, basic_block *bb,
-    dfg_node_data &data, dfg_list::iterator pos)
+bool
+HyperTraceLinker::updateNodesInBBForVar(dtrace_difo_t *difo, BasicBlock *bb,
+    DFGNodeData &data, DFGList::iterator pos)
 {
 	dif_instr_t instr;
 	int v;
-	dfg_node *curnode, *n;
+	DFGNode *curnode, *n;
 
 	v = 0;
 	curnode = pos->get();
 
-	for (; pos != dfg_nodes.end(); ++pos) {
+	for (; pos != dfgNodes.end(); ++pos) {
 		n = pos->get();
-		instr = n->get_instruction();
+		instr = n->getInstruction();
 
 		if (n == curnode)
 			continue;
@@ -509,7 +510,7 @@ dt_update_nodes_bb_var(dtrace_difo_t *difo, basic_block *bb,
 			continue;
 
 		if (dt_usite_contains_var(n, data)) {
-			n->var_defs.insert(curnode);
+			n->varDefs.insert(curnode);
 		}
 
 		/*
@@ -524,11 +525,11 @@ dt_update_nodes_bb_var(dtrace_difo_t *difo, basic_block *bb,
 	return (false);
 }
 
-static int
-dt_update_nodes_bb_stack(vec<basic_block *> &bb_path, dtrace_difo_t *difo,
-    basic_block *bb, dfg_list::iterator pos)
+int
+HyperTraceLinker::updateNodesInBBForStack(Vec<BasicBlock *> &bb_path,
+    dtrace_difo_t *difo, BasicBlock *bb, DFGList::iterator pos)
 {
-	dfg_node *n, *curnode;
+	DFGNode *n, *curnode;
 	uint8_t op;
 	dif_instr_t instr;
 	int n_pushes;
@@ -536,9 +537,9 @@ dt_update_nodes_bb_stack(vec<basic_block *> &bb_path, dtrace_difo_t *difo,
 	n_pushes = 1;
 	curnode = pos->get();
 
-	for (; pos != dfg_nodes.end(); ++pos) {
+	for (; pos != dfgNodes.end(); ++pos) {
 		n = pos->get();
-		instr = n->get_instruction();
+		instr = n->getInstruction();
 		op = DIF_INSTR_OP(instr);
 
 		if (n == curnode)
@@ -549,7 +550,7 @@ dt_update_nodes_bb_stack(vec<basic_block *> &bb_path, dtrace_difo_t *difo,
 
 		if (n_pushes < 1)
 			errx(EXIT_FAILURE,
-			    "dt_update_nodes_bb_stack(): n_pushes (%d) < 0 on "
+			    "updateNodesInBBForStack(): n_pushes (%d) < 0 on "
 			    "DIFO %p (node %zu)",
 			    n_pushes, n->difo, n->uidx);
 
@@ -578,18 +579,18 @@ dt_update_nodes_bb_stack(vec<basic_block *> &bb_path, dtrace_difo_t *difo,
 		if (dt_usite_uses_stack(n)) {
 			auto stack_idx = dt_get_stack(bb_path, n);
 			assert(stack_idx != -1);
-			n->stacks[stack_idx].nodes_on_stack.push_back(curnode);
+			n->stacks[stack_idx].nodesOnStack.push_back(curnode);
 		}
 	}
 
 	return (0);
 }
 
-static int
-dt_update_nodes_bb_reg(dtrace_difo_t *difo, basic_block *bb, uint8_t rd,
-    dfg_list::iterator pos, int *seen_typecast)
+int
+HyperTraceLinker::updateNodesInBBForReg(dtrace_difo_t *difo, BasicBlock *bb,
+    uint8_t rd, DFGList::iterator pos, int *seen_typecast)
 {
-	dfg_node *n, *curnode;
+	DFGNode *n, *curnode;
 	int r1, r2;
 	dif_instr_t instr, curinstr;
 	uint8_t opcode, curop;
@@ -602,24 +603,24 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, basic_block *bb, uint8_t rd,
 	if (bb->difo != difo)
 		return (0);
 
-	curinstr = curnode->get_instruction();
+	curinstr = curnode->getInstruction();
 	curop = DIF_INSTR_OP(curinstr);
 
 	if (dt_usite_contains_reg(curnode, curnode, 0, &r1, &r2)) {
 		assert(r1 == 1 || r2 == 1);
 		if (r1 == 1) {
-			curnode->r1_defs.insert(r0node);
+			curnode->r1Defs.insert(r0node);
 		}
 
 		if (r2 == 1) {
-			curnode->r2_defs.insert(r0node);
+			curnode->r2Defs.insert(r0node);
 		}
 	}
 
 	r1 = r2 = 0;
-	for (; pos != dfg_nodes.end(); ++pos) {
+	for (; pos != dfgNodes.end(); ++pos) {
 		n = pos->get();
-		instr = n->get_instruction();
+		instr = n->getInstruction();
 		opcode = DIF_INSTR_OP(instr);
 
 		if (n == curnode)
@@ -642,21 +643,21 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, basic_block *bb, uint8_t rd,
 		if (dt_usite_contains_reg(n, curnode, rd, &r1, &r2)) {
 			assert(r1 == 1 || r2 == 1);
 			if (r1 == 1 && *seen_typecast == 0) {
-				n->r1_defs.insert(curnode);
-				curnode->r1_children.insert(n);
+				n->r1Defs.insert(curnode);
+				curnode->r1Children.insert(n);
 			}
 
 			if (r2 == 1 && *seen_typecast == 0) {
-				n->r2_defs.insert(curnode);
-				curnode->r2_children.insert(n);
+				n->r2Defs.insert(curnode);
+				curnode->r2Children.insert(n);
 			}
 
 			if (r1 == 1 && curop != DIF_OP_TYPECAST) {
-				n->r1_data_defs.insert(curnode);
+				n->r1DataDefs.insert(curnode);
 			}
 
 			if (r2 == 1 && curop != DIF_OP_TYPECAST) {
-				n->r2_data_defs.insert(curnode);
+				n->r2DataDefs.insert(curnode);
 			}
 		}
 
@@ -679,14 +680,14 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, basic_block *bb, uint8_t rd,
 
 static void
 dt_compute_active_varregs(uint8_t *active_varregs, size_t n_varregs,
-    dfg_node *n)
+    DFGNode *n)
 {
 	dif_instr_t instr, varsrc_instr;
 	uint8_t opcode;
 	uint8_t r1, r2, rd;
 	size_t i;
 
-	instr = n->get_instruction();
+	instr = n->getInstruction();
 	opcode = DIF_INSTR_OP(instr);
 
 	/*
@@ -784,11 +785,11 @@ dt_compute_active_varregs(uint8_t *active_varregs, size_t n_varregs,
 	}
 }
 
-static void
-update_active_varregs(uint8_t active_varregs[DIF_DIR_NREGS],
-    dtrace_difo_t *_difo, basic_block *bb, dfg_list::iterator pos)
+void
+HyperTraceLinker::updateActiveVarRegs(uint8_t active_varregs[DIF_DIR_NREGS],
+    dtrace_difo_t *_difo, BasicBlock *bb, DFGList::iterator pos)
 {
-	dfg_node *curnode, *n;
+	DFGNode *curnode, *n;
 	dif_instr_t instr;
 	uint8_t opcode;
 	uint16_t varid;
@@ -799,7 +800,7 @@ update_active_varregs(uint8_t active_varregs[DIF_DIR_NREGS],
 	assert(_difo != nullptr && bb != nullptr);
 
 	curnode = pos->get();
-	instr = curnode->get_instruction();
+	instr = curnode->getInstruction();
 	opcode = DIF_INSTR_OP(instr);
 
 	/*
@@ -841,9 +842,9 @@ update_active_varregs(uint8_t active_varregs[DIF_DIR_NREGS],
 	/*
 	 * Go through all of the nodes in the current basic block
 	 */
-	for (; pos != dfg_nodes.end(); ++pos) {
+	for (; pos != dfgNodes.end(); ++pos) {
 		n = pos->get();
-		instr = n->get_instruction();
+		instr = n->getInstruction();
 		opcode = DIF_INSTR_OP(instr);
 
 		if (n == curnode)
@@ -901,22 +902,22 @@ update_active_varregs(uint8_t active_varregs[DIF_DIR_NREGS],
 		    scope == DIFV_SCOPE_THREAD || scope == DIFV_SCOPE_LOCAL);
 		assert(kind == DIFV_KIND_ARRAY || kind == DIFV_KIND_SCALAR);
 
-		difv = dt_get_var_from_vec(varid, scope, kind);
+		difv = getVarFromVarVec(varid, scope, kind);
 		if (difv == nullptr)
 			errx(EXIT_FAILURE,
-			    "dt_get_var_from_vec(): failed to get DIF "
+			    "getVarFromVarVec(): failed to get DIF "
 			    "variable from the list (%u, %d, %d)\n",
 			    varid, scope, kind);
 
-		n->var_sources.push_back(difv);
+		n->varSources.push_back(difv);
 	}
 }
 
 static void
-remove_basic_blocks(basic_block *bb,
-    hashmap<size_t, basic_block *> &bb_map, vec<basic_block *> &bb_path)
+remove_basicBlocks(BasicBlock *bb,
+    hashmap<size_t, BasicBlock *> &bb_map, Vec<BasicBlock *> &bb_path)
 {
-	basic_block *parent_basic_block;
+	BasicBlock *parent_BasicBlock;
 	int remove;
 
 	/*
@@ -930,10 +931,10 @@ remove_basic_blocks(basic_block *bb,
 	/*
 	 * Find the parent that's in the path.
 	 */
-	parent_basic_block = nullptr;
+	parent_BasicBlock = nullptr;
 	for (auto p : bb->parents) {
 		if (bb_map.contains(p.first->idx)) {
-			parent_basic_block = p.first;
+			parent_BasicBlock = p.first;
 			break;
 		}
 	}
@@ -943,16 +944,16 @@ remove_basic_blocks(basic_block *bb,
 	 * we are in the root node. In that case, we will simply assert a few
 	 * things and break out of the function.
 	 */
-	assert((bb->parents.empty() && parent_basic_block == nullptr) ||
-	    (!bb->parents.empty() && parent_basic_block != nullptr));
+	assert((bb->parents.empty() && parent_BasicBlock == nullptr) ||
+	    (!bb->parents.empty() && parent_BasicBlock != nullptr));
 
-	if (parent_basic_block == nullptr) {
+	if (parent_BasicBlock == nullptr) {
 		assert(bb->start == 0);
 		return;
 	}
 
 	remove = 1;
-	for (auto child : parent_basic_block->children) {
+	for (auto child : parent_BasicBlock->children) {
 		if (child.second == true) {
 			remove = 0;
 			break;
@@ -960,64 +961,63 @@ remove_basic_blocks(basic_block *bb,
 	}
 
 	if (remove)
-		remove_basic_blocks(parent_basic_block, bb_map, bb_path);
+		remove_basicBlocks(parent_BasicBlock, bb_map, bb_path);
 }
 
-static void
-dt_update_nodes(dtrace_difo_t *difo, basic_block *bbp, dfg_node_data &data,
-    dfg_list::iterator pos)
+void
+HyperTraceLinker::updateDFG(dtrace_difo_t *difo, DFGNode *n,
+    DFGList::iterator pos)
 {
-	bool redefined, var_redefined;
-	uint8_t rd;
-	uint16_t var;
-	hashmap<size_t, basic_block *> bb_map;
-	vec<basic_block *> bb_path;
-	std::stack<basic_block *> bb_stack;
-	size_t i;
 	uint8_t active_varregs[DIF_DIR_NREGS + 2];
 	int seen_typecast = 0;
 
-	if (difo == nullptr || bbp == nullptr)
+	if (difo == nullptr || n->bb == nullptr)
 		return;
 
+
+	std::stack<BasicBlock *> bb_stack;
+	BasicBlock *bbp = n->bb;
+	bb_stack.push(bbp);
+
+	Vec<BasicBlock *> bb_path;
+	hashmap<size_t, BasicBlock *> bb_map;
+	DFGNodeData &data = n->nodeData;
 	memset(active_varregs, 0, sizeof(active_varregs));
 
-	bb_stack.push(bbp);
 	while (!bb_stack.empty()) {
 		auto bb = bb_stack.top();
 		assert(bb != nullptr);
 
 		bb_stack.pop();
 
-		redefined = false;
-		var_redefined = false;
+		bool redefined = false;
+		bool var_redefined = false;
 
 		bb_path.push_back(bb);
 		bb_map[bb->idx] = bb;
 
 		if (data.kind == DT_NKIND_REG) {
 			if (!redefined)
-				redefined = dt_update_nodes_bb_reg(difo, bb,
+				redefined = updateNodesInBBForReg(difo, bb,
 				    data.rd(), pos, &seen_typecast);
 			if (!var_redefined) {
-				update_active_varregs(active_varregs, difo, bb,
+				updateActiveVarRegs(active_varregs, difo, bb,
 				    pos);
 				var_redefined = true;
-				for (i = 0; i < DIF_DIR_NREGS + 2; i++)
+				for (auto i = 0; i < DIF_DIR_NREGS + 2; i++)
 					if (active_varregs[i] == 1)
 						var_redefined = false;
 			}
 		} else if (data.kind == DT_NKIND_VAR)
-			redefined = dt_update_nodes_bb_var(difo, bb, data,
-			    pos);
+			redefined = updateNodesInBBForVar(difo, bb, data, pos);
 		else if (data.kind == DT_NKIND_STACK)
-			redefined = dt_update_nodes_bb_stack(bb_path, difo, bb,
+			redefined = updateNodesInBBForStack(bb_path, difo, bb,
 			    pos);
 		else
 			return;
 
 		if (redefined || bb->children.empty())
-			remove_basic_blocks(bb, bb_map, bb_path);
+			remove_basicBlocks(bb, bb_map, bb_path);
 
 		if ((data.kind == DT_NKIND_REG && var_redefined == false) ||
 		    !redefined) {
@@ -1039,19 +1039,11 @@ dt_update_nodes(dtrace_difo_t *difo, basic_block *bbp, dfg_node_data &data,
 	}
 }
 
-static void
-dt_update_dfg(dtrace_difo_t *difo, dfg_node *n,
-    dfg_list::iterator pos)
+static BasicBlock *
+dt_node_find_bb(BasicBlock *root, uint_t ins_idx)
 {
-
-	dt_update_nodes(difo, n->bb, n->node_data, pos);
-}
-
-static basic_block *
-dt_node_find_bb(basic_block *root, uint_t ins_idx)
-{
-	std::stack<basic_block *> bb_stack;
-	uset<size_t> visited;
+	std::stack<BasicBlock *> bb_stack;
+	USet<size_t> visited;
 
 	if (root == nullptr)
 		return (nullptr);
@@ -1083,10 +1075,9 @@ dt_node_find_bb(basic_block *root, uint_t ins_idx)
  * We assume that both dtp and difo are not nullptr.
  */
 int
-dt_compute_dfg(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
-    dtrace_ecbdesc_t *edp, dtrace_difo_t *difo)
+HyperTraceLinker::computeDFG(dtrace_ecbdesc_t *edp, dtrace_difo_t *difo)
 {
-	dfg_list::iterator fst;
+	DFGList::iterator fst;
 	dif_instr_t instr = 0;
 
 	/*
@@ -1127,22 +1118,22 @@ dt_compute_dfg(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	/*
 	 * Compute the basic blocks, CFG and prepare the data flow node vector.
 	 */
-	dt_compute_bb(difo);
-	dt_compute_cfg(difo);
-	fst = dfg_nodes.end();
+	computebasicBlocks(difo);
+	computeCFG(difo);
+	fst = dfgNodes.end();
 
 	/*
 	 * First pass over the instructions. We build up all of the IFG nodes
 	 * that we are going to need.
 	 */
 	for (auto i = 0; i < difo->dtdo_len; i++) {
-		auto node_basic_block = dt_node_find_bb(
-		    static_cast<basic_block *>(difo->dtdo_bb), i);
-		assert(node_basic_block != nullptr);
-		dfg_nodes.push_back(std::make_unique<dfg_node>(dtp, pgp, edp,
-		    difo, node_basic_block, i));
+		auto node_BasicBlock = dt_node_find_bb(
+		    static_cast<BasicBlock *>(difo->dtdo_bb), i);
+		assert(node_BasicBlock != nullptr);
+		dfgNodes.push_back(std::make_unique<DFGNode>(dtp, pgp, edp,
+		    difo, node_BasicBlock, i));
 		if (i == 0) {
-			fst = std::prev(dfg_nodes.end());
+			fst = std::prev(dfgNodes.end());
 		}
 	}
 
@@ -1150,30 +1141,30 @@ dt_compute_dfg(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	 * Second pass over all the instructions, but this time we actually
 	 * compute the IFG.
 	 */
-	for (auto it = fst; it != dfg_nodes.end(); ++it) {
+	for (auto it = fst; it != dfgNodes.end(); ++it) {
 		auto n = it->get();
 		if (n == r0node)
 			continue;
-		instr = n->get_instruction();
+		instr = n->getInstruction();
 
-		get_node_data(instr, n->node_data);
-		dt_update_dfg(difo, n, it);
+		get_node_data(instr, n->nodeData);
+		updateDFG(difo, n, it);
 	}
 
 	return (0);
 }
 
-dfg_node *
-dfg_node::find_child(dfg_node *find) {
+DFGNode *
+DFGNode::findChild(DFGNode *find) {
 	if (this == find)
 		return (this);
 
-	if (auto f = this->r1_data_defs.find(find);
-	    f != this->r1_data_defs.end())
+	if (auto f = this->r1DataDefs.find(find);
+	    f != this->r1DataDefs.end())
 		return (*f);
 
-	if (auto f = this->r2_data_defs.find(find);
-	    f != this->r2_data_defs.end())
+	if (auto f = this->r2DataDefs.find(find);
+	    f != this->r2DataDefs.end())
 		return (*f);
 
 	return (nullptr);

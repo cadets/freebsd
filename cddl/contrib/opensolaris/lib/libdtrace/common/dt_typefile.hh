@@ -39,79 +39,71 @@
 #ifndef _DT_TYPEFILE_HH_
 #define _DT_TYPEFILE_HH_
 
-#include <dtrace.h>
-
 #include <dt_module.h>
+#include <dtrace.h>
 
 #ifndef __cplusplus
 #error "File should only be included from C++"
 #endif
 
-#include <list>
-#include <optional>
+#include <dt_cxxdefs.hh>
+
 #include <string>
-#include <unordered_map>
-#include <vector>
 
 namespace dtrace {
-
-template <typename T> using vec = std::vector<T>;
-template <typename T> using uptr = std::unique_ptr<T>;
-template <typename K, typename T> using umap = std::unordered_map<K, T>;
-using std::pair;
-using std::list;
-
 struct struct_ctfinfo {
-	vec<ctf_id_t> ctf_types;
+	Vec<ctf_id_t> ctf_types;
 	ssize_t current_offs = 0;
 };
 
-class typefile {
+class Typefile {
     private:
-	umap<ctf_id_t, vec<ctf_id_t>> struct_info;
+	umap<ctf_id_t, Vec<ctf_id_t>> struct_info;
 
     public:
 	dtrace_hdl_t *dtp = nullptr;
 	dt_module_t *modhdl = nullptr;
-	std::string modname = { 0 };
+	std::string modname;
 
     public:
-	typefile(dtrace_hdl_t *, dt_module_t *, std::string);
-	typefile(dtrace_hdl_t *, dt_module_t *, const char *);
-	typefile(dtrace_hdl_t *, dt_module_t *, char *);
+	Typefile(dtrace_hdl_t *, dt_module_t *, std::string);
+	Typefile(dtrace_hdl_t *, dt_module_t *, const char *);
+	Typefile(dtrace_hdl_t *, dt_module_t *, char *);
 
-	ctf_id_t get_ctfid(const char *) const;
-	char *get_typename(ctf_id_t, char *, size_t) const;
-	ctf_id_t get_reference(ctf_id_t) const;
-	ssize_t get_size(ctf_id_t) const;
-	const char *get_errmsg(void) const;
-	ctf_file_t *get_membinfo(ctf_id_t, const char *, ctf_membinfo_t *) const;
-	ctf_id_t get_kind(ctf_id_t) const;
+	ctf_id_t getCtfID(const char *) const;
+	char *getTypename(ctf_id_t, char *, size_t) const;
+	ctf_id_t getReference(ctf_id_t) const;
+	ssize_t getSize(ctf_id_t) const;
+	const char *getErrMsg(void) const;
+	ctf_file_t *getMembInfo(ctf_id_t, const char *, ctf_membinfo_t *) const;
+	ctf_id_t getKind(ctf_id_t) const;
 	ctf_id_t resolve(ctf_id_t);
-	int get_encoding(ctf_id_t, ctf_encoding_t *);
-	int type_compat_with(ctf_id_t, const typefile *, ctf_id_t);
-	vec<ctf_id_t> *build_struct(ctf_id_t);
-	ctf_id_t memb_ctfid(void *);
-	ctf_file_t *get_ctfp(void);
-	ctf_arinfo_t *get_array_info(ctf_id_t);
+	int getEncoding(ctf_id_t, ctf_encoding_t *);
+	int typeIsCompatibleWith(ctf_id_t, const Typefile *, ctf_id_t);
+	Vec<ctf_id_t> *buildStruct(ctf_id_t);
+	ctf_id_t getMembCtfID(void *);
+	ctf_file_t *getCtfPointer(void);
+	ctf_arinfo_t *getArrayInfo(ctf_id_t);
+	ctf_id_t stripReference(ctf_id_t &, size_t &);
+	ctf_id_t stripTypedef(ctf_id_t &);
 
 	const std::string &name() const;
-	const std::optional<std::string> get_typename(ctf_id_t) const;
+	const std::optional<std::string> getTypename(ctf_id_t) const;
 };
 
-extern list<uptr<typefile>> typefiles;
+extern list<UPtr<Typefile>> typefiles;
 
 void dt_typefile_openall(dtrace_hdl_t *);
-typefile *dt_typefile_first(void);
-typefile *dt_typefile_kernel(void);
-typefile *dt_typefile_D(void);
-typefile *dt_typefile_mod(const char *);
+Typefile *dt_typefile_first(void);
+Typefile *dt_typefile_kernel(void);
+Typefile *dt_typefile_D(void);
+Typefile *dt_typefile_mod(const char *);
 
-constexpr typefile *
+constexpr Typefile *
 v2tf(void *tf)
 {
 
-	return (static_cast<typefile *>(tf));
+	return (static_cast<Typefile *>(tf));
 }
 
 };
