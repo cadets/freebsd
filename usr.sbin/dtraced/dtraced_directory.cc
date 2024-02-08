@@ -314,28 +314,9 @@ process_inbound(dir &dir, struct dirent *f)
 		return (true);
 
 	d_name_s = std::string(f->d_name);
-	{
-		std::lock_guard lk(dir.dirmtx);
-
-		/*
-		 * Exit early if the file doesn't exist. There is definitely
-		 * multiple race conditions here, but it doesn't really matter
-		 * as we don't expect this to ever happen if communication
-		 * happens through dtraced itself.
-		 */
-		if (!dir.file_exists(f->d_name)) {
-			ERR("%s%s does not exist", dir.full_path().c_str(),
-			    f->d_name);
-			(void)dir.rmpath(d_name_s);
-			return (false);
-		}
-
-		if (dir.memorized(d_name_s))
-			return (true);
-
-		fullpath = dir.full_path();
-	}
-
+	if (dir.memorized(d_name_s))
+		return (true);
+	fullpath = dir.full_path();
 	fullpath += d_name_s;
 	DEBUG("processing %s", fullpath.c_str());
 
