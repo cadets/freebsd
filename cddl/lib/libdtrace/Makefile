@@ -25,6 +25,7 @@ SRCS=		dt_aggregate.c \
 		dt_grammar.y \
 		dt_handle.c \
 		dt_hashmap.c \
+		dt_hypertrace_linker.cc \
 		dt_ident.c \
 		dt_dfg.cc \
 		dt_isadep.c \
@@ -47,7 +48,6 @@ SRCS=		dt_aggregate.c \
 		dt_printf.c \
 		dt_proc.c \
 		dt_program.c \
-		dt_prog_link.cc \
 		dt_provider.c \
 		dt_regset.c \
 		dt_resolver.c \
