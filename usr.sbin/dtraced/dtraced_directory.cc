@@ -211,13 +211,15 @@ dir::memorize_file(struct dirent *f)
 	if (f->d_name[0] == '.')
 		return (true);
 
-	std::lock_guard lk(this->dirmtx);
 	this->existing_files.insert(std::string(f->d_name));
 	return (true);
 }
 
+static const size_t FILESET_SIZE = 1 << 26;
+
 dir::dir(const char *path, foreach_fn_t fn)
     : dirpath(path)
+    , existing_files(FILESET_SIZE)
     , processfn(fn)
 {
 	bool retry;

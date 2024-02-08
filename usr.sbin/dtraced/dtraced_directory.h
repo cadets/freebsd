@@ -46,8 +46,8 @@
 #include <dirent.h>
 
 #include <mutex>
-#include <set>
 #include <string>
+#include <unordered_set>
 
 namespace dtraced {
 
@@ -61,7 +61,7 @@ class state;
 typedef bool (*foreach_fn_t)(dir &, struct dirent *);
 
 class dir {
-	using fileset = std::set<std::string>;
+	using fileset = std::unordered_set<std::string>;
 	std::string dirpath;	 /* directory path */
 	DIR *dirp;		 /* directory pointer */
 	fileset existing_files;	 /* files that exist in the dir */
