@@ -134,6 +134,10 @@ class DFGNode {
 	~DFGNode() = default;
 
 	dif_instr_t *DIFOBuf() { return (this->difo->dtdo_buf); }
+	dif_instr_t &Instruction()
+	{
+		return (this->difo->dtdo_buf[this->uidx]);
+	}
 	uint8_t getRD(void);
 	dif_instr_t getInstruction(void) const;
 	DFGNode *findChild(DFGNode *);

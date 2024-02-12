@@ -123,7 +123,7 @@ HyperTraceLinker::patchUsetxDefs(DFGNode *n)
 			errx(EXIT_FAILURE, "failed to insert %u into inttab",
 			    offset);
 
-		node->DIFOBuf()[node->uidx] = DIF_INSTR_SETX(index, rd);
+		node->Instruction() = DIF_INSTR_SETX(index, rd);
 		node->isRelocated = true;
 	}
 }
@@ -240,7 +240,7 @@ usetx_relo:
 	patchUsetxDefs(node);
 
 	if (opcode != DIF_OP_ADD)
-		node->DIFOBuf()[node->uidx] = new_instr;
+		node->Instruction() = new_instr;
 	node->isRelocated = true;
 }
 
@@ -294,7 +294,7 @@ retCleanup(DFGNode *node, dtrace_diftype_t *rtype)
 		case DIF_OP_LDUW:
 		case DIF_OP_LDSW:
 		case DIF_OP_LDX:
-			n->DIFOBuf()[n->uidx] = DIF_INSTR_NOP;
+			n->Instruction() = DIF_INSTR_NOP;
 			break;
 		}
 	}
@@ -435,8 +435,8 @@ patchSETXInstructions(NodeSet *setx_defs1, NodeSet *setx_defs2)
 		auto sd1 = *it1;
 		auto sd2 = *it2;
 
-		sd1->DIFOBuf()[sd1->uidx] = DIF_INSTR_NOP;
-		sd2->DIFOBuf()[sd2->uidx] = DIF_INSTR_NOP;
+		sd1->Instruction() = DIF_INSTR_NOP;
+		sd2->Instruction() = DIF_INSTR_NOP;
 	}
 }
 
@@ -504,7 +504,7 @@ HyperTraceLinker::relocateDFGNode(DFGNode *node, dtrace_actkind_t actkind,
 
 		newinstr = DIF_INSTR_PUSHTS(DIF_OP_PUSHTV,
 		    node->dType, rv, rs);
-		node->DIFOBuf()[node->uidx] = newinstr;
+		node->Instruction() = newinstr;
 		break;
 	}
 
@@ -529,7 +529,7 @@ HyperTraceLinker::relocateDFGNode(DFGNode *node, dtrace_actkind_t actkind,
 		 * actually execute it as an instruction. We will
 		 * collapse the nops later.
 		 */
-		node->DIFOBuf()[node->uidx] = DIF_INSTR_NOP;
+		node->Instruction() = DIF_INSTR_NOP;
 
 		if (node->uidx < 2)
 			goto end;
@@ -614,8 +614,8 @@ HyperTraceLinker::relocateDFGNode(DFGNode *node, dtrace_actkind_t actkind,
 				if (!checkSETXDefs(setx_defs1, setx_defs2))
 					continue;
 
-				ndef2->DIFOBuf()[ndef2->uidx] = DIF_INSTR_NOP;
-				ndef1->DIFOBuf()[ndef1->uidx] = DIF_INSTR_NOP;
+				ndef2->Instruction() = DIF_INSTR_NOP;
+				ndef1->Instruction() = DIF_INSTR_NOP;
 
 				patchSETXInstructions(setx_defs1, setx_defs2);
 			}
