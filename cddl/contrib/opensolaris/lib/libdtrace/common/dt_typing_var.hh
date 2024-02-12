@@ -54,10 +54,19 @@
 namespace dtrace {
 
 struct argcheck_cookie {
-	DFGNode *node;
-	uint16_t varcode;
-	uint8_t idx;
-	TypeInference *ti;
+	DFGNode *node = nullptr;
+	uint16_t varcode = 0;
+	uint8_t idx = 0;
+	TypeInference *ti = nullptr;
+
+	argcheck_cookie(DFGNode *_node, uint16_t _varcode, uint8_t _idx,
+	    TypeInference *_ti)
+	    : node(_node)
+	    , varcode(_varcode)
+	    , idx(_idx)
+	    , ti(_ti)
+	{
+	}
 };
 
 extern int dt_infer_type_arg(dtrace_hdl_t *, const dtrace_probedesc_t *,

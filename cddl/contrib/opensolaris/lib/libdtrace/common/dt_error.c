@@ -43,23 +43,20 @@
  * from the Kenneth Hayter Scholarship Fund.
  */
 
+#include <assert.h>
+#include <dt_elf.h>
+#include <dt_hypertrace.h>
+#include <dt_impl.h>
+#include <dt_program.h>
+#include <dtraced.h>
+#include <err.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
-
-#include <dt_impl.h>
-#include <dt_program.h>
-#include <dt_elf.h>
-
-#include <assert.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <err.h>
-#include <errno.h>
-#include <stddef.h>
-
-#include <dtraced.h>
 
 static const struct {
 	int err;
@@ -287,8 +284,9 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 {
 	size_t l = 0;
 	va_list args;
-	int dtraced_sock, tmpfd;
+	int dtraced_sock, tmpfd, err;
 	char template[MAXPATHLEN] = "/tmp/ddtrace-set-prog-err.XXXXXXX";
+	hypertrace_errmsg_t errmsg;
 
 	if (pgp == NULL)
 		return;
@@ -324,10 +322,10 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	if (tmpfd == -1)
 		errx(EXIT_FAILURE, "mkstemp() failed: %s\n", strerror(errno));
 
-	unlink(template);
-	strcpy(template, "/tmp/ddtrace-set-prog-err.XXXXXXX");
-
-	dt_elf_create(pgp, ELFDATA2LSB, tmpfd);
+	err = dtrace_elf_create(dtp, pgp, ELFDATA2LSB, tmpfd, template, errmsg);
+	if (err)
+		errx(EXIT_FAILURE, "dt_elf_create() failed: %s: %s\n",
+		    dtrace_hypertrace_errstr(err), errmsg);
 
 	if (fsync(tmpfd))
 		errx(EXIT_FAILURE, "fsync() failed: %s\n", strerror(errno));
@@ -338,8 +336,9 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	if (dtrace_send_elf(pgp, tmpfd, dtraced_sock, "outbound", 0))
 		errx(EXIT_FAILURE, "dtrace_send_elf() failed\n");
 
+	unlink(template);
+	strcpy(template, "/tmp/ddtrace-set-prog-err.XXXXXXX");
 	close(tmpfd);
 	close(dtraced_sock);
-
 	errx(EXIT_FAILURE, "%s", pgp->dp_err);
 }

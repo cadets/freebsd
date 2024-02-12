@@ -64,20 +64,12 @@ namespace dtrace {
  * are consistent.
  */
 DFGNode *
-TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, int *empty)
+TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, bool &empty)
 {
-	DFGNode *node, *onode;
-	std::string s1, s2;
-	int type, otype;
-	int class1, class2;
-	int first_iter;
+	String s1, s2;
 	int which;
 
-	type = otype = DIF_TYPE_NONE;
-	class1 = class2 = -1;
-	node = nullptr;
-	*empty = 1;
-	first_iter = 1;
+	empty = false;
 
 	/*
 	 * If we only have a r0node in our list of definitions,
@@ -85,10 +77,11 @@ TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, int *empty)
 	 */
 	auto *r0node = linkerContext.getR0Node();
 	if (defs.size() == 1 && *defs.begin() == r0node) {
-		*empty = 0;
+		empty = true;
 		return (const_cast<DFGNode *>(r0node));
 	}
 
+	DFGNode *node = nullptr;
 	if (defs.size() > 0)
 		node = *defs.begin(); // FIXME: Needed for onode to be set
 				      // correctly.
@@ -100,8 +93,11 @@ TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, int *empty)
 	 * Moreover, at this point we will have eliminated the case where
 	 * we only have 1 node (r0node) present in the list.
 	 */
+	bool first_iter = true;
+	int type, otype;
+	type = otype = DIF_TYPE_NONE;
 	for (auto it = defs.begin(); it != defs.end(); ++it) {
-		onode = node;
+		DFGNode *onode = node;
 		node = *it;
 		otype = type;
 
@@ -149,23 +145,15 @@ TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, int *empty)
 			continue;
 
 		if (type == DIF_TYPE_STRING || otype == DIF_TYPE_STRING) {
-			DFGNode *str_node, *other_node;
-			int string_type, other_type;
-
-			str_node = type == DIF_TYPE_STRING ? node : onode;
-			other_node = type == DIF_TYPE_STRING ? onode : node;
-
-			string_type = str_node->dType;
-			other_type = other_node->dType;
-
+			DFGNode *other_node = type == DIF_TYPE_STRING ?
+			    onode : node;
+			int other_type = other_node->dType;
 			if (other_type == DIF_TYPE_BOTTOM)
 				continue;
-
 			if (other_type ==  DIF_TYPE_STRING) {
-				first_iter = 0;
+				first_iter = false;
 				continue;
 			}
-
 			if (other_type == DIF_TYPE_CTF) {
 				/*
 				 * Get the CTF type name
@@ -183,7 +171,7 @@ TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, int *empty)
 
 				if (s1 == "const char *" || s1 == "char *" ||
 				    s1 == "string") {
-					first_iter = 0;
+					first_iter = false;
 					continue;
 				}
 			}
@@ -193,8 +181,8 @@ TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, int *empty)
 		 * The type at the previous definition does not match the type
 		 * inferred in the current one, which is nonsense.
 		 */
-		if (first_iter == 0 && otype != type) {
-			std::string otype_str, ctype_str;
+		if (!first_iter && otype != type) {
+			String otype_str, ctype_str;
 
 			if (otype == DIF_TYPE_STRING) {
 				otype_str = "D string";
@@ -211,7 +199,8 @@ TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, int *empty)
 					dt_set_progerr(dtp, pgp,
 					    "dt_typecheck_regdefs(%p[%zu]): failed at "
 					    "getting type name node %ld: %s",
-					    n->difo, n->uidx, onode->ctfid,
+					    (void *)n->difo, n->uidx,
+					    onode->ctfid,
 					    onode->tf->getErrMsg());
 				otype_str = std::move(opt.value());
 			} else {
@@ -233,8 +222,8 @@ TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, int *empty)
 					dt_set_progerr(dtp, pgp,
 					    "dt_typecheck_regdefs(%p[%zu]): failed at "
 					    "getting type name node %ld: %s",
-					    n->difo, n->uidx, node->ctfid,
-					    node->tf->getErrMsg());
+					    (void *)n->difo, n->uidx,
+					    node->ctfid, node->tf->getErrMsg());
 				ctype_str = std::move(opt.value());
 			} else {
 				ctype_str = "unknown (ERROR)";
@@ -301,8 +290,8 @@ TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, int *empty)
 				fprintf(stderr,
 				    "dt_typecheck_regdefs(%p[%zu]): types %s (%zu) "
 				    "and %s (%zu) do not match\n",
-				    n->difo, n->uidx, s1.c_str(), node->uidx,
-				    s2.c_str(), onode->uidx);
+				    (void *)n->difo, n->uidx, s1.c_str(),
+				    node->uidx, s2.c_str(), onode->uidx);
 				return (nullptr);
 			}
 
@@ -328,7 +317,7 @@ TypeInference::checkRegDefs(DFGNode *n, NodeSet &defs, int *empty)
 			}
 		}
 
-		first_iter = 0;
+		first_iter = false;
 	}
 
 	return (node);

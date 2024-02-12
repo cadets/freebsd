@@ -56,6 +56,7 @@
 
 #include <dt_impl.h>
 #include <dtraced.h>
+#include <dt_hypertrace.h>
 
 static const struct {
 	size_t dtps_offset;
@@ -1401,6 +1402,9 @@ dtrace_enable_hypertrace(dtrace_hdl_t *dtp)
 
 	(void) dtrace_setopt(dtp, "hypertrace", "yes");
 	dtp->dt_hypertrace = 1;
+	log_hypertrace_elf = getenv("_HYPERTRACE_LOG_ELF") != NULL;
+	log_hypertrace_linker = getenv("_HYPERTRACE_LOG_LINKER") != NULL;
+	log_hypertrace_typing = getenv("_HYPERTRACE_LOG_TYPING") != NULL;
 }
 
 void
@@ -1425,4 +1429,32 @@ dtrace_hypertrace_options_update(dtrace_hdl_t *dtp)
 	 * For now, all we neeed to do is reload the kernel options.
 	 */
 	return (dt_options_load(dtp));
+}
+
+const char *
+dtrace_hypertrace_errstr(int err)
+{
+	switch (err) {
+	case E_HYPERTRACE_NONE:
+		return ("No error");
+	case E_HYPERTRACE_SYS:
+		return ("System error");
+	case E_HYPERTRACE_ELFCREATE:
+		return ("ELF Creation failed");
+	case E_HYPERTRACE_ELFPARSE:
+		return ("ELF Parsing failed");
+	case E_HYPERTRACE_LIBDTRACE:
+		return ("Internal libdtrace error");
+	case E_HYPERTRACE_CHECKSUM:
+		return ("Checksum error");
+	case E_HYPERTRACE_AGAIN:
+		return ("Call the subroutine again");
+	case E_HYPERTRACE_PROPAGATED:
+		return ("Propagated error");
+	case E_HYPERTRACE_IDENT_NOTFOUND:
+		return ("Identifier not found");
+	case E_HYPERTRACE_LINKING:
+		return ("Linking error");
+	}
+	return ("Unknown error");
 }

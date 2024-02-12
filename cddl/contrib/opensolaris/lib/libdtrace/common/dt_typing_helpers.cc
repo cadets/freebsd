@@ -63,13 +63,13 @@
 namespace dtrace {
 namespace impl {
 static int
-ctfTypeCompare(TypeInference *ti, USet<std::string> &processed_typenames,
+ctfTypeCompare(TypeInference *ti, USet<String> &processed_typenames,
     Typefile *_tf1, ctf_id_t _id1, Typefile *_tf2, ctf_id_t _id2)
 {
 	Typefile *tf1, *tf2;
 	size_t n_stars1, n_stars2;
 	ctf_id_t id1, id2, kind1, kind2, tmp, memb1, memb2;
-	std::string type1_name, type2_name, memb1_name, memb2_name;
+	String type1_name, type2_name, memb1_name, memb2_name;
 
 	assert(_tf1 != nullptr);
 	assert(_tf2 != nullptr);
@@ -241,7 +241,7 @@ int
 TypeInference::ctfTypeCompare(Typefile *tf1, ctf_id_t id1, Typefile *tf2,
     ctf_id_t id2)
 {
-	USet<std::string> processed_typenames;
+	USet<String> processed_typenames;
 	return (impl::ctfTypeCompare(this, processed_typenames, tf1, id1, tf2,
 	    id2));
 }
@@ -353,6 +353,7 @@ dt_get_class(Typefile *tf, ctf_id_t id, int follow)
 				break;
 			}
 
+			typeclass = dt_get_class(t.get(), t->getCtfID(buf), 0);
 			if (typeclass == DTC_INT || typeclass == DTC_STRUCT)
 				return (typeclass);
 		}
@@ -370,72 +371,6 @@ dt_get_class(Typefile *tf, ctf_id_t id, int follow)
 	return (DTC_BOTTOM);
 }
 
-ctf_membinfo_t *
-dt_mip_from_sym(DFGNode *n)
-{
-	ctf_membinfo_t *mip;
-	int c;
-	char buf[DT_TYPE_NAMELEN] = { 0 };
-	ctf_id_t type;
-	ctf_id_t kind;
-	dtrace_difo_t *difo;
-
-	if (n == nullptr)
-		return (nullptr);
-
-	/*
-	 * If there is no symbol here, we can't do anything.
-	 */
-	if (n->sym == nullptr)
-		return (nullptr);
-
-	if (n->difo == nullptr)
-		return (nullptr);
-
-	difo = n->difo;
-
-	/*
-	 * sym in range(symtab)
-	 */
-	if ((uintptr_t)n->sym >=
-	    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
-		return (nullptr);
-
-	c = dt_get_class(n->tf, n->ctfid, 1);
-	if (c != DTC_STRUCT && c != DTC_FORWARD) {
-		return (nullptr);
-	}
-
-	/*
-	 * Figure out t2 = type_at(t1, symname)
-	 */
-	mip = (ctf_membinfo_t *)malloc(sizeof(ctf_membinfo_t));
-	if (mip == nullptr)
-		return (nullptr);
-
-	memset(mip, 0, sizeof(ctf_membinfo_t));
-
-	kind = n->tf->getKind(n->ctfid);
-	if (kind == CTF_K_POINTER || kind == CTF_K_VOLATILE ||
-	    kind == CTF_K_TYPEDEF || kind == CTF_K_RESTRICT ||
-	    kind == CTF_K_CONST)
-		/*
-		 * Get the non-pointer type. This should NEVER fail.
-		 */
-		type = n->tf->getReference(n->ctfid);
-	else
-		type = n->ctfid;
-
-	assert(type != CTF_ERR);
-
-	if (n->tf->getMembInfo(type, n->sym, mip) == 0) {
-		free(mip);
-		return (nullptr);
-	}
-
-	return (mip);
-}
-
 /*
  * typeCompare() takes in two IFG nodes and "compares" their types.
  * Specifically, BOTTOM is the smallest element and no matter what it is
@@ -449,8 +384,7 @@ dt_mip_from_sym(DFGNode *n)
 int
 TypeInference::typeCompare(DFGNode *dn1, DFGNode *dn2)
 {
-	char buf[DT_TYPE_NAMELEN] = {0};
-	std::string t1, t2;
+	String t1, t2;
 	int class1, class2;
 
 	class1 = 0;
@@ -547,7 +481,7 @@ TypeInference::typeCompare(DFGNode *dn1, DFGNode *dn2)
 
 Typefile *
 HyperTraceLinker::getTypenameChecked(DFGNode *n, Vec<Typefile *> &tfs,
-    char *buf, size_t bufsize, const std::string &loc)
+    char *buf, size_t bufsize, const String &loc)
 {
 	if (std::find(tfs.begin(), tfs.end(), n->tf) == tfs.end())
 		dt_set_progerr(dtp, pgp,
@@ -560,69 +494,6 @@ HyperTraceLinker::getTypenameChecked(DFGNode *n, Vec<Typefile *> &tfs,
 		    n->uidx, n->ctfid, n->tf->getErrMsg());
 
 	return (n->tf);
-}
-
-struct membinfo_helper {
-	dtrace_hdl_t *dtp;
-	ctf_file_t *ctfp;
-	ctf_membinfo_t *mip;
-	uint64_t offs;
-	ctf_id_t ctfid;
-};
-
-static int
-dt_find_memboffs(const char *name, ctf_id_t ctfid, ulong_t off, void *arg)
-{
-	membinfo_helper *mh = (membinfo_helper *)arg;
-
-	/* invalid argument, return an error */
-	if (arg == nullptr)
-		return (-1);
-
-	/* we already found our member, simply return. */
-	if (mh->mip != nullptr)
-		return (0);
-
-	/* if not matching, simply continue searching. */
-	if (off / NBBY != mh->offs)
-		return (0);
-
-	/*
-	 * We now know we have a matching offset. Get the mip and populate our
-	 * struct.
-	 */
-	mh->mip = (ctf_membinfo_t *)malloc(sizeof(ctf_membinfo_t));
-	if (mh->mip == nullptr)
-		return (-1);
-
-	memset(mh->mip, 0, sizeof(ctf_membinfo_t));
-	if (ctf_member_info(mh->ctfp, mh->ctfid, name, mh->mip) == CTF_ERR)
-		return (-1);
-
-	/*
-	 * We now have the membinfo filled in, so we just return 0.
-	 */
-	return (0);
-}
-
-ctf_membinfo_t *
-dt_mip_by_offset(dtrace_hdl_t *dtp, Typefile *tf, ctf_id_t ctfid,
-    uint64_t offs)
-{
-	ctf_file_t *ctfp;
-	membinfo_helper mh = { 0 };
-
-	ctfp = tf->getCtfPointer();
-
-	mh.offs = offs;
-	mh.ctfp = ctfp;
-	mh.dtp = dtp;
-	mh.ctfid = ctfid;
-
-	if (ctf_member_iter(mh.ctfp, ctfid, dt_find_memboffs, &mh) == -1)
-		return (nullptr);
-
-	return (mh.mip);
 }
 
 ctf_id_t

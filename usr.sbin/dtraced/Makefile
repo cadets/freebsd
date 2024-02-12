@@ -25,7 +25,7 @@ CXXFLAGS+=	-Wno-c11-extensions -Wno-gcc-compat -Wno-gnu-anonymous-struct -Wno-ze
 CSTD:=c11
 CXXSTD:=c++17
 
-LIBADD=	dtrace ctf elf proc pthread crypto util cxxrt
+LIBADD=	ctf elf proc pthread crypto util cxxrt
 
 .if ${MK_DTRACE_OPTIMIZED} != "no" && ${MACHINE_ARCH} != mips && \
     ${MACHINE_ARCH} != mips64 && ${MACHINE_ARCH} != powerpc64 && \

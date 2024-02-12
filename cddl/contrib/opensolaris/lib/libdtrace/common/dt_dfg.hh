@@ -111,7 +111,7 @@ class DFGNode {
 
 	Vec<dtrace_difv_t *> varSources; /* variable origin (if exists) */
 
-	int dType = DIF_TYPE_NONE;     /* D type */
+	int dType = -1;		       /* D type */
 	Typefile *tf = nullptr;	       /* reference to the type's type file */
 	ctf_id_t ctfid = CTF_ERR;      /* CTF type */
 	char *sym = nullptr;	       /* symbol (if applicable) */

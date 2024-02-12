@@ -63,9 +63,9 @@
 namespace dtrace {
 TypeInference::TypeInference(HyperTraceLinker &_linkerContext,
     dtrace_hdl_t *_dtp, dtrace_prog_t *_pgp)
-    : linkerContext(_linkerContext)
-    , dtp(_dtp)
+    : dtp(_dtp)
     , pgp(_pgp)
+    , linkerContext(_linkerContext)
 {
 	char __kernel[] = "kernel`";
 	size_t __kernel_len = strlen(__kernel);
@@ -82,14 +82,31 @@ TypeInference::TypeInference(HyperTraceLinker &_linkerContext,
 		dt_set_progerr(dtp, pgp,
 		    "sx_str does not start with \"kernel`\" (%s)", sx_str);
 
-	t_mtx = std::string(mtx_str + __kernel_len);
-	t_rw = std::string(rw_str + __kernel_len);
-	t_sx = std::string(sx_str + __kernel_len);
-	t_thread = std::string(thread_str);
+	t_mtx = String(mtx_str + __kernel_len);
+	t_rw = String(rw_str + __kernel_len);
+	t_sx = String(sx_str + __kernel_len);
+	t_thread = String(thread_str);
+}
+
+void
+TypeInference::setErrorMessage(const char *fmt, ...)
+{
+	va_list va, va_cp;
+	va_start(va, fmt);
+	va_copy(va_cp, va);
+	auto len = vsnprintf(nullptr, 0, fmt, va);
+	if (len < 0)
+		abort();
+	if (len > 0) {
+		errorMessage.resize(len);
+		vsnprintf(&errorMessage[0], len + 1, fmt, va_cp);
+	}
+	va_end(va_cp);
+	va_end(va);
 }
 
 static int
-isVoidPointer(std::string &t)
+isVoidPointer(String &t)
 {
 
 	return (t == "void *" || t == "const void *");
@@ -111,6 +128,108 @@ dt_setx_value(dtrace_difo_t *difo, dif_instr_t instr)
 	return (difo->dtdo_inttab[index]);
 }
 
+struct MemberInfoHelper {
+	dtrace_hdl_t *dtp = nullptr;
+	ctf_file_t *ctfp = nullptr;
+	ctf_membinfo_t *mip = nullptr;
+	uint64_t offs = 0;
+	ctf_id_t ctfid = CTF_ERR;
+
+	MemberInfoHelper(dtrace_hdl_t *_dtp, ctf_file_t *_ctfp, uint64_t _offs,
+	    ctf_id_t _ctfid)
+	    : dtp(_dtp)
+	    , ctfp(_ctfp)
+	    , offs(_offs)
+	    , ctfid(_ctfid)
+	{
+	}
+};
+
+static int
+findMemberOffset(const char *name, [[maybe_unused]] ctf_id_t ctfid, ulong_t off,
+    void *arg)
+{
+	MemberInfoHelper *mh = (MemberInfoHelper *)arg;
+	// Invalid argument, return an error
+	if (arg == nullptr)
+		return (-1);
+	// We already found our member, simply return.
+	if (mh->mip != nullptr)
+		return (0);
+	// If not matching, simply continue searching.
+	if (off / NBBY != mh->offs)
+		return (0);
+	// We now know we have a matching offset. Get the mip and populate our
+	// struct.
+	mh->mip = (ctf_membinfo_t *)dt_zalloc(mh->dtp, sizeof(ctf_membinfo_t));
+	if (mh->mip == nullptr)
+		return (-1);
+	if (ctf_member_info(mh->ctfp, mh->ctfid, name, mh->mip) == CTF_ERR)
+		return (-1);
+	// We now have the membinfo filled in, so we just return 0.
+	return (0);
+}
+
+ctf_membinfo_t *
+TypeInference::getMipByOffset(Typefile *tf, ctf_id_t ctfid, uint64_t offs)
+{
+	ctf_file_t *ctfp = tf->getCtfPointer();
+	MemberInfoHelper mh(dtp, ctfp, offs, ctfid);
+	if (ctf_member_iter(mh.ctfp, ctfid, &findMemberOffset, &mh) == -1)
+		return (nullptr);
+	return (mh.mip);
+}
+
+
+ctf_membinfo_t *
+TypeInference::getMipFromSymbol(DFGNode *n)
+{
+	if (n == nullptr)
+		return (nullptr);
+	/*
+	 * If there is no symbol here, we can't do anything.
+	 */
+	if (n->sym == nullptr)
+		return (nullptr);
+	if (n->difo == nullptr)
+		return (nullptr);
+
+	dtrace_difo_t *difo = n->difo;
+	/*
+	 * sym in range(symtab)
+	 */
+	if ((uintptr_t)n->sym >=
+	    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
+		return (nullptr);
+	int c = dt_get_class(n->tf, n->ctfid, 1);
+	if (c != DTC_STRUCT && c != DTC_FORWARD) {
+		return (nullptr);
+	}
+	/*
+	 * Figure out t2 = type_at(t1, symname)
+	 */
+	auto *mip = (ctf_membinfo_t *)dt_zalloc(dtp, sizeof(ctf_membinfo_t));
+	if (mip == nullptr)
+		return (nullptr);
+	ctf_id_t kind = n->tf->getKind(n->ctfid);
+	ctf_id_t type;
+	if (kind == CTF_K_POINTER || kind == CTF_K_VOLATILE ||
+	    kind == CTF_K_TYPEDEF || kind == CTF_K_RESTRICT ||
+	    kind == CTF_K_CONST)
+		/*
+		 * Get the non-pointer type. This should NEVER fail.
+		 */
+		type = n->tf->getReference(n->ctfid);
+	else
+		type = n->ctfid;
+	assert(type != CTF_ERR);
+	if (n->tf->getMembInfo(type, n->sym, mip) == 0) {
+		free(mip);
+		return (nullptr);
+	}
+	return (mip);
+}
+
 int
 TypeInference::getSubtypeRelation(Typefile *tf1, ctf_id_t id1, Typefile *tf2,
     ctf_id_t id2, int &which)
@@ -125,13 +244,13 @@ TypeInference::getSubtypeRelation(Typefile *tf1, ctf_id_t id1, Typefile *tf2,
 		return (-1);
 	}
 
-	std::string type1_name = std::move(opt.value());
+	String type1_name = std::move(opt.value());
 	opt = tf2->getTypename(id2);
 	if (!opt.has_value()) {
 		return (-1);
 	}
 
-	std::string type2_name = std::move(opt.value());
+	String type2_name = std::move(opt.value());
 	bool isvoid1 = isVoidPointer(type1_name);
 	bool isvoid2 = isVoidPointer(type2_name);
 
@@ -237,7 +356,7 @@ TypeInference::getSubtypeRelation(Typefile *tf1, ctf_id_t id1, Typefile *tf2,
 		return (-1);
 	}
 
-	std::string r1_type_name = std::move(opt.value());
+	String r1_type_name = std::move(opt.value());
 
 	opt = tf2->getTypename(id2);
 	if (!opt.has_value()) {
@@ -246,7 +365,7 @@ TypeInference::getSubtypeRelation(Typefile *tf1, ctf_id_t id1, Typefile *tf2,
 		return (-1);
 	}
 
-	std::string r2_type_name = std::move(opt.value());
+	String r2_type_name = std::move(opt.value());
 
 	/*
 	 * Since this is C, we do a comparison by name first. If the names don't
@@ -309,13 +428,13 @@ TypeInference::getSubtypeRelation(Typefile *tf1, ctf_id_t id1, Typefile *tf2,
 				return (-1);
 			}
 
-			std::string memb1_name = std::move(opt.value());
+			String memb1_name = std::move(opt.value());
 			opt = tf2->getTypename(memb2);
 			if (!opt.has_value()) {
 				return (-1);
 			}
 
-			std::string memb2_name = std::move(opt.value());
+			String memb2_name = std::move(opt.value());
 			if (ctfTypeCompare(tf1, memb1, tf2, memb2)) {
 				fprintf(stderr,
 				    "comparison between %s and %s failed\n",
@@ -350,6 +469,110 @@ TypeInference::getSubtypeRelation(Typefile *tf1, ctf_id_t id1, Typefile *tf2,
 	    type2_name.c_str());
 	return (-1);
 }
+static std::unordered_map<uint8_t, String> insname = {
+	{ DIF_OP_OR, "or" },
+	{ DIF_OP_XOR, "xor" },
+	{ DIF_OP_AND, "and" },
+	{ DIF_OP_SLL, "sll" },
+	{ DIF_OP_SRL, "srl" },
+	{ DIF_OP_SUB, "sub" },
+	{ DIF_OP_ADD, "add" },
+	{ DIF_OP_MUL, "mul" },
+	{ DIF_OP_SDIV, "sdiv" },
+	{ DIF_OP_UDIV, "udiv" },
+	{ DIF_OP_SREM, "srem" },
+	{ DIF_OP_UREM, "urem" },
+	{ DIF_OP_NOT, "not" },
+	{ DIF_OP_MOV, "mov" },
+	{ DIF_OP_CMP, "cmp" },
+	{ DIF_OP_TST, "tst" },
+	{ DIF_OP_BA, "ba" },
+	{ DIF_OP_BE, "be" },
+	{ DIF_OP_BNE, "bne" },
+	{ DIF_OP_BG, "bg" },
+	{ DIF_OP_BGU, "bgu" },
+	{ DIF_OP_BGE, "bge" },
+	{ DIF_OP_BGEU, "bgeu" },
+	{ DIF_OP_BL, "bl" },
+	{ DIF_OP_BLU, "blu" },
+	{ DIF_OP_BLE, "ble" },
+	{ DIF_OP_BLEU, "bleu" },
+	{ DIF_OP_LDSB, "ldsb" },
+	{ DIF_OP_LDSH, "ldsh" },
+	{ DIF_OP_LDSW, "ldsw" },
+	{ DIF_OP_LDUB, "ldub" },
+	{ DIF_OP_LDUH, "lduh" },
+	{ DIF_OP_LDUW, "lduw" },
+	{ DIF_OP_LDX, "ldx" },
+	{ DIF_OP_RET, "ret" },
+	{ DIF_OP_NOP, "nop" },
+	{ DIF_OP_SETX, "setx" },
+	{ DIF_OP_SETS, "sets" },
+	{ DIF_OP_SCMP, "scmp" },
+	{ DIF_OP_LDGA, "ldga" },
+	{ DIF_OP_LDGS, "ldgs" },
+	{ DIF_OP_STGS, "stgs" },
+	{ DIF_OP_LDTA, "ldta" },
+	{ DIF_OP_LDTS, "ldts" },
+	{ DIF_OP_STTS, "stts" },
+	{ DIF_OP_SRA, "sra" },
+	{ DIF_OP_CALL, "call" },
+	{ DIF_OP_PUSHTR, "pushtr" },
+	{ DIF_OP_PUSHTV, "pushtv" },
+	{ DIF_OP_POPTS, "popts" },
+	{ DIF_OP_FLUSHTS, "flushts" },
+	{ DIF_OP_LDGAA, "ldgaa" },
+	{ DIF_OP_LDTAA, "ldtaa" },
+	{ DIF_OP_STGAA, "stgaa" },
+	{ DIF_OP_STTAA, "sttaa" },
+	{ DIF_OP_LDLS, "ldls" },
+	{ DIF_OP_STLS, "stls" },
+	{ DIF_OP_ALLOCS, "allocs" },
+	{ DIF_OP_COPYS, "copys" },
+	{ DIF_OP_STB, "stb" },
+	{ DIF_OP_STH, "sth" },
+	{ DIF_OP_STW, "stw" },
+	{ DIF_OP_STX, "stx" },
+	{ DIF_OP_ULDSB, "uldsb" },
+	{ DIF_OP_ULDSH, "uldsh" },
+	{ DIF_OP_ULDSW, "uldsw" },
+	{ DIF_OP_ULDUB, "uldub" },
+	{ DIF_OP_ULDUH, "ulduh" },
+	{ DIF_OP_ULDUW, "ulduw" },
+	{ DIF_OP_ULDX, "uldx" },
+	{ DIF_OP_RLDSB, "rldsb" },
+	{ DIF_OP_RLDSH, "rldsh" },
+	{ DIF_OP_RLDSW, "rldsw" },
+	{ DIF_OP_RLDUB, "rldub" },
+	{ DIF_OP_RLDUH, "rlduh" },
+	{ DIF_OP_RLDUW, "rlduw" },
+	{ DIF_OP_RLDX, "rldx" },
+	{ DIF_OP_XLATE, "xlate" },
+	{ DIF_OP_XLARG, "xlarg" },
+	{ DIF_OP_HYPERCALL, "hypercall" },
+	{ DIF_OP_USETX, "usetx" },
+	{ DIF_OP_ULOAD, "uload" },
+	{ DIF_OP_UULOAD, "uuload" },
+	{ DIF_OP_TYPECAST, "typecast" },
+};
+
+#define TYPING_ERROR(fmt, op, n, ...)                                       \
+	do {                                                                \
+		setErrorMessage("%s (%zu @ %p): " fmt, insname[op].c_str(), \
+		    n->uidx, (void *)n->difo, ##__VA_ARGS__);               \
+	} while (0)
+
+#define TYPING_LOG(fmt, op, n, ...)                                \
+	do {                                                       \
+		_HYPERTRACE_LOG_TYPING("%s (%zu @ %p): " fmt,      \
+		    insname[op].c_str(), n->uidx, (void *)n->difo, \
+		    ##__VA_ARGS__);                                \
+	} while (0)
+
+#define TYPING_LOG_DEFAULT(op, n)                                       \
+	TYPING_LOG("inferred %s [%s] (sym=%s, mip=%p)\n", op, n,        \
+	    n->tf->getTypename(n->ctfid).value_or("UNDEFINED").c_str(), \
+	    n->tf->name().c_str(), n->sym ? n->sym : "none", (void *)n->mip)
 
 /*
  * This is the main part of the type inference algorithm.
@@ -357,133 +580,30 @@ TypeInference::getSubtypeRelation(Typefile *tf1, ctf_id_t id1, Typefile *tf2,
 int
 TypeInference::inferNode(DFGNode *n)
 {
-	DFGNode *dn1, *dn2, *dnv, *tc_n, *symnode, *other, *var_stacknode,
-	    *node, *data_dn1 = nullptr, *data_dn2 = nullptr;
-	int type1, type2, res, i, t;
+	DFGNode *symnode, *other;
+	int res;
 	char buf[4096] = { 0 }, symname[4096] = { 0 }, var_type[4096] = { 0 };
 	ctf_membinfo_t *mip;
 	size_t l;
 	uint16_t var;
 	dtrace_difo_t *difo;
-	dif_instr_t instr, dn1_instr;
-	uint8_t opcode, dn1_op, idx;
 	uint16_t sym;
 	ctf_id_t type = 0;
 	dtrace_difv_t *dif_var;
-	NodeVec *stack;
-	int empty;
-	ctf_id_t varkind;
 	size_t userland_len = strlen("userland ");
-	int kind;
 	int c;
 
 	if (n == linkerContext.getR0Node())
 		return (n->dType);
 
-	std::unordered_map<std::uint8_t, std::string> insname = {
-		{ DIF_OP_OR, "or" },
-		{ DIF_OP_XOR, "xor" },
-		{ DIF_OP_AND, "and" },
-		{ DIF_OP_SLL, "sll" },
-		{ DIF_OP_SRL, "srl" },
-		{ DIF_OP_SUB, "sub" },
-		{ DIF_OP_ADD, "add" },
-		{ DIF_OP_MUL, "mul" },
-		{ DIF_OP_SDIV, "sdiv" },
-		{ DIF_OP_UDIV, "udiv" },
-		{ DIF_OP_SREM, "srem" },
-		{ DIF_OP_UREM, "urem" },
-		{ DIF_OP_NOT, "not" },
-		{ DIF_OP_MOV, "mov" },
-		{ DIF_OP_CMP, "cmp" },
-		{ DIF_OP_TST, "tst" },
-		{ DIF_OP_BA, "ba" },
-		{ DIF_OP_BE, "be" },
-		{ DIF_OP_BNE, "bne" },
-		{ DIF_OP_BG, "bg" },
-		{ DIF_OP_BGU, "bgu" },
-		{ DIF_OP_BGE, "bge" },
-		{ DIF_OP_BGEU, "bgeu" },
-		{ DIF_OP_BL, "bl" },
-		{ DIF_OP_BLU, "blu" },
-		{ DIF_OP_BLE, "ble" },
-		{ DIF_OP_BLEU, "bleu" },
-		{ DIF_OP_LDSB, "ldsb" },
-		{ DIF_OP_LDSH, "ldsh" },
-		{ DIF_OP_LDSW, "ldsw" },
-		{ DIF_OP_LDUB, "ldub" },
-		{ DIF_OP_LDUH, "lduh" },
-		{ DIF_OP_LDUW, "lduw" },
-		{ DIF_OP_LDX, "ldx" },
-		{ DIF_OP_RET, "ret" },
-		{ DIF_OP_NOP, "nop" },
-		{ DIF_OP_SETX, "setx" },
-		{ DIF_OP_SETS, "sets" },
-		{ DIF_OP_SCMP, "scmp" },
-		{ DIF_OP_LDGA, "ldga" },
-		{ DIF_OP_LDGS, "ldgs" },
-		{ DIF_OP_STGS, "stgs" },
-		{ DIF_OP_LDTA, "ldta" },
-		{ DIF_OP_LDTS, "ldts" },
-		{ DIF_OP_STTS, "stts" },
-		{ DIF_OP_SRA, "sra" },
-		{ DIF_OP_CALL, "call" },
-		{ DIF_OP_PUSHTR, "pushtr" },
-		{ DIF_OP_PUSHTV, "pushtv" },
-		{ DIF_OP_POPTS, "popts" },
-		{ DIF_OP_FLUSHTS, "flushts" },
-		{ DIF_OP_LDGAA, "ldgaa" },
-		{ DIF_OP_LDTAA, "ldtaa" },
-		{ DIF_OP_STGAA, "stgaa" },
-		{ DIF_OP_STTAA, "sttaa" },
-		{ DIF_OP_LDLS, "ldls" },
-		{ DIF_OP_STLS, "stls" },
-		{ DIF_OP_ALLOCS, "allocs" },
-		{ DIF_OP_COPYS, "copys" },
-		{ DIF_OP_STB, "stb" },
-		{ DIF_OP_STH, "sth" },
-		{ DIF_OP_STW, "stw" },
-		{ DIF_OP_STX, "stx" },
-		{ DIF_OP_ULDSB, "uldsb" },
-		{ DIF_OP_ULDSH, "uldsh" },
-		{ DIF_OP_ULDSW, "uldsw" },
-		{ DIF_OP_ULDUB, "uldub" },
-		{ DIF_OP_ULDUH, "ulduh" },
-		{ DIF_OP_ULDUW, "ulduw" },
-		{ DIF_OP_ULDX, "uldx" },
-		{ DIF_OP_RLDSB, "rldsb" },
-		{ DIF_OP_RLDSH, "rldsh" },
-		{ DIF_OP_RLDSW, "rldsw" },
-		{ DIF_OP_RLDUB, "rldub" },
-		{ DIF_OP_RLDUH, "rlduh" },
-		{ DIF_OP_RLDUW, "rlduw" },
-		{ DIF_OP_RLDX, "rldx" },
-		{ DIF_OP_XLATE, "xlate" },
-		{ DIF_OP_XLARG, "xlarg" },
-		{ DIF_OP_HYPERCALL, "hypercall" },
-		{ DIF_OP_USETX, "usetx" },
-		{ DIF_OP_ULOAD, "uload" },
-		{ DIF_OP_UULOAD, "uuload" },
-		{ DIF_OP_TYPECAST, "typecast" },
-	};
-
-	empty = 1;
-	var_stacknode = node = nullptr;
-	type1 = -1;
-	type2 = -1;
 	mip = nullptr;
 	l = 0;
 	difo = n->difo;
-	dn1_instr = 0;
-	dn1_op = 0;
 	sym = 0;
 	res = 0;
-	tc_n = nullptr;
 	symnode = nullptr;
 	other = nullptr;
 	var = 0;
-	i = 0;
-	t = 0;
 	dif_var = nullptr;
 
 	/*
@@ -496,42 +616,30 @@ TypeInference::inferNode(DFGNode *n)
 	 * We do not tolerate nullptr ECBs.
 	 */
 	assert(n->edp != nullptr);
-	instr = n->getInstruction();
-	opcode = DIF_INSTR_OP(instr);
-
-	dn1 = checkRegDefs(n, n->r1Defs, &empty);
-	if (dn1 == nullptr && empty == 0) {
-		fprintf(stderr,
-		    "inferNode(%s, %zu@%p): inferring types "
-		    "for r1defs failed\n",
-		    insname[opcode].c_str(), n->uidx, n->difo);
+	dif_instr_t instr = n->getInstruction();
+	uint8_t opcode = DIF_INSTR_OP(instr);
+	bool empty;
+	DFGNode *dn1 = checkRegDefs(n, n->r1Defs, empty);
+	if (dn1 == nullptr && empty) {
+		TYPING_ERROR("failed to r1defs stack\n", opcode, n);
 		return (-1);
 	}
 
-	dn2 = checkRegDefs(n, n->r2Defs, &empty);
-	if (dn2 == nullptr && empty == 0) {
-		fprintf(stderr,
-		    "inferNode(%s, %zu@%p): inferring types "
-		    "for r2defs failed\n",
-		    insname[opcode].c_str(), n->uidx, n->difo);
+	DFGNode *dn2 = checkRegDefs(n, n->r2Defs, empty);
+	if (dn2 == nullptr && empty) {
+		TYPING_ERROR("failed to r2defs stack\n", opcode, n);
 		return (-1);
 	}
 
-	dnv = checkVarDefs(n, difo, n->varDefs, &empty);
-	if (dnv == nullptr && empty == 0) {
-		fprintf(stderr,
-		    "inferNode(%s, %zu@%p): inferring types "
-		    "for vardefs failed\n",
-		    insname[opcode].c_str(), n->uidx, n->difo);
+	DFGNode *dnv = checkVarDefs(n, difo, n->varDefs, empty);
+	if (dnv == nullptr && empty) {
+		TYPING_ERROR("failed to vardefs stack\n", opcode, n);
 		return (-1);
 	}
 
-	stack = checkStack(n, n->stacks, &empty);
-	if (stack == nullptr && empty == 0) {
-		fprintf(stderr,
-		    "inferNode(%s, %zu@%p): inferring types "
-		    "for stack failed\n",
-		    insname[opcode].c_str(), n->uidx, n->difo);
+	NodeVec *stack = checkStack(n->stacks, empty);
+	if (stack == nullptr && empty) {
+		TYPING_ERROR("failed to infer stack\n", opcode, n);
 		return (-1);
 	}
 
@@ -550,9 +658,8 @@ TypeInference::inferNode(DFGNode *n)
 		 * We only need one type here (the first one).
 		 */
 		if (dn1 == nullptr) {
-			fprintf(stderr,
-			    "inferNode(%s, %zu@%p): dn1 is nullptr\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			TYPING_ERROR("expected a non-null r1 definition for\n",
+				     opcode, n);
 			return (-1);
 		}
 
@@ -560,17 +667,15 @@ TypeInference::inferNode(DFGNode *n)
 		 * If there is no symbol here, we can't do anything.
 		 */
 		if (dn1->sym == nullptr) {
-			fprintf(stderr,
-			    "inferNode(%s, %zu@%p): dn1 symbol is empty\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			TYPING_ERROR("expected a non-null r1 symbol\n", opcode,
+			    n);
 			return (-1);
 		}
 
-		mip = dt_mip_from_sym(dn1);
+		mip = getMipFromSymbol(dn1);
 		if (mip == nullptr) {
-			dt_set_progerr(dtp, pgp,
-			    "%s(%s, %zu@%p): failed to get mip: %s.%s: %s\n",
-			    __func__, insname[opcode].c_str(), n->uidx, n->difo,
+			TYPING_ERROR("failed to get mip [%s:%s]: %s\n", opcode,
+			    n,
 			    dn1->tf->getTypename(dn1->ctfid)
 				.value_or("UNDEFINED")
 				.c_str(),
@@ -582,6 +687,7 @@ TypeInference::inferNode(DFGNode *n)
 		n->ctfid = mip->ctm_type;
 		n->dType = DIF_TYPE_CTF;
 		n->tf = dn1->tf;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_USETX:
@@ -593,25 +699,22 @@ TypeInference::inferNode(DFGNode *n)
 
 		sym = DIF_INSTR_SYMBOL(instr);
 		if (sym >= difo->dtdo_symlen) {
-			fprintf(stderr,
-			    "inferNode(%s, %zu@%p): "
-			    "sym (%u) >= symlen (%" PRIu64 ")\n",
-			    insname[opcode].c_str(), n->uidx, n->difo, sym,
-			    difo->dtdo_symlen);
+			TYPING_ERROR("sym >= symlen (%u >= %ju)\n", opcode, n,
+			    sym, (uintmax_t)difo->dtdo_symlen);
 			return (-1);
 		}
 
 		n->tf = dt_typefile_D();
 		n->ctfid = n->tf->getCtfID("uint64_t");
-		if (n->ctfid == CTF_ERR)
-			dt_set_progerr(dtp, pgp,
-			    "inferNode(%s, %zu@%p): failed to get "
-			    "type uint64_t: %s",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+		if (n->ctfid == CTF_ERR) {
+			TYPING_ERROR("failed to get uint64_t: %s\n", opcode, n,
 			    n->tf->getErrMsg());
+			return (-1);
+		}
 
 		n->sym = difo->dtdo_symtab + sym;
 		n->dType = DIF_TYPE_CTF;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_TYPECAST:
@@ -620,38 +723,34 @@ TypeInference::inferNode(DFGNode *n)
 		 *                typecast idx, %r1 => %r1 : t
 		 */
 
-		if (dn1 == nullptr)
+		if (dn1 == nullptr) {
+			TYPING_ERROR("r1 definition must not be NULL\n", opcode,
+			    n);
 			return (-1);
+		}
 
-		mip = dt_mip_from_sym(dn1);
+		mip = getMipFromSymbol(dn1);
 		sym = DIF_INSTR_SYMBOL(instr);
 		if (sym >= difo->dtdo_symlen) {
-			fprintf(stderr,
-			    "inferNode(%s, %zu@%p): "
-			    "sym (%u) >= symlen (%" PRIu64 ")\n",
-			    insname[opcode].c_str(), n->uidx, n->difo, sym,
-			    difo->dtdo_symlen);
+			TYPING_ERROR("sym >= symlen (%u >= %ju)\n", opcode, n,
+			    sym, difo->dtdo_symlen);
 			return (-1);
 		}
 
 		l = strlcpy(symname, difo->dtdo_symtab + sym, sizeof(symname));
-		if (l >= sizeof(symname))
-			dt_set_progerr(dtp, pgp,
-			    "inferNode(%s, %zu@%p): "
-			    "length (%zu) >= %zu when copying type name",
-			    insname[opcode].c_str(), n->uidx, n->difo, l,
-			    sizeof(symname));
+		if (l >= sizeof(symname)) {
+			TYPING_ERROR("length %zu >= %zu when copying type name",
+			    opcode, n, l, sizeof(symname));
+			return (-1);
+		}
 
 		if (strncmp(symname, "userland ", userland_len) == 0) {
-			char *tmpbuf;
-
-			tmpbuf = (char *)malloc(sizeof(symname));
-			if (tmpbuf == nullptr)
-				dt_set_progerr(dtp, pgp,
-				    "inferNode(%s, %zu@%p): "
-				    "malloc() failed: %s",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+			char *tmpbuf = (char *)dt_alloc(dtp, sizeof(symname));
+			if (tmpbuf == nullptr) {
+				TYPING_ERROR("malloc() failed: %s", opcode, n,
 				    strerror(errno));
+				return (-1);
+			}
 
 			memcpy(tmpbuf, symname + userland_len,
 			    sizeof(symname) - userland_len);
@@ -672,12 +771,14 @@ TypeInference::inferNode(DFGNode *n)
 		if (strcmp(symname, "D string") == 0) {
 			n->dType = DIF_TYPE_STRING;
 			n->mip = mip;
+			TYPING_LOG_DEFAULT(opcode, n);
 			return (n->dType);
 		}
 
 		if (strcmp(symname, "bottom") == 0) {
 			n->dType = DIF_TYPE_BOTTOM;
 			n->mip = mip;
+			TYPING_LOG_DEFAULT(opcode, n);
 			return (n->dType);
 		}
 
@@ -687,11 +788,12 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to get "
 			    "type %s: %s",
-			    insname[opcode].c_str(), n->uidx, n->difo, symname,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, symname,
 			    n->tf->getErrMsg());
 
 		n->mip = mip;
 		n->dType = DIF_TYPE_CTF;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 	/*
 	 * Potential information necessary to apply relocations
@@ -750,14 +852,14 @@ TypeInference::inferNode(DFGNode *n)
 		if (dn1 == nullptr) {
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): dn1 is nullptr\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
 		if (dn2 == nullptr) {
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): dn2 is nullptr\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
@@ -766,7 +868,7 @@ TypeInference::inferNode(DFGNode *n)
 		 * we apply the first typing rule.
 		 */
 		if (dn1->sym == nullptr && dn2->sym == nullptr) {
-			ctf_id_t k;
+			DFGNode *tc_n = nullptr;
 
 			/*
 			 * Check which type is "bigger".
@@ -784,21 +886,22 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p) nosym: types can "
 				    "not be compared\n",
-				    insname[opcode].c_str(), n->uidx, n->difo);
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 				return (-1);
 			}
 
-			k = tc_n->tf->getKind(tc_n->ctfid);
+			ctf_id_t k = tc_n->tf->getKind(tc_n->ctfid);
 			if (opcode == DIF_OP_ADD &&
 			    (k == CTF_K_STRUCT || k == CTF_K_UNION) &&
 			    other->integer.has_value()) {
-				mip = dt_mip_by_offset(dtp, tc_n->tf,
-				    tc_n->ctfid, other->integer.value());
+				mip = getMipByOffset(tc_n->tf, tc_n->ctfid,
+				    other->integer.value());
 				if (mip == nullptr) {
 					n->dType = tc_n->dType;
 					n->ctfid = tc_n->ctfid;
 					n->tf = tc_n->tf;
 					n->integer = other->integer;
+					TYPING_LOG_DEFAULT(opcode, n);
 					return (n->dType);
 				}
 
@@ -849,7 +952,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): unexpected bottom "
 				    "type (binary arithmetic operation)",
-				    insname[opcode].c_str(), n->uidx, n->difo);
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 
 			/*
 			 * Check which type is "bigger".
@@ -861,7 +964,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): types can not be "
 				    "compared\n",
-				    insname[opcode].c_str(), n->uidx, n->difo);
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 				return (-1);
 			}
 
@@ -873,7 +976,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): failed at getting "
 				    "type name %ld for other: %s",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    other->ctfid, other->tf->getErrMsg());
 
 			if (res == 1) {
@@ -906,6 +1009,7 @@ TypeInference::inferNode(DFGNode *n)
 				n->ctfid = other->ctfid;
 				n->tf = other->tf;
 				n->dType = DIF_TYPE_CTF;
+				TYPING_LOG_DEFAULT(opcode, n);
 				return (n->dType);
 			}
 
@@ -921,7 +1025,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): failed to "
 				    "malloc mip",
-				    insname[opcode].c_str(), n->uidx, n->difo);
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 
 			memset(mip, 0, sizeof(ctf_membinfo_t));
 
@@ -933,7 +1037,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): failed to get "
 				    "member info for %s(%s): %s",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    buf, other->sym, other->tf->getErrMsg());
 
 			n->mip = mip;
@@ -943,6 +1047,7 @@ TypeInference::inferNode(DFGNode *n)
 			n->dType = DIF_TYPE_CTF;
 		}
 
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_MOV:
@@ -963,7 +1068,7 @@ TypeInference::inferNode(DFGNode *n)
 		if (dn1 == nullptr) {
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): dn1 is nullptr\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
@@ -980,6 +1085,7 @@ TypeInference::inferNode(DFGNode *n)
 		if (opcode == DIF_OP_MOV)
 			n->isNull = dn1->isNull;
 
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDSB:
@@ -996,10 +1102,11 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to get type "
 			    "int8_t: %s",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    n->tf->getErrMsg());
 
 		n->dType = DIF_TYPE_CTF;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDSH:
@@ -1016,10 +1123,11 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to get type "
 			    "int16_t: %s",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    n->tf->getErrMsg());
 
 		n->dType = DIF_TYPE_CTF;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDSW:
@@ -1036,10 +1144,11 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to get "
 			    "type unsigned char: %s",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    n->tf->getErrMsg());
 
 		n->dType = DIF_TYPE_CTF;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDUB:
@@ -1056,10 +1165,11 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to get type "
 			    "uint8_t: %s",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    n->tf->getErrMsg());
 
 		n->dType = DIF_TYPE_CTF;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDUH:
@@ -1076,10 +1186,11 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to get type "
 			    "uint16_t: %s",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    n->tf->getErrMsg());
 
 		n->dType = DIF_TYPE_CTF;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDUW:
@@ -1096,10 +1207,11 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to get type "
 			    "uint32_t: %s",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    n->tf->getErrMsg());
 
 		n->dType = DIF_TYPE_CTF;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_ULDX:
@@ -1117,7 +1229,7 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to get type "
 			    "uint64_t: %s",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    n->tf->getErrMsg());
 
 		n->dType = DIF_TYPE_CTF;
@@ -1127,6 +1239,7 @@ TypeInference::inferNode(DFGNode *n)
 			n->isNull = n->integer.value() == 0;
 		}
 
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_SETS:
@@ -1136,6 +1249,7 @@ TypeInference::inferNode(DFGNode *n)
 		 */
 
 		n->dType = DIF_TYPE_STRING;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDGA:
@@ -1148,23 +1262,23 @@ TypeInference::inferNode(DFGNode *n)
 		var = DIF_INSTR_R1(instr);
 		assert(dn2 != nullptr);
 
-		if (!dt_var_is_builtin(var)) {
+		if (!isBuiltinVariable(var)) {
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): %u "
 			    "is not a built-in variable",
-			    insname[opcode].c_str(), n->uidx, n->difo, var);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, var);
 		}
 
 		if (DIF_INSTR_OP(dn2->getInstruction()) != DIF_OP_SETX) {
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): %%r%u "
 			    "is not assigned by a SETX instruction @ %zu",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    DIF_INSTR_R2(instr), dn2->uidx);
 		}
 
-		idx = dn2->integer.value();
-		setBuiltinType(n, var, idx);
+		setBuiltinType(n, var, dn2->integer.value());
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDLS:
@@ -1182,7 +1296,7 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to find variable "
 			    "(%u, %d, %d)",
-			    insname[opcode].c_str(), n->uidx, n->difo, var,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, var,
 			    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 
 		if (dnv == nullptr) {
@@ -1190,14 +1304,14 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): variable and dnv "
 				    "don't exist\n",
-				    insname[opcode].c_str(), n->uidx, n->difo);
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 				return (-1);
 			} else {
 				n->ctfid = dif_var->dtdv_ctfid;
 				n->tf = v2tf(dif_var->dtdv_tf);
 				n->dType = dif_var->dtdv_type.dtdt_kind;
 				n->sym = dif_var->dtdv_sym;
-
+				TYPING_LOG_DEFAULT(opcode, n);
 				return (n->dType);
 			}
 		}
@@ -1207,7 +1321,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): type "
 				    "mismatch %d != %d\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dif_var->dtdv_type.dtdt_kind, dn1->dType);
 				return (-1);
 			}
@@ -1237,7 +1351,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): variable ctf type "
 				    "mismatch %s != %s\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    buf, var_type);
 				return (-1);
 			}
@@ -1246,7 +1360,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != nullptr\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dnv->sym);
 				return (-1);
 			}
@@ -1255,7 +1369,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch nullptr != %s\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dif_var->dtdv_sym);
 				return (-1);
 			}
@@ -1264,7 +1378,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != %s\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dnv->sym, dif_var->dtdv_sym);
 				return (-1);
 			}
@@ -1275,7 +1389,7 @@ TypeInference::inferNode(DFGNode *n)
 		n->dType = dnv->dType;
 		n->mip = dnv->mip;
 		n->sym = dnv->sym;
-
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDGS:
@@ -1291,14 +1405,15 @@ TypeInference::inferNode(DFGNode *n)
 		    DIFV_KIND_SCALAR);
 
 		if (dn1 == nullptr) {
-			if (dt_var_is_builtin(var)) {
+			if (isBuiltinVariable(var)) {
 				setBuiltinType(n, var, 0);
+				TYPING_LOG_DEFAULT(opcode, n);
 				return (n->dType);
 			} else if (dif_var == nullptr) {
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): variable %d and "
 				    "dn1 don't exist\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    var);
 				return (-1);
 			} else {
@@ -1306,6 +1421,7 @@ TypeInference::inferNode(DFGNode *n)
 				n->tf = v2tf(dif_var->dtdv_tf);
 				n->dType = dif_var->dtdv_type.dtdt_kind;
 				n->sym = dif_var->dtdv_sym;
+				TYPING_LOG_DEFAULT(opcode, n);
 				return (n->dType);
 			}
 		}
@@ -1315,7 +1431,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): type "
 				    "mismatch %d != %d\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dif_var->dtdv_type.dtdt_kind, dn1->dType);
 				return (-1);
 			}
@@ -1324,7 +1440,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): variable typefile "
 				    "is %s, but dn1 typefile is %s\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    v2tf(dif_var->dtdv_tf)->name().c_str(),
 				    dn1->tf->name().c_str());
 				return (-1);
@@ -1355,7 +1471,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): variable ctf type "
 				    "mismatch %s != %s\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    buf, var_type);
 				return (-1);
 			}
@@ -1364,7 +1480,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != nullptr\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dn1->sym);
 				return (-1);
 			}
@@ -1373,7 +1489,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch nullptr != %s\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dif_var->dtdv_sym);
 				return (-1);
 			}
@@ -1382,7 +1498,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != %s\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dn1->sym, dif_var->dtdv_sym);
 				return (-1);
 			}
@@ -1393,7 +1509,7 @@ TypeInference::inferNode(DFGNode *n)
 		n->dType = dn1->dType;
 		n->mip = dn1->mip;
 		n->sym = dn1->sym;
-
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDTS:
@@ -1411,7 +1527,7 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to find variable "
 			    "(%u, %d, %d)",
-			    insname[opcode].c_str(), n->uidx, n->difo, var,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, var,
 			    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 
 		if (dn1 == nullptr) {
@@ -1419,14 +1535,14 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): variable "
 				    "and dn1 don't exist\n",
-				    insname[opcode].c_str(), n->uidx, n->difo);
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 				return (-1);
 			} else {
 				n->ctfid = dif_var->dtdv_ctfid;
 				n->tf = v2tf(dif_var->dtdv_tf);
 				n->dType = dif_var->dtdv_type.dtdt_kind;
 				n->sym = dif_var->dtdv_sym;
-
+				TYPING_LOG_DEFAULT(opcode, n);
 				return (n->dType);
 			}
 		}
@@ -1436,7 +1552,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): type "
 				    "mismatch %d != %d\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dif_var->dtdv_type.dtdt_kind, dn1->dType);
 				return (-1);
 			}
@@ -1466,7 +1582,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): variable ctf type "
 				    "mismatch %s != %s\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    buf, var_type);
 				return (-1);
 			}
@@ -1475,7 +1591,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != nullptr\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dn1->sym);
 				return (-1);
 			}
@@ -1484,7 +1600,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch nullptr != %s\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dif_var->dtdv_sym);
 				return (-1);
 			}
@@ -1493,7 +1609,7 @@ TypeInference::inferNode(DFGNode *n)
 				fprintf(stderr,
 				    "inferNode(%s, %zu@%p): symbol "
 				    "mismatch %s != %s\n",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dn1->sym, dif_var->dtdv_sym);
 				return (-1);
 			}
@@ -1504,7 +1620,7 @@ TypeInference::inferNode(DFGNode *n)
 		n->dType = dn1->dType;
 		n->mip = dn1->mip;
 		n->sym = dn1->sym;
-
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_STGS:
@@ -1528,18 +1644,18 @@ TypeInference::inferNode(DFGNode *n)
 		 * If we are doing a STGS, and the variable is a builtin
 		 * variable, we fail to type-check the instruction.
 		 */
-		if (dt_var_is_builtin(var)) {
+		if (isBuiltinVariable(var)) {
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): trying to store to a "
 			    "builtin variable\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
 		if (dn2 == nullptr) {
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): dn2 is nullptr in stgs.\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
@@ -1550,10 +1666,10 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to find "
 			    "variable (%u, %d, %d)",
-			    insname[opcode].c_str(), n->uidx, n->difo, var,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, var,
 			    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
 
-		if (inferVar(n->difo, dn2, dif_var) == -1)
+		if (inferVar(dn2, dif_var) == -1)
 			return (-1);
 
 		n->ctfid = dif_var->dtdv_ctfid;
@@ -1561,7 +1677,7 @@ TypeInference::inferNode(DFGNode *n)
 		n->dType = dif_var->dtdv_type.dtdt_kind;
 		n->mip = dn2->mip;
 		n->sym = dn2->sym;
-
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_STTS:
@@ -1584,7 +1700,7 @@ TypeInference::inferNode(DFGNode *n)
 		if (dn2 == nullptr) {
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): dn2 is nullptr in stts.\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
@@ -1594,10 +1710,10 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to find "
 			    "variable (%u, %d, %d)",
-			    insname[opcode].c_str(), n->uidx, n->difo, var,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, var,
 			    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 
-		if (inferVar(n->difo, dn2, dif_var) == -1)
+		if (inferVar(dn2, dif_var) == -1)
 			return (-1);
 
 		n->ctfid = dif_var->dtdv_ctfid;
@@ -1605,7 +1721,7 @@ TypeInference::inferNode(DFGNode *n)
 		n->dType = dif_var->dtdv_type.dtdt_kind;
 		n->mip = dn2->mip;
 		n->sym = dn2->sym;
-
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_STLS:
@@ -1628,7 +1744,7 @@ TypeInference::inferNode(DFGNode *n)
 		if (dn2 == nullptr) {
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): dn2 is nullptr in stls.\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
@@ -1638,10 +1754,10 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to find "
 			    "variable (%u, %d, %d)",
-			    insname[opcode].c_str(), n->uidx, n->difo, var,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, var,
 			    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 
-		if (inferVar(n->difo, dn2, dif_var) == -1)
+		if (inferVar(dn2, dif_var) == -1)
 			return (-1);
 
 		n->ctfid = dn2->ctfid;
@@ -1649,12 +1765,12 @@ TypeInference::inferNode(DFGNode *n)
 		n->dType = dn2->dType;
 		n->mip = dn2->mip;
 		n->sym = dn2->sym;
-
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDTA:
 		break;
-	case DIF_OP_CALL:
+	case DIF_OP_CALL: {
 		/*
 		 *     subr : t1 -> t2 ... -> tn -> t
 		 *  stack[0] : t1    stack[1] : t2     ...
@@ -1663,7 +1779,10 @@ TypeInference::inferNode(DFGNode *n)
 		 * ----------------------------------------
 		 *       call subr, %r1 => %r1 : t
 		 */
-		return (inferSubr(n, stack));
+		int type = inferSubr(n, stack);
+		TYPING_LOG_DEFAULT(opcode, n);
+		return (type);
+	}
 
 	case DIF_OP_LDGAA:
 		var = DIF_INSTR_VAR(instr);
@@ -1674,7 +1793,7 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to find "
 			    "variable (%u, %d, %d)",
-			    insname[opcode].c_str(), n->uidx, n->difo, var,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, var,
 			    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
 
 		/*
@@ -1684,7 +1803,7 @@ TypeInference::inferNode(DFGNode *n)
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): stack list is "
 			    "empty in ldgaa\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
@@ -1694,7 +1813,7 @@ TypeInference::inferNode(DFGNode *n)
 		if (checkVarStack(n, dnv, dif_var) == -1)
 			return (-1);
 
-		if (inferVar(n->difo, dnv, dif_var) == -1)
+		if (inferVar(dnv, dif_var) == -1)
 			return (-1);
 
 		if (dnv) {
@@ -1710,6 +1829,7 @@ TypeInference::inferNode(DFGNode *n)
 			n->sym = dif_var->dtdv_sym;
 		}
 
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_LDTAA:
@@ -1721,7 +1841,7 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): "
 			    "failed to find variable (%u, %d, %d)",
-			    insname[opcode].c_str(), n->uidx, n->difo, var,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, var,
 			    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
 
 		/*
@@ -1731,7 +1851,7 @@ TypeInference::inferNode(DFGNode *n)
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): stack list is "
 			    "empty in ldgaa\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
@@ -1741,7 +1861,7 @@ TypeInference::inferNode(DFGNode *n)
 		if (checkVarStack(n, dnv, dif_var) == -1)
 			return (-1);
 
-		if (inferVar(n->difo, dnv, dif_var) == -1)
+		if (inferVar(dnv, dif_var) == -1)
 			return (-1);
 
 		if (dnv) {
@@ -1757,6 +1877,7 @@ TypeInference::inferNode(DFGNode *n)
 			n->sym = dif_var->dtdv_sym;
 		}
 
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	/*
@@ -1767,7 +1888,7 @@ TypeInference::inferNode(DFGNode *n)
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): dn2 is nullptr in "
 			    "stgaa.\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
@@ -1779,7 +1900,7 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): "
 			    "failed to find variable (%u, %d, %d)",
-			    insname[opcode].c_str(), n->uidx, n->difo, var,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, var,
 			    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
 
 		/*
@@ -1794,7 +1915,7 @@ TypeInference::inferNode(DFGNode *n)
 		if (checkVarStack(n, dn2, dif_var) == -1)
 			return (-1);
 
-		if (inferVar(n->difo, dn2, dif_var) == -1)
+		if (inferVar(dn2, dif_var) == -1)
 			return (-1);
 
 		if (dn2->dType != DIF_TYPE_BOTTOM) {
@@ -1811,13 +1932,14 @@ TypeInference::inferNode(DFGNode *n)
 			n->sym = dn2->sym;
 		}
 
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_STTAA:
 		if (dn2 == nullptr) {
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): dn2 is nullptr in sttaa.\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
@@ -1829,7 +1951,7 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to find "
 			    "variable (%u, %d, %d)",
-			    insname[opcode].c_str(), n->uidx, n->difo, var,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, var,
 			    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
 
 		/*
@@ -1843,7 +1965,7 @@ TypeInference::inferNode(DFGNode *n)
 		if (checkVarStack(n, dn2, dif_var) == -1)
 			return (-1);
 
-		if (inferVar(n->difo, dn2, dif_var) == -1)
+		if (inferVar(dn2, dif_var) == -1)
 			return (-1);
 
 		n->ctfid = dn2->ctfid;
@@ -1851,7 +1973,7 @@ TypeInference::inferNode(DFGNode *n)
 		n->dType = dn2->dType;
 		n->mip = dn2->mip;
 		n->sym = dn2->sym;
-
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_ALLOCS:
@@ -1860,7 +1982,7 @@ TypeInference::inferNode(DFGNode *n)
 		n->dType = DIF_TYPE_BOTTOM;
 		n->mip = nullptr;
 		n->sym = nullptr;
-
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_COPYS:
@@ -1869,7 +1991,7 @@ TypeInference::inferNode(DFGNode *n)
 		n->dType = dn1->dType;
 		n->mip = dn1->mip;
 		n->sym = dn1->sym;
-
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_RET:
@@ -1878,18 +2000,10 @@ TypeInference::inferNode(DFGNode *n)
 		 * typecast.
 		 */
 		if (dn1->sym != nullptr) {
-			Typefile *tf;
-			ctf_id_t ctfid;
-			int type;
-
-			tf = dn1->tf;
-			type = dn1->dType;
-			ctfid = dn1->ctfid;
-
 			/*
 			 * We only need one type here (the first one).
 			 */
-			mip = dt_mip_from_sym(dn1);
+			mip = getMipFromSymbol(dn1);
 			if (mip == nullptr) {
 				dt_set_progerr(dtp, pgp,
 				    "%s(%s, %zu@%p): failed to get mip from symbol (%s)",
@@ -1932,13 +2046,14 @@ TypeInference::inferNode(DFGNode *n)
 			n->dType = dn1->dType;
 		}
 
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 
 	case DIF_OP_PUSHTR:
 		if (dn1 == nullptr) {
 			fprintf(stderr,
 			    "inferNode(%s, %zu@%p): pushtr dn1 is nullptr\n",
-			    insname[opcode].c_str(), n->uidx, n->difo);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo);
 			return (-1);
 		}
 
@@ -1947,7 +2062,7 @@ TypeInference::inferNode(DFGNode *n)
 			 * We only need one type here (the first one).
 			 */
 
-			mip = dt_mip_from_sym(dn1);
+			mip = getMipFromSymbol(dn1);
 			if (mip == nullptr) {
 				dt_set_progerr(dtp, pgp,
 				    "%s(%s, %zu@%p): failed to get mip from symbol (%s)",
@@ -1970,12 +2085,14 @@ TypeInference::inferNode(DFGNode *n)
 			 */
 			n->dType = dn1->dType;
 
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (DIF_TYPE_NONE);
 
 	case DIF_OP_PUSHTV:
 		n->ctfid = dn1->ctfid;
 		n->tf = dn1->tf;
 		n->dType = dn1->dType;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (DIF_TYPE_NONE);
 
 	case DIF_OP_FLUSHTS:
@@ -2018,14 +2135,14 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): can't store from a "
 			    "string type (loc %zu)",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    dn1->uidx);
 
 		if (dn1->dType == DIF_TYPE_NONE)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): can't store "
 			    "from type none (loc %zu)",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    dn1->uidx);
 
 		/*
@@ -2038,6 +2155,7 @@ TypeInference::inferNode(DFGNode *n)
 			n->dType = dn2->dType;
 			n->ctfid = dn2->ctfid;
 			n->tf = dn2->tf;
+			TYPING_LOG_DEFAULT(opcode, n);
 			return (n->dType);
 		}
 
@@ -2064,7 +2182,7 @@ TypeInference::inferNode(DFGNode *n)
 				    "inferNode(%s, %zu@%p): node has a "
 				    "mismatch in varsources: "
 				    "(%u, %u, %u) != (%u, %u, %u)",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dif_var->dtdv_id, dif_var->dtdv_scope,
 				    dif_var->dtdv_kind, ovar->dtdv_id,
 				    ovar->dtdv_scope, ovar->dtdv_kind);
@@ -2074,7 +2192,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): instruction only "
 				    "makes sense on CTF variable types, got %d",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dif_var->dtdv_type.dtdt_kind);
 
 			if (dif_var->dtdv_type.dtdt_kind !=
@@ -2082,7 +2200,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): node has a "
 				    "mismatch in variable types: %d != %d",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dif_var->dtdv_type.dtdt_kind,
 				    ovar->dtdv_type.dtdt_kind);
 
@@ -2090,7 +2208,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): node has a "
 				    "mismatch in variable typefiles: %s != %s",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    v2tf(dif_var->dtdv_tf)->name().c_str(),
 				    v2tf(ovar->dtdv_tf)->name().c_str());
 
@@ -2100,7 +2218,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): failed getting "
 				    "type name %ld: %s",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dif_var->dtdv_ctfid,
 				    v2tf(dif_var->dtdv_tf)->getErrMsg());
 
@@ -2110,7 +2228,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): failed getting "
 				    "type name %ld: %s",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    ovar->dtdv_ctfid,
 				    v2tf(ovar->dtdv_tf)->getErrMsg());
 
@@ -2118,7 +2236,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): node has a "
 				    "mismatch in varsource types: %s != %s",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    buf, var_type);
 			}
 		}
@@ -2127,17 +2245,18 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): register [%%r%d] "
 			    "is not within a variable",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    n->getRD());
 
 		if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_CTF)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): variable %zu is not of "
 			    "a CTF type",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    dif_var->dtdv_id);
 
-		varkind = v2tf(dif_var->dtdv_tf)->getKind(dif_var->dtdv_ctfid);
+		ctf_id_t varkind =
+		    v2tf(dif_var->dtdv_tf)->getKind(dif_var->dtdv_ctfid);
 
 		/*
 		 * Only accept structs for now -- but we might need to handle
@@ -2147,7 +2266,7 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): expected a struct CTF "
 			    "kind, got %d",
-			    insname[opcode].c_str(), n->uidx, n->difo, varkind);
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo, varkind);
 
 		/*
 		 * At this point, we should have a membinfo pointer to the field
@@ -2158,7 +2277,7 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): malloc failed on "
 			    "mip: %s",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    strerror(errno));
 
 		memset(mip, 0, sizeof(ctf_membinfo_t));
@@ -2168,7 +2287,7 @@ TypeInference::inferNode(DFGNode *n)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to get "
 			    "member info: %s",
-			    insname[opcode].c_str(), n->uidx, n->difo,
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    v2tf(dif_var->dtdv_tf)->getErrMsg());
 
 		/*
@@ -2182,8 +2301,8 @@ TypeInference::inferNode(DFGNode *n)
 			 * We will be checking all of the compatible types too,
 			 * but we start with these.
 			 */
-			std::array<std::string, 4> dst_type = { "uint8_t",
-				"uint16_t", "uint32_t", "uint64_t" };
+			Array<String, 4> dst_type = { "uint8_t", "uint16_t",
+				"uint32_t", "uint64_t" };
 			ctf_id_t dst_ctfid;
 
 			if (dn1->tf->getTypename(dn1->ctfid, buf,
@@ -2191,7 +2310,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): failed getting "
 				    "type_name of %d: %s",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dn1->ctfid, dn1->tf->getErrMsg());
 
 			if (v2tf(dif_var->dtdv_tf)
@@ -2200,7 +2319,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): failed getting "
 				    "type_name of %d: %s",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    dif_var->dtdv_ctfid,
 				    v2tf(dif_var->dtdv_tf)->getErrMsg());
 
@@ -2210,7 +2329,7 @@ TypeInference::inferNode(DFGNode *n)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): failed getting "
 				    "ctfid from %s for %s: %s",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    ktf->name().c_str(),
 				    dst_type[insid].c_str(), ktf->getErrMsg());
 
@@ -2221,13 +2340,14 @@ TypeInference::inferNode(DFGNode *n)
 				    "inferNode(%s, %zu@%p): types %s "
 				    "(variable field) and %s "
 				    "(instruction %zu) are not compatible",
-				    insname[opcode].c_str(), n->uidx, n->difo,
+				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 				    var_type, buf, dn1->uidx);
 		}
 
 		n->dType = dn2->dType;
 		n->ctfid = dn2->ctfid;
 		n->tf = dn2->tf;
+		TYPING_LOG_DEFAULT(opcode, n);
 		return (n->dType);
 	} /* case DIF_OP_STX */
 	default:
@@ -2240,64 +2360,73 @@ TypeInference::inferNode(DFGNode *n)
 int
 TypeInference::inferDIFO(dtrace_difo_t *difo)
 {
-	DFGNode *node = nullptr;
-	int type = -1;
-
 	/*
 	 * A DIFO without instructions makes no sense.
 	 */
-	if (difo->dtdo_buf == nullptr)
-		return (EDT_DIFINVAL);
-
+	if (difo->dtdo_buf == nullptr) {
+		setErrorMessage("DIFO has no instructions\n");
+		return (E_HYPERTRACE_TYPING);
+	}
 	/*
 	 * If we don't have a table, length MUST be 0.
 	 */
-	if (difo->dtdo_inttab == nullptr && difo->dtdo_intlen != 0)
-		return (EDT_DIFINVAL);
-	if (difo->dtdo_strtab == nullptr && difo->dtdo_strlen != 0)
-		return (EDT_DIFINVAL);
-	if (difo->dtdo_vartab == nullptr && difo->dtdo_varlen != 0)
-		return (EDT_DIFINVAL);
-	if (difo->dtdo_symtab == nullptr && difo->dtdo_symlen != 0)
-		return (EDT_DIFINVAL);
-
+	if (difo->dtdo_inttab == nullptr && difo->dtdo_intlen != 0) {
+		setErrorMessage("inttab length is %zu but inttab is NULL\n",
+		    difo->dtdo_intlen);
+		return (E_HYPERTRACE_TYPING);
+	}
+	if (difo->dtdo_strtab == nullptr && difo->dtdo_strlen != 0) {
+		setErrorMessage("strtab length is %zu but strtab is NULL\n",
+		    difo->dtdo_strlen);
+		return (E_HYPERTRACE_TYPING);
+	}
+	if (difo->dtdo_vartab == nullptr && difo->dtdo_varlen != 0) {
+		setErrorMessage("vartab length is %zu but vartab is NULL\n",
+		    difo->dtdo_varlen);
+		return (E_HYPERTRACE_TYPING);
+	}
+	if (difo->dtdo_symtab == nullptr && difo->dtdo_symlen != 0) {
+		setErrorMessage("symtab length is %zu but symtab is NULL\n",
+		    difo->dtdo_symlen);
+		return (E_HYPERTRACE_TYPING);
+	}
 	/*
 	 * If the symbol length is 0 and the symbol table is 0, we don't
 	 * have any relocations to apply. In this case, we just return that
 	 * no error occurred and leave the DIFO as it is.
 	 */
 	if (difo->dtdo_symtab == nullptr)
-		return (0);
+		return (E_HYPERTRACE_NONE);
+	if (pgp == nullptr) {
+		setErrorMessage("program is NULL\n");
+		return (E_HYPERTRACE_TYPING);
+	}
+	if (dtp == nullptr) {
+		setErrorMessage("dtrace handle is NULL\n");
+		return (E_HYPERTRACE_TYPING);
+	}
 
-	if (pgp == nullptr)
-		return (EDT_COMPILER);
-
-	if (dtp == nullptr)
-		return (EDT_COMPILER);
-
-	difo->dtdo_types = (char **)malloc(sizeof(char *) * difo->dtdo_len);
+	difo->dtdo_types = (char **)dt_zalloc(dtp,
+	    sizeof(char *) * difo->dtdo_len);
 	if (difo->dtdo_types == nullptr)
 		dt_set_progerr(dtp, pgp, "failed to malloc dtdo_types");
 
+	_HYPERTRACE_LOG_TYPING("walking over nodes to infer types\n");
 	for (auto &node : linkerContext.dfgNodes) {
 		if (node.get() == linkerContext.getR0Node())
 			continue;
-
 		if (node->DIFOBuf() == nullptr)
 			continue;
-
 		if (node->DIFOBuf() != difo->dtdo_buf)
 			continue;
-
-		type = inferNode(node.get());
+		int type = inferNode(node.get());
 		assert(type == -1 || type == DIF_TYPE_CTF ||
 		    type == DIF_TYPE_STRING || type == DIF_TYPE_NONE ||
 		    type == DIF_TYPE_BOTTOM);
 
-		if (type == -1)
-			dt_set_progerr(dtp, pgp,
-			    "failed to infer a type for %zu@%p\n", node->uidx,
-			    node->difo);
+		if (type == -1) {
+			return (E_HYPERTRACE_TYPING);
+		}
 
 		if (type == DIF_TYPE_CTF) {
 			if (node->tf == nullptr)
@@ -2324,7 +2453,7 @@ TypeInference::inferDIFO(dtrace_difo_t *difo)
 		else
 			difo->dtdo_types[node->uidx] = strdup("ERROR");
 	}
-
+	_HYPERTRACE_LOG_TYPING("successfully inferred all the types\n");
 	return (0);
 }
 

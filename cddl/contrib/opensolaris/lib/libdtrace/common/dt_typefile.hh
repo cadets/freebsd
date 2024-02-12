@@ -58,15 +58,15 @@ struct struct_ctfinfo {
 
 class Typefile {
     private:
-	umap<ctf_id_t, Vec<ctf_id_t>> struct_info;
+	UMap<ctf_id_t, Vec<ctf_id_t>> struct_info;
 
     public:
 	dtrace_hdl_t *dtp = nullptr;
 	dt_module_t *modhdl = nullptr;
-	std::string modname;
+	String modname;
 
     public:
-	Typefile(dtrace_hdl_t *, dt_module_t *, std::string);
+	Typefile(dtrace_hdl_t *, dt_module_t *, String);
 	Typefile(dtrace_hdl_t *, dt_module_t *, const char *);
 	Typefile(dtrace_hdl_t *, dt_module_t *, char *);
 
@@ -87,11 +87,11 @@ class Typefile {
 	ctf_id_t stripReference(ctf_id_t &, size_t &);
 	ctf_id_t stripTypedef(ctf_id_t &);
 
-	const std::string &name() const;
-	const std::optional<std::string> getTypename(ctf_id_t) const;
+	const String &name() const;
+	const std::optional<String> getTypename(ctf_id_t) const;
 };
 
-extern list<UPtr<Typefile>> typefiles;
+extern List<UPtr<Typefile>> typefiles;
 
 void dt_typefile_openall(dtrace_hdl_t *);
 Typefile *dt_typefile_first(void);

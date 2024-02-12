@@ -53,45 +53,51 @@ class HyperTraceLinker {
     private:
 	dtrace_hdl_t *dtp;
 	dtrace_prog_t *pgp;
-
 	DFGNode *r0node = nullptr;
+	String errorMessage = "";
 
     public:
 	DFGList dfgNodes;
 	Vec<UPtr<BasicBlock>> basicBlocks;
 	Vec<UPtr<dtrace_difv_t>> varVector;
 
+	const String &
+	getErrorMessage()
+	{
+		return (errorMessage);
+	}
+
     private:
-	void patchUsetxDefs(DFGNode *);
+	void setErrorMessage(const char *, ...);
+
+	int patchUsetxDefs(DFGNode *);
 	int processDIFO(dtrace_actdesc_t *, dtrace_difo_t *, dtrace_ecbdesc_t *,
-	    array<umap<uint32_t, dtrace_diftype_t>, DIFV_NSCOPES> &);
-	void relocateDFGNode(DFGNode *, dtrace_actkind_t, dtrace_actdesc_t *,
+	    Array<UMap<uint32_t, dtrace_diftype_t>, DIFV_NSCOPES> &);
+	int relocateDFGNode(DFGNode *, dtrace_actkind_t, dtrace_actdesc_t *,
 	    dtrace_difo_t *, dtrace_diftype_t *);
-	void assembleProgram(dtrace_difo_t *,
-	    array<umap<uint32_t, dtrace_diftype_t>, DIFV_NSCOPES> &);
+	int assembleProgram(dtrace_difo_t *,
+	    Array<UMap<uint32_t, dtrace_diftype_t>, DIFV_NSCOPES> &);
 	int relocateProgram(dtrace_actkind_t, dtrace_actdesc_t *,
 	    dtrace_difo_t *, dtrace_diftype_t *);
-	void updateUsetxDefsInBB(dtrace_difo_t *, BasicBlock *, DFGNode *);
-	void updateUsetxDefs(dtrace_difo_t *, BasicBlock *, DFGNode *);
-	void inferUsetxDefs(dtrace_difo_t *);
-	void relocateRetOrPush(DFGNode *, dtrace_actkind_t, dtrace_actdesc_t *,
+	int updateUsetxDefsInBB(dtrace_difo_t *, BasicBlock *, DFGNode *);
+	int updateUsetxDefs(dtrace_difo_t *, BasicBlock *, DFGNode *);
+	int inferUsetxDefs(dtrace_difo_t *);
+	int relocateRetOrPush(DFGNode *);
+	int relocatePush(DFGNode *);
+	int relocateRet(DFGNode *, dtrace_actkind_t, dtrace_actdesc_t *,
 	    dtrace_diftype_t *);
-	void relocatePush(DFGNode *, dtrace_actkind_t, dtrace_actdesc_t *,
-	    dtrace_diftype_t *);
-	void relocateRet(DFGNode *, dtrace_actkind_t, dtrace_actdesc_t *,
-	    dtrace_diftype_t *);
-	void relocateUloadOrAdd(DFGNode *);
-	void computebasicBlocks(dtrace_difo_t *);
+	int relocateUloadOrAdd(DFGNode *);
+	void computeBasicBlocks(dtrace_difo_t *);
 	void computeCFG(dtrace_difo_t *);
-	void insertVar(dtrace_difo_t *, uint16_t, uint8_t, uint8_t);
-	void insertVar(dtrace_difv_t *);
-	void populateVariablesFromDIFO(dtrace_difo_t *);
+	int insertVar(dtrace_difo_t *, uint16_t, uint8_t, uint8_t);
+	int insertVar(dtrace_difv_t *);
+	int populateVariablesFromDIFO(dtrace_difo_t *);
 	void updateActiveVarRegs(uint8_t[DIF_DIR_NREGS], dtrace_difo_t *,
 	    BasicBlock *, DFGList::iterator);
-	bool updateNodesInBBForVar(dtrace_difo_t *, BasicBlock *, DFGNodeData &,
+	bool updateNodesInBBForVar(BasicBlock *, DFGNodeData &,
 	    DFGList::iterator);
-	int updateNodesInBBForStack(Vec<BasicBlock *> &, dtrace_difo_t *,
-	    BasicBlock *, DFGList::iterator);
+	int updateNodesInBBForStack(Vec<BasicBlock *> &, BasicBlock *,
+	    DFGList::iterator);
 	int updateNodesInBBForReg(dtrace_difo_t *, BasicBlock *, uint8_t,
 	    DFGList::iterator, int *);
 	void updateDFG(dtrace_difo_t *, DFGNode *, DFGList::iterator);
@@ -104,7 +110,7 @@ class HyperTraceLinker {
 	int link();
 	const DFGNode *getR0Node() const { return (r0node); }
 	Typefile *getTypenameChecked(DFGNode *, Vec<Typefile *> &, char *,
-	    size_t, const std::string &);
+	    size_t, const String &);
 	dtrace_difv_t *getVarFromVarVec(uint16_t, int, int);
 };
 }

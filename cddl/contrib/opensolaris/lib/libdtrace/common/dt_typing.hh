@@ -50,6 +50,12 @@
 #define DTC_UNION    4
 #define DTC_ENUM     5
 
+#define SUBTYPE_NONE  0
+#define SUBTYPE_EQUAL (1 << 0)
+#define SUBTYPE_FST   (1 << 1)
+#define SUBTYPE_SND   (1 << 2)
+#define SUBTYPE_ANY   (SUBTYPE_EQUAL | SUBTYPE_FST | SUBTYPE_SND)
+
 #ifndef __cplusplus
 #error "This file should only be included from C++"
 #endif
@@ -64,26 +70,28 @@ class TypeInference {
     private:
 	dtrace_hdl_t *dtp;
 	dtrace_prog_t *pgp;
-
-	std::string t_mtx;
-	std::string t_rw;
-	std::string t_sx;
-	std::string t_thread;
-
+	String t_mtx = "";
+	String t_rw = "";
+	String t_sx = "";
+	String t_thread = "";
+	String errorMessage = "";
 	HyperTraceLinker &linkerContext;
 
     private:
+	void setErrorMessage(const char *, ...);
 	int inferNode(DFGNode *);
 	int inferSubr(DFGNode *, NodeVec *);
-	int inferVar(dtrace_difo_t *, DFGNode *, dtrace_difv_t *);
+	int inferVar(DFGNode *, dtrace_difv_t *);
 	int checkVarStack(DFGNode *, DFGNode *, dtrace_difv_t *);
-	NodeVec *checkStack(DFGNode *, Vec<StackData> &, int *);
-	DFGNode *checkRegDefs(DFGNode *, NodeSet &, int *);
-	DFGNode *checkVarDefs(DFGNode *, dtrace_difo_t *, NodeSet &, int *);
-	void argCmpWith(DFGNode *, Vec<Typefile *> &, const std::string &,
-	    const std::string &, int);
+	NodeVec *checkStack(Vec<StackData> &, bool &);
+	DFGNode *checkRegDefs(DFGNode *, NodeSet &, bool &);
+	DFGNode *checkVarDefs(DFGNode *, dtrace_difo_t *, NodeSet &, bool &);
+	void argCmpWith(DFGNode *, Vec<Typefile *> &, const String &,
+	    const String &, int);
 	void setBuiltinType(DFGNode *, uint16_t, uint8_t);
 	int ctfTypeCompare(Typefile *, ctf_id_t, Typefile *, ctf_id_t);
+	ctf_membinfo_t *getMipFromSymbol(DFGNode *);
+	ctf_membinfo_t *getMipByOffset(Typefile *, ctf_id_t, uint64_t);
 
     public:
 	TypeInference(HyperTraceLinker &, dtrace_hdl_t *, dtrace_prog_t *);

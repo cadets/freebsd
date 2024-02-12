@@ -59,6 +59,7 @@
 #include <dt_printf.h>
 #include <dt_string.h>
 #include <dt_provider.h>
+#include <dt_hypertrace.h>
 #ifndef illumos
 #include <sys/sysctl.h>
 #include <string.h>
@@ -178,6 +179,10 @@ char	mtx_str[MAXPATHLEN];
 char	rw_str[MAXPATHLEN];
 char	sx_str[MAXPATHLEN];
 #endif
+
+int log_hypertrace_elf = 0;
+int log_hypertrace_linker = 0;
+int log_hypertrace_typing = 0;
 
 /*
  * Table of global identifiers.  This is used to populate the global identifier

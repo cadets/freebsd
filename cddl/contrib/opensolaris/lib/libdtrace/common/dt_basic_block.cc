@@ -62,21 +62,20 @@ size_t BasicBlock::index = 0;
 
 BasicBlock::BasicBlock(dtrace_difo_t *difo)
     : difo(difo)
-    , idx(BasicBlock::index++)
     , start(0)
     , end(0)
+    , idx(BasicBlock::index++)
 {
 }
 
 void
-HyperTraceLinker::computebasicBlocks(dtrace_difo_t *difo)
+HyperTraceLinker::computeBasicBlocks(dtrace_difo_t *difo)
 {
 	BasicBlock *bb;
 	std::vector<bool> leaders(difo->dtdo_len);
-	uint16_t lbl;
+	uint32_t lbl;
 	dif_instr_t instr;
 	uint8_t opcode;
-	int i;
 
 	bb = nullptr;
 
@@ -88,14 +87,15 @@ HyperTraceLinker::computebasicBlocks(dtrace_difo_t *difo)
 	/*
 	 * Compute the leaders.
 	 */
-	for (auto i = 0; i < difo->dtdo_len; i++) {
+	for (uint_t i = 0; i < difo->dtdo_len; i++) {
 		instr = difo->dtdo_buf[i];
 		opcode = DIF_INSTR_OP(instr);
 
 		if (opcode >= DIF_OP_BA && opcode <= DIF_OP_BLEU) {
 			lbl = DIF_INSTR_LABEL(instr);
 			if (lbl >= difo->dtdo_len)
-				errx(EXIT_FAILURE, "lbl (%hu) branching outside"
+				errx(EXIT_FAILURE,
+				    "lbl (%u) branching outside"
 				    " of code length (%u)",
 				    lbl, difo->dtdo_len);
 
@@ -121,7 +121,7 @@ HyperTraceLinker::computebasicBlocks(dtrace_difo_t *difo)
 	 * For each leader we encounter, we compute the set of all instructions
 	 * that fit into the current basic block.
 	 */
-	for (auto i = 0; i < difo->dtdo_len; i++) {
+	for (uint_t i = 0; i < difo->dtdo_len; i++) {
 		if (leaders[i]) {
 			/*
 			 * We've encountered a leader, we don't actually need
@@ -164,7 +164,7 @@ HyperTraceLinker::computebasicBlocks(dtrace_difo_t *difo)
 void
 HyperTraceLinker::computeCFG(dtrace_difo_t *difo)
 {
-	int lbl;
+	uint32_t lbl;
 	uint8_t opcode;
 	dif_instr_t instr;
 
@@ -173,13 +173,13 @@ HyperTraceLinker::computeCFG(dtrace_difo_t *difo)
 		if (bb1->difo != difo)
 			continue;
 
-		instr = bb1->difo_buf()[bb1->end];
+		instr = bb1->DIFOBuf()[bb1->end];
 		opcode = DIF_INSTR_OP(instr);
 
 		if (opcode >= DIF_OP_BA && opcode <= DIF_OP_BLEU)
 			lbl = DIF_INSTR_LABEL(instr);
 		else
-			lbl = -1;
+			continue;
 
 		for (auto &bb2 : basicBlocks) {
 			assert(bb2 != NULL);
@@ -190,7 +190,7 @@ HyperTraceLinker::computeCFG(dtrace_difo_t *difo)
 			if (bb2->difo != difo)
 				continue;
 
-			if (lbl != -1 && bb2->start == lbl) {
+			if (bb2->start == lbl) {
 				bb1->children.push_back(
 				    std::make_pair(bb2.get(), true));
 				bb2->parents.push_back(

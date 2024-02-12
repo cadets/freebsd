@@ -58,8 +58,7 @@
 
 namespace dtrace {
 
-using std::list;
-static list<UPtr<NodeVec>> var_nodevecs;
+static List<UPtr<NodeVec>> var_nodevecs;
 
 /*
  * dt_var_stack_typecheck() ensures that all the stacks at variable use
@@ -72,14 +71,11 @@ int
 TypeInference::checkVarStack(DFGNode *n, DFGNode *dr1, dtrace_difv_t *dif_var)
 {
 	DFGNode *var_stacknode, *node;
-	std::string var_type, type;
-	char buf[4096] = {0};
-
+	String var_type, type;
 	if (dr1 == nullptr && dif_var == nullptr) {
 		fprintf(stderr, "both dr1 and dif_var are nullptr");
 		return (-1);
 	}
-
 	/*
 	 * If there was nothing to typecheck above, then we simply create a new
 	 * stack for the variable using the data from what we were comparing it
@@ -166,17 +162,15 @@ TypeInference::checkVarStack(DFGNode *n, DFGNode *dr1, dtrace_difv_t *dif_var)
  * is consistent with its types.
  */
 NodeVec *
-TypeInference::checkStack(DFGNode *n, Vec<StackData> &stacks, int *empty)
+TypeInference::checkStack(Vec<StackData> &stacks, bool &empty)
 {
 	NodeVec *stack, *ostack;
-	std::string type1, type2;
+	String type1, type2;
 
-	*empty = 1;
-
+	empty = stacks.size() > 0;
 	if (stacks.size() > 0)
 		stack = &stacks.begin()->nodesOnStack; // FIXME: hack
 	for (auto it = stacks.begin(); it != stacks.end(); ++it) {
-		*empty = 0;
 		ostack = stack;
 		stack = &it->nodesOnStack;
 
@@ -187,9 +181,9 @@ TypeInference::checkStack(DFGNode *n, Vec<StackData> &stacks, int *empty)
 			if (inferNode(n) == -1)
 				dt_set_progerr(dtp, pgp,
 				    "%s(%p[%zu]): failed to infer "
-				    "type for opcode %d at %zu (%p)\n",
-				    __func__, n->difo, n->uidx,
-				    n->getInstruction(), n->uidx, n->difo);
+				    "type for opcode %d at %zu\n",
+				    __func__, (void *)n->difo, n->uidx,
+				    n->getInstruction(), n->uidx);
 		}
 
 		if (ostack == nullptr)
@@ -203,9 +197,9 @@ TypeInference::checkStack(DFGNode *n, Vec<StackData> &stacks, int *empty)
 			if (n->dType != on->dType) {
 				fprintf(stderr,
 				    "%s(%p[%zu]): stack type "
-				    "mismatch at %zu and %zu (%p): %d != %d\n",
-				    __func__, n->difo, n->uidx, n->uidx,
-				    on->uidx, n->difo, n->dType, on->dType);
+				    "mismatch at %zu and %zu: %d != %d\n",
+				    __func__, (void *)n->difo, n->uidx, n->uidx,
+				    on->uidx, n->dType, on->dType);
 
 				return (nullptr);
 			}
@@ -224,10 +218,9 @@ TypeInference::checkStack(DFGNode *n, Vec<StackData> &stacks, int *empty)
 				    .value_or("ERROR");
 				fprintf(stderr,
 				    "%s(%p[%zu]): stack ctf type "
-				    "mismatch at %zu and %zu (%p): %s != %s\n",
-				    __func__, n->difo, n->uidx, n->uidx,
-				    on->uidx, n->difo, type1.c_str(),
-				    type2.c_str());
+				    "mismatch at %zu and %zu: %s != %s\n",
+				    __func__, (void *)n->difo, n->uidx, n->uidx,
+				    on->uidx, type1.c_str(), type2.c_str());
 
 				return (nullptr);
 			}
@@ -235,9 +228,9 @@ TypeInference::checkStack(DFGNode *n, Vec<StackData> &stacks, int *empty)
 			if (n->sym || on->sym) {
 				fprintf(stderr,
 				    "%s(%p[%zu]): symbol found "
-				    "on stack at %zu (%p)\n",
-				    __func__, n->difo, n->uidx,
-				    n->sym ? n->uidx : on->uidx, n->difo);
+				    "on stack at %zu\n",
+				    __func__, (void *)n->difo, n->uidx,
+				    n->sym ? n->uidx : on->uidx);
 				return (nullptr);
 			}
 		}

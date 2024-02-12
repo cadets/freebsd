@@ -60,7 +60,7 @@
 namespace dtrace {
 void
 TypeInference::argCmpWith(DFGNode *arg, Vec<Typefile *> &tfs,
-    const std::string &type, const std::string &loc, int subtype_relation)
+    const String &type, const String &loc, int subtype_relation)
 {
 	char buf[1024] = { 0 };
 	auto *cloc = loc.c_str();
@@ -76,7 +76,7 @@ TypeInference::argCmpWith(DFGNode *arg, Vec<Typefile *> &tfs,
 	ctf_id_t passed_arg_ctfid = arg->ctfid;
 	ctf_id_t passed_arg_kind = arg->tf->stripTypedef(passed_arg_ctfid);
 	assert(passed_arg_kind != CTF_K_TYPEDEF);
-	std::string s = std::string(buf);
+	String s = String(buf);
 
 	if ((type == "void *" || type == "uintptr_t") &&
 	    (s != "void *" && s != "uintptr_t")) {
@@ -122,10 +122,10 @@ TypeInference::argCmpWith(DFGNode *arg, Vec<Typefile *> &tfs,
 int
 TypeInference::inferSubr(DFGNode *n, NodeVec *stack)
 {
-	DFGNode *arg0, *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8;
+	DFGNode *arg0, *arg1, *arg2;
 	size_t i = 0;
 
-	umap<uint32_t, std::string> subr_name = { { DIF_SUBR_RAND, "rand()" },
+	UMap<uint32_t, String> subr_name = { { DIF_SUBR_RAND, "rand()" },
 		{ DIF_SUBR_MUTEX_OWNED, "mutex_owned()" },
 		{ DIF_SUBR_MUTEX_OWNER, "mutex_owner()" },
 		{ DIF_SUBR_MUTEX_TYPE_ADAPTIVE, "mutex_type_adaptive()" },

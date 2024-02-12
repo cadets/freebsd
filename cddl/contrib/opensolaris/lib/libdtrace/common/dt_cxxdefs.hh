@@ -39,16 +39,20 @@
 #ifndef _DT_CXXDEFS_HH_
 #define _DT_CXXDEFS_HH_
 
+#include <dt_elf.h>
+
 #ifndef __cplusplus
 #error "This file should only be included from C++"
 #endif
 
+#include <list>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
-#include <list>
 
 namespace dtrace {
 class DFGNode;
@@ -58,18 +62,27 @@ class TypeInference;
 class HyperTraceLinker;
 
 template <typename T> using USet = std::unordered_set<T>;
-template <typename K, typename T> using umap = std::unordered_map<K, T>;
+template <typename K, typename T> using UMap = std::unordered_map<K, T>;
 template <typename T> using Vec = std::vector<T>;
 template <typename T> using Opt = std::optional<T>;
 template <typename T> using UPtr = std::unique_ptr<T>;
+template <typename T1, typename T2> using Pair = std::pair<T1, T2>;
+template <typename T> using List = std::list<T>;
+template <typename T, std::size_t n> using Array = std::array<T, n>;
+template <typename... Types> using Var = std::variant<Types...>;
+template <typename T>
+using ElfMap = UMap<Var<T *, dt_elf_ref_t>, Var<Elf_Scn *, T *>>;
 
+using String = std::string;
 using NodeSet = USet<DFGNode *>;
 using NodeVec = Vec<DFGNode *>;
-using DFGList = std::list<std::unique_ptr<DFGNode>>;
+using DFGList = List<UPtr<DFGNode>>;
 
-using std::pair;
-using std::list;
-using std::array;
+template <typename T1, typename T2> constexpr T1
+Get(T2 v)
+{
+	return (std::get<T1>(v));
+}
 }
 
 #endif /* _DT_CXXDEFS_HH_ */

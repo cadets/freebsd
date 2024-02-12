@@ -62,9 +62,7 @@
 
 namespace dtrace {
 
-template <typename T> using uset = std::unordered_set<T>;
-template <typename T> using uptr = std::unique_ptr<T>;
-template <typename K, typename T> using hashmap = std::unordered_map<K, T>;
+template <typename K, typename T> using HashMap = std::unordered_map<K, T>;
 
 StackData::StackData(Vec<BasicBlock *> &ident)
     : identifier(ident)
@@ -73,16 +71,12 @@ StackData::StackData(Vec<BasicBlock *> &ident)
 
 DFGNode::DFGNode(dtrace_hdl_t *_dtp, dtrace_prog_t *pgp,
     dtrace_ecbdesc_t *_edp, dtrace_difo_t *_difo, BasicBlock *_bb, uint_t idx)
-    : dtp(_dtp)
-    , program(pgp)
+    : uidx(idx)
+    , dtp(_dtp)
     , edp(_edp)
+    , program(pgp)
     , difo(_difo)
     , bb(_bb)
-    , uidx(idx)
-    , dType(-1)
-    , sym(nullptr)
-    , ctfid(CTF_ERR)
-    , mip(nullptr)
 {
 }
 
@@ -369,7 +363,7 @@ dt_usite_contains_reg(DFGNode *n, DFGNode *curnode, uint8_t rd,
 	curop = DIF_INSTR_OP(curinstr);
 
 	if (curop == DIF_OP_CALL)
-		check = dt_subr_clobbers(DIF_INSTR_SUBR(curinstr));
+		check = subrClobbers(DIF_INSTR_SUBR(curinstr));
 	else
 		check = 1;
 
@@ -478,23 +472,15 @@ dt_usite_contains_reg(DFGNode *n, DFGNode *curnode, uint8_t rd,
 }
 
 bool
-HyperTraceLinker::updateNodesInBBForVar(dtrace_difo_t *difo, BasicBlock *bb,
-    DFGNodeData &data, DFGList::iterator pos)
+HyperTraceLinker::updateNodesInBBForVar(BasicBlock *bb, DFGNodeData &data,
+    DFGList::iterator pos)
 {
-	dif_instr_t instr;
-	int v;
-	DFGNode *curnode, *n;
-
-	v = 0;
-	curnode = pos->get();
-
+	DFGNode *curnode = pos->get();
 	for (; pos != dfgNodes.end(); ++pos) {
-		n = pos->get();
-		instr = n->getInstruction();
-
+		DFGNode *n = pos->get();
+		dif_instr_t instr = n->getInstruction();
 		if (n == curnode)
 			continue;
-
 		if (n->difo != bb->difo)
 			continue;
 
@@ -518,7 +504,7 @@ HyperTraceLinker::updateNodesInBBForVar(dtrace_difo_t *difo, BasicBlock *bb,
 		 * we simply break out of the loop, there is nothing left
 		 * to fill in inside this basic block.
 		 */
-		if (dt_clobbers_var(instr, data))
+		if (clobbersVariable(instr, data))
 			return (true);
 	}
 
@@ -527,20 +513,14 @@ HyperTraceLinker::updateNodesInBBForVar(dtrace_difo_t *difo, BasicBlock *bb,
 
 int
 HyperTraceLinker::updateNodesInBBForStack(Vec<BasicBlock *> &bb_path,
-    dtrace_difo_t *difo, BasicBlock *bb, DFGList::iterator pos)
+    BasicBlock *bb, DFGList::iterator pos)
 {
-	DFGNode *n, *curnode;
-	uint8_t op;
-	dif_instr_t instr;
-	int n_pushes;
-
-	n_pushes = 1;
-	curnode = pos->get();
-
+	int n_pushes = 1;
+	DFGNode *curnode = pos->get();
 	for (; pos != dfgNodes.end(); ++pos) {
-		n = pos->get();
-		instr = n->getInstruction();
-		op = DIF_INSTR_OP(instr);
+		DFGNode *n = pos->get();
+		dif_instr_t instr = n->getInstruction();
+		uint8_t op = DIF_INSTR_OP(instr);
 
 		if (n == curnode)
 			continue;
@@ -548,11 +528,13 @@ HyperTraceLinker::updateNodesInBBForStack(Vec<BasicBlock *> &bb_path,
 		if (n->difo != bb->difo)
 			continue;
 
-		if (n_pushes < 1)
-			errx(EXIT_FAILURE,
+		if (n_pushes < 1) {
+			setErrorMessage(
 			    "updateNodesInBBForStack(): n_pushes (%d) < 0 on "
 			    "DIFO %p (node %zu)",
 			    n_pushes, n->difo, n->uidx);
+			return (E_HYPERTRACE_LINKING);
+		}
 
 		if (n->uidx <= curnode->uidx)
 			continue;
@@ -577,9 +559,9 @@ HyperTraceLinker::updateNodesInBBForStack(Vec<BasicBlock *> &bb_path,
 		}
 
 		if (dt_usite_uses_stack(n)) {
-			auto stack_idx = dt_get_stack(bb_path, n);
-			assert(stack_idx != -1);
-			n->stacks[stack_idx].nodesOnStack.push_back(curnode);
+			auto stackId = getStack(bb_path, n);
+			assert(stackId != -1);
+			n->stacks[stackId].nodesOnStack.push_back(curnode);
 		}
 	}
 
@@ -661,7 +643,7 @@ HyperTraceLinker::updateNodesInBBForReg(dtrace_difo_t *difo, BasicBlock *bb,
 			}
 		}
 
-		clobbers = dt_clobbers_reg(instr, rd);
+		clobbers = clobbersRegister(instr, rd);
 
 		/*
 		 * If we run into a redefinition of the current register,
@@ -682,18 +664,14 @@ static void
 dt_compute_active_varregs(uint8_t *active_varregs, size_t n_varregs,
     DFGNode *n)
 {
-	dif_instr_t instr, varsrc_instr;
-	uint8_t opcode;
 	uint8_t r1, r2, rd;
-	size_t i;
-
-	instr = n->getInstruction();
-	opcode = DIF_INSTR_OP(instr);
 
 	/*
 	 * Based on the opcode, we will now compute the new set of active
 	 * registers in the current run of the inference for varsources.
 	 */
+	dif_instr_t instr = n->getInstruction();
+	uint8_t opcode = DIF_INSTR_OP(instr);
 	switch (opcode) {
 	case DIF_OP_OR:
 	case DIF_OP_XOR:
@@ -774,7 +752,7 @@ dt_compute_active_varregs(uint8_t *active_varregs, size_t n_varregs,
 		 * which registers could be defining a variable, and therefore
 		 * we don't want to keep track of them.
 		 */
-		for (i = 0; i < n_varregs; i++)
+		for (size_t i = 0; i < n_varregs; i++)
 			active_varregs[i] = 0;
 
 	default:
@@ -789,19 +767,10 @@ void
 HyperTraceLinker::updateActiveVarRegs(uint8_t active_varregs[DIF_DIR_NREGS],
     dtrace_difo_t *_difo, BasicBlock *bb, DFGList::iterator pos)
 {
-	DFGNode *curnode, *n;
-	dif_instr_t instr;
-	uint8_t opcode;
-	uint16_t varid;
-	int scope, kind;
-	dtrace_difv_t *difv;
-	uint8_t curnode_rd, rd, r1;
-
 	assert(_difo != nullptr && bb != nullptr);
-
-	curnode = pos->get();
-	instr = curnode->getInstruction();
-	opcode = DIF_INSTR_OP(instr);
+	DFGNode *curnode = pos->get();
+	dif_instr_t instr = curnode->getInstruction();
+	uint8_t opcode = DIF_INSTR_OP(instr);
 
 	/*
 	 * This is only really relevant for load instructions -- nothing else
@@ -813,11 +782,12 @@ HyperTraceLinker::updateActiveVarRegs(uint8_t active_varregs[DIF_DIR_NREGS],
 	    opcode != DIF_OP_LDLS)
 		return;
 
-	varid = DIF_INSTR_VAR(instr);
+	uint16_t varid = DIF_INSTR_VAR(instr);
 
 	/*
 	 * Annoying boilerplate to compute the kind and scope of the variable.
 	 */
+	int scope, kind;
 	if (opcode == DIF_OP_LDGS || opcode == DIF_OP_LDTS ||
 	    opcode == DIF_OP_LDLS)
 		kind = DIFV_KIND_SCALAR;
@@ -831,7 +801,7 @@ HyperTraceLinker::updateActiveVarRegs(uint8_t active_varregs[DIF_DIR_NREGS],
 	else
 		scope = DIFV_SCOPE_LOCAL;
 
-	curnode_rd = DIF_INSTR_RD(instr);
+	uint8_t curnode_rd = DIF_INSTR_RD(instr);
 	assert(curnode_rd < DIF_DIR_NREGS + 2);
 
 	/*
@@ -843,7 +813,7 @@ HyperTraceLinker::updateActiveVarRegs(uint8_t active_varregs[DIF_DIR_NREGS],
 	 * Go through all of the nodes in the current basic block
 	 */
 	for (; pos != dfgNodes.end(); ++pos) {
-		n = pos->get();
+		DFGNode *n = pos->get();
 		instr = n->getInstruction();
 		opcode = DIF_INSTR_OP(instr);
 
@@ -892,7 +862,7 @@ HyperTraceLinker::updateActiveVarRegs(uint8_t active_varregs[DIF_DIR_NREGS],
 		 * check if it's active. If so, we will add our varsource to the
 		 * list.
 		 */
-		rd = DIF_INSTR_RD(instr);
+		uint8_t rd = DIF_INSTR_RD(instr);
 		assert(rd < DIF_DIR_NREGS + 2);
 
 		if (active_varregs[rd] == 0)
@@ -902,7 +872,7 @@ HyperTraceLinker::updateActiveVarRegs(uint8_t active_varregs[DIF_DIR_NREGS],
 		    scope == DIFV_SCOPE_THREAD || scope == DIFV_SCOPE_LOCAL);
 		assert(kind == DIFV_KIND_ARRAY || kind == DIFV_KIND_SCALAR);
 
-		difv = getVarFromVarVec(varid, scope, kind);
+		dtrace_difv_t *difv = getVarFromVarVec(varid, scope, kind);
 		if (difv == nullptr)
 			errx(EXIT_FAILURE,
 			    "getVarFromVarVec(): failed to get DIF "
@@ -915,7 +885,7 @@ HyperTraceLinker::updateActiveVarRegs(uint8_t active_varregs[DIF_DIR_NREGS],
 
 static void
 remove_basicBlocks(BasicBlock *bb,
-    hashmap<size_t, BasicBlock *> &bb_map, Vec<BasicBlock *> &bb_path)
+    HashMap<size_t, BasicBlock *> &bb_map, Vec<BasicBlock *> &bb_path)
 {
 	BasicBlock *parent_BasicBlock;
 	int remove;
@@ -980,7 +950,7 @@ HyperTraceLinker::updateDFG(dtrace_difo_t *difo, DFGNode *n,
 	bb_stack.push(bbp);
 
 	Vec<BasicBlock *> bb_path;
-	hashmap<size_t, BasicBlock *> bb_map;
+	HashMap<size_t, BasicBlock *> bb_map;
 	DFGNodeData &data = n->nodeData;
 	memset(active_varregs, 0, sizeof(active_varregs));
 
@@ -1009,10 +979,9 @@ HyperTraceLinker::updateDFG(dtrace_difo_t *difo, DFGNode *n,
 						var_redefined = false;
 			}
 		} else if (data.kind == DT_NKIND_VAR)
-			redefined = updateNodesInBBForVar(difo, bb, data, pos);
+			redefined = updateNodesInBBForVar(bb, data, pos);
 		else if (data.kind == DT_NKIND_STACK)
-			redefined = updateNodesInBBForStack(bb_path, difo, bb,
-			    pos);
+			redefined = updateNodesInBBForStack(bb_path, bb, pos);
 		else
 			return;
 
@@ -1118,7 +1087,7 @@ HyperTraceLinker::computeDFG(dtrace_ecbdesc_t *edp, dtrace_difo_t *difo)
 	/*
 	 * Compute the basic blocks, CFG and prepare the data flow node vector.
 	 */
-	computebasicBlocks(difo);
+	computeBasicBlocks(difo);
 	computeCFG(difo);
 	fst = dfgNodes.end();
 
@@ -1126,7 +1095,7 @@ HyperTraceLinker::computeDFG(dtrace_ecbdesc_t *edp, dtrace_difo_t *difo)
 	 * First pass over the instructions. We build up all of the IFG nodes
 	 * that we are going to need.
 	 */
-	for (auto i = 0; i < difo->dtdo_len; i++) {
+	for (uint_t i = 0; i < difo->dtdo_len; i++) {
 		auto node_BasicBlock = dt_node_find_bb(
 		    static_cast<BasicBlock *>(difo->dtdo_bb), i);
 		assert(node_BasicBlock != nullptr);

@@ -65,12 +65,12 @@ class BasicBlock {
 	 * that particular child in this particular vector was visited, rather
 	 * than caring if the basic block itself was visited at some point.
 	 */
-	Vec<pair<BasicBlock *, bool>> children;
-	Vec<pair<BasicBlock *, bool>> parents;
+	Vec<Pair<BasicBlock *, bool>> children;
+	Vec<Pair<BasicBlock *, bool>> parents;
 
     public:
 	BasicBlock(dtrace_difo_t *);
-	dif_instr_t *difo_buf() { return (this->difo->dtdo_buf); }
+	dif_instr_t *DIFOBuf() { return (this->difo->dtdo_buf); }
 };
 
 extern void dt_compute_bb(dtrace_difo_t *);

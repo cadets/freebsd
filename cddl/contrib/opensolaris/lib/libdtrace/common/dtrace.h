@@ -42,6 +42,8 @@
 #include <rtld_db.h>
 #endif
 
+#include <dt_hypertrace.h>
+
 #ifdef	__cplusplus
 extern "C" {
 #endif
@@ -707,7 +709,12 @@ extern int dtrace_send_elf(dtrace_prog_t *, int, int, const char *, int);
 extern int dtrace_send_elf_async(dtrace_prog_t *, int, int, char *, const char *, int);
 extern void dtrace_async_teardown(void);
 extern char *dtrace_get_srcident(char *);
-extern int hypertrace_link(dtrace_hdl_t *, dtrace_prog_t *);
+extern int dtrace_elf_create(dtrace_hdl_t *, dtrace_prog_t *, int, int,
+    const char *, hypertrace_errmsg_t);
+extern dtrace_prog_t *dtrace_elf_parse(dtrace_hdl_t *, int, const char *, int,
+    int *, hypertrace_errmsg_t, dtrace_prog_t *);
+extern int hypertrace_link(dtrace_hdl_t *, dtrace_prog_t *,
+    hypertrace_errmsg_t);
 extern void dtrace_resolver_setflags(uint32_t);
 extern dtrace_prog_t *dtrace_vprog_from(dtrace_hdl_t *, dtrace_prog_t *, int);
 

@@ -67,7 +67,6 @@ namespace dtrace {
 void
 TypeInference::setBuiltinType(DFGNode *n, uint16_t var, uint8_t idx)
 {
-	argcheck_cookie cookie = { 0 };
 	dtrace_probedesc_t *pdesc;
 	int check_types;
 
@@ -138,7 +137,7 @@ TypeInference::setBuiltinType(DFGNode *n, uint16_t var, uint8_t idx)
 			 * arg4 -> fault type
 			 * arg5 -> value dependent on the fault type
 			 */
-			std::array<std::string, 6> arg_type = { "", "uint32_t",
+			Array<String, 6> arg_type = { "", "uint32_t",
 				"uint32_t", "int", "uint32_t", "uintptr_t" };
 
 			if (idx == 0 || idx > 5)
@@ -163,11 +162,7 @@ TypeInference::setBuiltinType(DFGNode *n, uint16_t var, uint8_t idx)
 			    pdesc->dtpd_name);
 		} else {
 			uint8_t child_op;
-			cookie.node = n;
-			cookie.varcode = var;
-			cookie.idx = idx;
-			cookie.ti = this;
-
+			argcheck_cookie cookie(n, var, idx, this);
 			check_types = 0;
 			for (auto child : n->r1Children) {
 				assert(child->difo == n->difo);
@@ -528,15 +523,10 @@ dt_infer_type_arg(dtrace_hdl_t *dtp, const dtrace_probedesc_t *pdp,
  * typechecks it against dr.
  */
 int
-TypeInference::inferVar(dtrace_difo_t *difo, DFGNode *dr,
-    dtrace_difv_t *dif_var)
+TypeInference::inferVar(DFGNode *dr, dtrace_difv_t *dif_var)
 {
 	char buf[4096] = { 0 }, var_type[4096] = { 0 };
-	dtrace_difv_t *difovar;
 	int rv, which;
-	ctf_id_t stripped_kind, stripped_id, orig_id;
-
-	difovar = nullptr;
 
 	if (dr == nullptr && dif_var == nullptr) {
 		fprintf(stderr,
@@ -705,25 +695,23 @@ TypeInference::inferVar(dtrace_difo_t *difo, DFGNode *dr,
  */
 DFGNode *
 TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
-    int *empty)
+    bool &empty)
 {
 	DFGNode *node, *onode;
 	char buf1[4096] = { 0 }, buf2[4096] = { 0 };
 	int type, otype;
-	int class1, class2;
 	dtrace_difv_t *var;
 	uint16_t varid;
 	int scope, kind;
 	dif_instr_t instr;
 
 	type = otype = DIF_TYPE_NONE;
-	class1 = class2 = -1;
 	node = onode = nullptr;
 	var = nullptr;
 	varid = 0;
 	scope = kind = 0;
 	instr = 0;
-	*empty = 1;
+	empty = defs.size() > 0;
 
 	/*
 	 * We iterate over all the variable definitions for a particular
@@ -734,7 +722,6 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 	 *      type from a different DIFO (if it exists).
 	 */
 	for (auto it = defs.begin(); it != defs.end(); ++it) {
-		*empty = 0;
 		onode = node;
 		node = *it;
 
@@ -760,16 +747,16 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 		if (onode && otype != type) {
 			fprintf(stderr,
 			    "%s(%p[%zu]): otype and type mismatch (%d, %d)\n",
-			    __func__, n->difo, n->uidx, otype, type);
+			    __func__, (void *)n->difo, n->uidx, otype, type);
 			return (nullptr);
 		}
 
 		instr = node->getInstruction();
-		dt_get_varinfo(instr, &varid, &scope, &kind);
+		getVariableInfo(instr, &varid, &scope, &kind);
 		if (varid == 0 && scope == -1 && kind == -1)
 			dt_set_progerr(dtp, pgp,
 			    "%s(%p[%zu]): failed to get variable information",
-			    __func__, n->difo, n->uidx);
+			    __func__, (void *)n->difo, n->uidx);
 
 		/*
 		 * We get the variable from the variable list.
@@ -784,7 +771,8 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 			dt_set_progerr(dtp, pgp,
 			    "%s(%p[%zu]): could not find variable "
 			    "(%u, %d, %d) in varlist",
-			    __func__, n->difo, n->uidx, varid, scope, kind);
+			    __func__, (void *)n->difo, n->uidx, varid, scope,
+			    kind);
 
 		/* If the type we are comparing to is bottom, skip. */
 		if (type == DIF_TYPE_BOTTOM)
@@ -804,7 +792,7 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 					dt_set_progerr(dtp, pgp,
 					    "%s(%p[%zu]): failed at getting "
 					    "type name %ld: %s\n",
-					    __func__, n->difo, n->uidx,
+					    __func__, (void *)n->difo, n->uidx,
 					    node->ctfid, node->tf->getErrMsg());
 				sprintf(t1, "@%ld", node->ctfid);
 			} else if (type == DIF_TYPE_STRING)
@@ -823,7 +811,7 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 					dt_set_progerr(dtp, pgp,
 					    "%s(%p[%zu]): failed at getting "
 					    "type name %ld: %s\n",
-					    __func__, n->difo, n->uidx,
+					    __func__, (void *)n->difo, n->uidx,
 					    var->dtdv_ctfid,
 					    v2tf(var->dtdv_tf)->getErrMsg());
 				sprintf(t2, "@%ld", var->dtdv_ctfid);
@@ -837,7 +825,7 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 				strcpy(t2, "unknown");
 
 			fprintf(stderr, "%s(%p[%zu]): %s != %s\n", __func__,
-			    n->difo, n->uidx, t1, t2);
+			    (void *)n->difo, n->uidx, t1, t2);
 			return (nullptr);
 		}
 
@@ -849,7 +837,7 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 				fprintf(stderr,
 				    "%s(%p[%zu]): comparing node with typefile "
 				    "%s to variable with typefile %s",
-				    __func__, n->difo, n->uidx,
+				    __func__, (void *)n->difo, n->uidx,
 				    node->tf->name().c_str(),
 				    v2tf(var->dtdv_tf)->name().c_str());
 				return (nullptr);
@@ -862,8 +850,8 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 				dt_set_progerr(dtp, pgp,
 				    "%s(%p[%zu]): failed at getting "
 				    "type name %ld: %s",
-				    __func__, n->difo, n->uidx, node->ctfid,
-				    node->tf->getErrMsg());
+				    __func__, (void *)n->difo, n->uidx,
+				    node->ctfid, node->tf->getErrMsg());
 
 			/*
 			 * If the variable already has a type assigned to it,
@@ -877,7 +865,7 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 					dt_set_progerr(dtp, pgp,
 					    "%s(%p[%zu]): variable "
 					    "name outside strtab (%zu, %zu)",
-					    __func__, n->difo, n->uidx,
+					    __func__, (void *)n->difo, n->uidx,
 					    var->dtdv_name, difo->dtdo_strlen);
 
 				if (v2tf(var->dtdv_tf)
@@ -886,14 +874,14 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 					dt_set_progerr(dtp, pgp,
 					    "%s(%p[%zu]): failed at "
 					    "getting type name %ld: %s",
-					    __func__, n->difo, n->uidx,
+					    __func__, (void *)n->difo, n->uidx,
 					    var->dtdv_ctfid,
 					    v2tf(var->dtdv_tf)->getErrMsg());
 
 				fprintf(stderr,
 				    "%s(%p[%zu]): variable (%s) type and "
 				    "inferred type mismatch: %s, %s",
-				    __func__, n->difo, n->uidx,
+				    __func__, (void *)n->difo, n->uidx,
 				    difo->dtdo_strtab + var->dtdv_name, buf1,
 				    buf2);
 				return (nullptr);
@@ -924,7 +912,7 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 				fprintf(stderr,
 				    "%s(%p[%zu]): node has typefile "
 				    "%s but typefile %s is expected\n",
-				    __func__, n->difo, n->uidx,
+				    __func__, (void *)n->difo, n->uidx,
 				    node->tf->name().c_str(),
 				    onode->tf->name().c_str());
 				return (nullptr);
@@ -937,7 +925,8 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 				fprintf(stderr,
 				    "%s(%p[%zu]): types %s and "
 				    "%s do not match\n",
-				    __func__, n->difo, n->uidx, buf1, buf2);
+				    __func__, (void *)n->difo, n->uidx, buf1,
+				    buf2);
 				return (nullptr);
 			}
 
@@ -946,7 +935,7 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 				fprintf(stderr,
 				    "%s(%p[%zu]): node or onode "
 				    "is missing a symbol\n",
-				    __func__, n->difo, n->uidx);
+				    __func__, (void *)n->difo, n->uidx);
 				return (nullptr);
 			}
 
@@ -957,7 +946,7 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 				fprintf(stderr,
 				    "%s(%p[%zu]): node or dif_var "
 				    "is missing a symbol\n",
-				    __func__, n->difo, n->uidx);
+				    __func__, (void *)n->difo, n->uidx);
 				return (nullptr);
 			}
 
@@ -969,8 +958,8 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 				fprintf(stderr,
 				    "%s(%p[%zu]): nodes have "
 				    "different symbols: %s != %s\n",
-				    __func__, n->difo, n->uidx, node->sym,
-				    onode->sym);
+				    __func__, (void *)n->difo, n->uidx,
+				    node->sym, onode->sym);
 				return (nullptr);
 			}
 
@@ -979,8 +968,8 @@ TypeInference::checkVarDefs(DFGNode *n, dtrace_difo_t *difo, NodeSet &defs,
 				fprintf(stderr,
 				    "%s(%p[%zu]): node and var "
 				    "have different symbols: %s != %s\n",
-				    __func__, n->difo, n->uidx, node->sym,
-				    onode->sym);
+				    __func__, (void *)n->difo, n->uidx,
+				    node->sym, onode->sym);
 				return (nullptr);
 			}
 		}

@@ -36,34 +36,47 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _DT_TYPING_HELPERS_HH_
-#define _DT_TYPING_HELPERS_HH_
+#ifndef _DT_HYPERTRACE_H_
+#define _DT_HYPERTRACE_H_
 
-#include <sys/types.h>
-#include <sys/ctf.h>
+#define	E_HYPERTRACE_NONE		0
+#define	E_HYPERTRACE_SYS		1
+#define	E_HYPERTRACE_ELFCREATE		2
+#define	E_HYPERTRACE_ELFPARSE		3
+#define	E_HYPERTRACE_LIBDTRACE		4
+#define	E_HYPERTRACE_CHECKSUM		5
+#define	E_HYPERTRACE_AGAIN		6
+#define	E_HYPERTRACE_PROPAGATED		7
+#define	E_HYPERTRACE_IDENT_NOTFOUND	8
+#define	E_HYPERTRACE_LINKING		9
+#define	E_HYPERTRACE_TYPING		10
 
-#include <dtrace.h>
-#include <dt_program.h>
+#define	HYPERTRACE_ERRMSGLEN		512
+typedef char hypertrace_errmsg_t[HYPERTRACE_ERRMSGLEN];
+extern const char *dtrace_hypertrace_errstr(int);
+extern int log_hypertrace_elf;
+extern int log_hypertrace_linker;
+extern int log_hypertrace_typing;
 
-#ifndef __cplusplus
-#error "This file should only be included from C++"
-#endif
+#define _HYPERTRACE_LOG_ELF(...)                              \
+	do {                                                  \
+		if (log_hypertrace_elf) {                     \
+			fprintf(stderr, "elf: " __VA_ARGS__); \
+		}                                             \
+	} while (0)
 
-#include <dt_typefile.hh>
+#define _HYPERTRACE_LOG_LINKER(...)                              \
+	do {                                                     \
+		if (log_hypertrace_linker) {                     \
+			fprintf(stderr, "linker: " __VA_ARGS__); \
+		}                                                \
+	} while (0)
 
-namespace dtrace {
-extern int dt_get_class(Typefile *, ctf_id_t, int);
-extern const char *dt_class_name(int);
-extern Typefile *dt_get_typename_tfcheck(DFGNode *, Typefile **,
-    size_t, char *, size_t, const char *);
-extern int dt_typecheck_string(dtrace_hdl_t *, int, int, ctf_id_t, ctf_id_t,
-    Typefile *, Typefile *);
-extern int dt_typecheck_stringii(dtrace_hdl_t *, DFGNode *,
-    DFGNode *);
-extern int dt_typecheck_stringiv(dtrace_hdl_t *, DFGNode *,
-    dtrace_difv_t *);
-extern ctf_id_t dt_autoresolve_ctfid(const char *, const char *,
-    Typefile **);
-}
+#define _HYPERTRACE_LOG_TYPING(...)                              \
+	do {                                                     \
+		if (log_hypertrace_typing) {                     \
+			fprintf(stderr, "typing: " __VA_ARGS__); \
+		}                                                \
+	} while (0)
 
-#endif /* _DT_TYPING_HELPERS_HH_ */
+#endif /* _DT_HYPERTRACE_H_ */

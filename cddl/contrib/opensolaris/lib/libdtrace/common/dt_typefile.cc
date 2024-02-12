@@ -58,9 +58,9 @@
 
 namespace dtrace {
 
-list<UPtr<Typefile>> typefiles;
+List<UPtr<Typefile>> typefiles;
 
-Typefile::Typefile(dtrace_hdl_t *_dtp, dt_module_t *_mod, std::string _modname)
+Typefile::Typefile(dtrace_hdl_t *_dtp, dt_module_t *_mod, String _modname)
     : dtp(_dtp)
     , modhdl(_mod)
     , modname(_modname)
@@ -70,14 +70,14 @@ Typefile::Typefile(dtrace_hdl_t *_dtp, dt_module_t *_mod, std::string _modname)
 Typefile::Typefile(dtrace_hdl_t *_dtp, dt_module_t *_mod, const char *_modname)
     : dtp(_dtp)
     , modhdl(_mod)
-    , modname(std::string(_modname))
+    , modname(String(_modname))
 {
 }
 
 Typefile::Typefile(dtrace_hdl_t *_dtp, dt_module_t *_mod, char *_modname)
     : dtp(_dtp)
     , modhdl(_mod)
-    , modname(std::string(_modname))
+    , modname(String(_modname))
 {
 }
 
@@ -86,7 +86,6 @@ dt_typefile_openall(dtrace_hdl_t *dtp)
 {
 	dt_module_t *mod;
 	Typefile *typef;
-	int again;
 	int kld;
 	struct kld_file_stat kldinfo;
 
@@ -141,12 +140,12 @@ dt_typefile_openall(dtrace_hdl_t *dtp)
 ctf_id_t
 Typefile::getCtfID(const char *type) const
 {
-	std::string t = std::string(type);
+	String t = String(type);
 	ctf_file_t *ctfp;
 	dtrace_typeinfo_t tip;
 	const char *obj;
-	std::string nonuser_type;
-	static const std::string userland = "userland ";
+	String nonuser_type;
+	static const String userland = "userland ";
 	int rv;
 
 	if (this->dtp == nullptr || this->modhdl == nullptr)
@@ -357,7 +356,7 @@ Typefile::getEncoding(ctf_id_t type, ctf_encoding_t *ep)
 	return (ctf_type_encoding(ctfp, type, ep));
 }
 
-const std::string &
+const String &
 Typefile::name(void) const
 {
 
@@ -372,7 +371,7 @@ dt_typefile_mod(const char *mod)
 	if (mod == nullptr)
 		return (nullptr);
 
-	std::string mod_str = std::string(mod);
+	String mod_str = String(mod);
 	for (auto &tf : typefiles) {
 		if (tf->modname == mod_str) {
 			_mod = dt_module_lookup_by_name(tf->dtp, mod);
@@ -403,8 +402,8 @@ Typefile::typeIsCompatibleWith(ctf_id_t id, const Typefile *other,
 }
 
 static int
-process_struct_member(const char *name, ctf_id_t type, ulong_t offset,
-    void *uarg)
+process_struct_member([[maybe_unused]] const char *name, ctf_id_t type,
+    [[maybe_unused]] ulong_t offset, void *uarg)
 {
 	auto *types = static_cast<Vec<ctf_id_t> *>(uarg);
 	assert(types != nullptr);
@@ -467,7 +466,7 @@ Typefile::getArrayInfo(ctf_id_t id)
 	return (ai);
 }
 
-const std::optional<std::string>
+const std::optional<String>
 Typefile::getTypename(ctf_id_t id) const
 {
 	char buf[DT_TYPE_NAMELEN] = { 0 };
@@ -475,7 +474,7 @@ Typefile::getTypename(ctf_id_t id) const
 		return (std::nullopt);
 	}
 
-	return (std::make_optional<std::string>(buf));
+	return (std::make_optional<String>(buf));
 }
 
 ctf_id_t

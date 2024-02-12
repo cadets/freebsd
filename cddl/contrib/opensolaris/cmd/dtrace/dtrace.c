@@ -1078,6 +1078,7 @@ listen_dtraced(void *arg)
 	dt_snapshot_hdl_t cshdl;
 	dt_benchmark_t *bench;
 	char buf[1024];
+	hypertrace_errmsg_t errmsg;
 
 	rx_sockfd = 0;
 	elflen = 0;
@@ -1252,9 +1253,6 @@ process_prog:
 			dabort("failed to create a temporary file (%s)",
 			    strerror(errno));
 
-		unlink(template);
-		strcpy(template, "/tmp/ddtrace-elf.XXXXXXXXXXXX");
-
 		lentowrite = novm ?
 		    elflen :
 		    (elflen - size - sizeof(uint64_t) - sizeof(uint16_t) - 6);
@@ -1268,13 +1266,16 @@ process_prog:
 		 * "rcvpgp" -- snapshot "ELF parsing - start"
 		 */
 		cshdl = __dt_bench_snapshot_time(bench);
-		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
-		if (newprog == NULL && err != EAGAIN) {
+		newprog = dtrace_elf_parse(g_dtp, fd, template, 0, &err, errmsg,
+		    hostpgp);
+		if (newprog == NULL && err != E_HYPERTRACE_AGAIN) {
 			/*
 			 * "rcvpgp" @ "ELF parsing - start" -- destroy
 			 */
 			dt_bench_destroy(bench);
 			close(fd);
+			unlink(template);
+			strcpy(template, "/tmp/ddtrace-elf.XXXXXXXXXXXX");
 			continue;
 		}
 
@@ -1304,6 +1305,9 @@ process_prog:
 				 */
 				dt_bench_destroy(bench);
 				pthread_mutex_unlock(&g_pgplistmtx);
+				unlink(template);
+				strcpy(template,
+				    "/tmp/ddtrace-elf.XXXXXXXXXXXX");
 				continue;
 			} else if (pgpl_valid(newpgpl)) {
 				fprintf(stderr,
@@ -1313,18 +1317,26 @@ process_prog:
 				 * "rcvpgp" @ "ELF parsing - start" -- destroy
 				 */
 				dt_bench_destroy(bench);
+				unlink(template);
+				strcpy(template,
+				    "/tmp/ddtrace-elf.XXXXXXXXXXXX");
 				continue;
 			}
 
-			newprog = dt_elf_to_prog(g_dtp, fd, 0, &err,
-			    newpgpl->gpgp);
+			newprog = dtrace_elf_parse(g_dtp, fd, template, 0, &err,
+			    errmsg, newpgpl->gpgp);
 			if (newprog == NULL) {
 				close(fd);
+				fprintf(stderr, "ELF parsing failed: %s: %s",
+				    dtrace_hypertrace_errstr(err), errmsg);
 				pthread_mutex_unlock(&g_pgplistmtx);
 				/*
 				 * "rcvpgp" @ "ELF parsing - start" -- destroy
 				 */
 				dt_bench_destroy(bench);
+				unlink(template);
+				strcpy(template,
+				    "/tmp/ddtrace-elf.XXXXXXXXXXXX");
 				continue;
 			}
 		}
@@ -1334,6 +1346,8 @@ process_prog:
 		 */
 		__dt_bench_snapshot_time(bench);
 
+		unlink(template);
+		strcpy(template, "/tmp/ddtrace-elf.XXXXXXXXXXXX");
 		close(fd);
 
 		newprog->dp_vmid = vmid;
@@ -1435,10 +1449,12 @@ process_prog:
 			tmpfd = mkstemp(template);
 			if (tmpfd == -1)
 				dabort("failed to mkstemp()");
-
-			unlink(template);
-
-			dt_elf_create(guestpgp, ELFDATA2LSB, tmpfd);
+			err = dtrace_elf_create(g_dtp, guestpgp, ELFDATA2LSB,
+			    tmpfd, template, errmsg);
+			if (err) {
+				fatal("failed to create elf file: %s: %s",
+				    dtrace_hypertrace_errstr(err), errmsg);
+			}
 			if (fsync(tmpfd)) {
 				fprintf(stderr, "failed to sync file: %s\n",
 				    strerror(errno));
@@ -1448,6 +1464,7 @@ process_prog:
 				 * "rcvpgp" @ "Virtual program creation - start" -- destroy
 				 */
 				dt_bench_destroy(bench);
+				unlink(template);
 				pthread_exit(NULL);
 			}
 
@@ -1460,6 +1477,7 @@ process_prog:
 				 * "rcvpgp" @ "Virtual program creation - start" -- destroy
 				 */
 				dt_bench_destroy(bench);
+				unlink(template);
 				pthread_exit(NULL);
 			}
 			/*
@@ -1469,6 +1487,7 @@ process_prog:
 
 			err = dtrace_send_elf_async(guestpgp, tmpfd,
 			    wx_sockfd, template, "outbound", 0);
+			unlink(template);
 			strcpy(template, "/tmp/ddtrace-elf.XXXXXXXXXXXX");
 
 			if (err) {
@@ -1853,6 +1872,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 	void *verictx, *merge;
 	dtrace_prog_t *resp;
 	dt_benchlist_t *be;
+	hypertrace_errmsg_t errmsg;
 
 	dcp->dc_prog->dp_rflags = rslv;
 
@@ -1883,7 +1903,11 @@ exec_prog(const dtrace_cmd_t *dcp)
 			 * create the ELF file for debugging purposes and output
 			 * where it was created.
 			 */
-			dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
+			err = dtrace_elf_create(g_dtp, dcp->dc_prog,
+			    ELFDATA2LSB, tmpfd, template, errmsg);
+			if (err)
+				fatal("failed to create elf file: %s: %s",
+				    dtrace_hypertrace_errstr(err), errmsg);
 			printf("%s\n", template);
 			strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
 
@@ -1922,9 +1946,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 		tmpfd = mkstemp(template);
 		if (tmpfd == -1)
 			fatal("failed to mkstemp()");
-		unlink(template);
-		strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
-
 		if (g_verbose) {
 			fprintf(stderr, "Initial program:\n");
 			fprintf(stderr,
@@ -1938,7 +1959,13 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if (g_verbose > 1)
 			dtrace_dump_ecbs(dcp->dc_prog);
 
-		dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
+		err = dtrace_elf_create(g_dtp, dcp->dc_prog, ELFDATA2LSB, tmpfd,
+		    template, errmsg);
+		if (err)
+			fatal("failed to create elf file: %s: %s",
+			    dtrace_hypertrace_errstr(err), errmsg);
+		unlink(template);
+		strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
 
 		if (fsync(tmpfd))
 			fatal("failed to sync file");
@@ -2055,7 +2082,7 @@ again:
 		pthread_mutex_destroy(&g_benchlistmtx);
 		dtrace_close(g_dtp);
 		exit(0);
-	} else if (hypertrace_link(g_dtp, dcp->dc_prog) == 0) {
+	} else if ((err = hypertrace_link(g_dtp, dcp->dc_prog, errmsg)) == 0) {
 		if (g_verbose)
 			dtrace_dump_actions(dcp->dc_prog);
 		verictx = dt_verictx_init(g_dtp);
@@ -2073,8 +2100,8 @@ again:
 
 		setup_tracing();
 	} else
-		dfatal("failed to apply relocations");
-
+		fatal("failed to apply relocations: %s: %s",
+		    dtrace_hypertrace_errstr(err), errmsg);
 
 	if (g_verbose) {
 		oprintf("\nStability attributes for %s %s:\n",
@@ -2263,15 +2290,20 @@ link_elf(dtrace_cmd_t *dcp, char *progpath)
 	int err = 0;
 	void *dof = NULL;
 	int prog_exec = 0;
+	hypertrace_errmsg_t errmsg;
 
 	assert(g_elf == 1);
 
 	if ((fd = open(progpath, O_RDONLY)) < 0)
 		fatal("failed to open %s with %s", progpath, strerror(errno));
 
-	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1, &err, NULL)) == NULL) {
-		errno = err;
-		fatal("failed to parse the ELF file %s", dcp->dc_arg);
+	fprintf(stderr, "dtrace_elf_parse() call\n");
+	dcp->dc_prog = dtrace_elf_parse(g_dtp, fd, progpath, 1, &err, errmsg,
+	    NULL);
+	fprintf(stderr, "prog = %p\n", dcp->dc_prog);
+	if (dcp->dc_prog == NULL) {
+		fatal("failed to parse the ELF file %s: %s: %s", dcp->dc_arg,
+		    dtrace_hypertrace_errstr(err), errmsg);
 	}
 
 	prog_exec = dcp->dc_prog->dp_exec;
@@ -2280,6 +2312,7 @@ link_elf(dtrace_cmd_t *dcp, char *progpath)
 	dcp->dc_desc = "ELF file";
 	dcp->dc_name = dcp->dc_arg;
 
+	fprintf(stderr, "prog_exec = %d\n", prog_exec);
 	return (prog_exec);
 }
 
@@ -2305,14 +2338,10 @@ static void
 process_elf_hypertrace(dtrace_cmd_t *dcp)
 {
 	char template[MAXPATHLEN] = "/tmp/dtrace-process-elf.XXXXXXXX";
-	char *progpath;
-	char *hostorguest;
-	int host;
-	int prog_exec;
+	char *progpath, *hostorguest;
+	int host, prog_exec, i, tmpfd, dtraced_sock, err;
 	dtrace_proginfo_t dpi;
-	int i;
-	int tmpfd;
-	int dtraced_sock;
+	hypertrace_errmsg_t errmsg;
 
 	progpath = strtok(dcp->dc_arg, ",");
 	if (progpath == NULL)
@@ -2346,9 +2375,9 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		dtrace_dump_ecbs(dcp->dc_prog);
 	}
 
-
-	if (hypertrace_link(g_dtp, dcp->dc_prog) != 0)
-		dfatal("Failed to apply relocations");
+	if ((err = hypertrace_link(g_dtp, dcp->dc_prog, errmsg)) != 0)
+		fatal("Failed to apply relocations: %s: %s",
+		    dtrace_hypertrace_errstr(err), errmsg);
 
 	if (g_verbose) {
 		fprintf(stderr, "Relocated program:\n");
@@ -2386,42 +2415,36 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		setup_tracing();
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	}
-
 	dtraced_sock = open_dtraced(DTD_SUB_READDATA);
 	if (dtraced_sock == -1)
 		fatal("failed to open dtraced");
-
 	tmpfd = mkstemp(template);
 	if (tmpfd == -1)
 		fatal("mkstemp() failed (%s)", template);
-
-	unlink(template);
-
-	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
+	err = dtrace_elf_create(g_dtp, dcp->dc_prog, ELFDATA2LSB, tmpfd,
+	    template, errmsg);
+	if (err)
+		fatal("failed to create ELF file: %s: %s",
+		    dtrace_hypertrace_errstr(err), errmsg);
 	if (fsync(tmpfd))
 		fatal("failed to sync file");
-
 	if (lseek(tmpfd, 0, SEEK_SET))
 		fatal("lseek() failed");
-
 	fprintf(stderr, "dtrace: send_elf(%s)\n", template);
 	if (dtrace_send_elf(dcp->dc_prog, tmpfd, dtraced_sock,
 	    host ? "inbound" : "outbound",
 	    host ? 0 : prog_exec == DT_PROG_EXEC ? 0 : 1))
 		fatal("failed to dtrace_send_elf()");
-
+	unlink(template);
 	strcpy(template, "/tmp/dtrace-process-elf.XXXXXXXX");
 	close(tmpfd);
 	close(dtraced_sock);
-
 	if (g_worktd && prog_exec == DT_PROG_EXEC)
 		(void)pthread_join(g_worktd, NULL);
-
 	pthread_mutex_lock(&g_dtpmtx);
 	dtrace_close(g_dtp);
 	g_dtp = NULL;
 	pthread_mutex_unlock(&g_dtpmtx);
-
 	pthread_mutex_destroy(&g_dtpmtx);
 	exit(g_status);
 }

@@ -41,13 +41,13 @@
 #include <dt_list.h>
 
 namespace dtrace {
-extern int dt_subr_clobbers(uint16_t);
-extern int dt_clobbers_reg(dif_instr_t, uint8_t);
-extern int dt_var_is_builtin(uint16_t);
-extern int dt_clobbers_var(dif_instr_t, DFGNodeData &);
-extern void dt_get_varinfo(dif_instr_t, uint16_t *, int *, int *);
-extern int dt_var_uninitialized(dtrace_difv_t *);
-extern ssize_t dt_get_stack(std::vector<BasicBlock *> &, DFGNode *);
+extern int subrClobbers(uint16_t);
+extern int clobbersRegister(dif_instr_t, uint8_t);
+extern int isBuiltinVariable(uint16_t);
+extern int clobbersVariable(dif_instr_t, DFGNodeData &);
+extern void getVariableInfo(dif_instr_t, uint16_t *, int *, int *);
+extern int varIsUninitialized(dtrace_difv_t *);
+extern ssize_t getStack(std::vector<BasicBlock *> &, DFGNode *);
 }
 
 #endif /* _DT_LINKER_SUBR_H_ */

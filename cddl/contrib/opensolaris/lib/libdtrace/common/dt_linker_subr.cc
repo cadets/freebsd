@@ -46,7 +46,7 @@
 dtrace_difv_t *
 dt_get_variable(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
 {
-	for (auto i = 0; i < difo->dtdo_varlen; i++) {
+	for (uint_t i = 0; i < difo->dtdo_varlen; i++) {
 		auto var = &difo->dtdo_vartab[i];
 
 		if (var->dtdv_scope == scope && var->dtdv_kind == kind &&
@@ -58,9 +58,8 @@ dt_get_variable(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
 }
 
 namespace dtrace {
-
 int
-dt_subr_clobbers(uint16_t subr)
+subrClobbers(uint16_t subr)
 {
 	switch (subr) {
 	case DIF_SUBR_BCOPY:
@@ -75,14 +74,9 @@ dt_subr_clobbers(uint16_t subr)
 }
 
 int
-dt_clobbers_reg(dif_instr_t instr, uint8_t r)
+clobbersRegister(dif_instr_t instr, uint8_t r)
 {
-	uint8_t opcode;
-	uint8_t rd;
-	uint16_t subr;
-
-	opcode = DIF_INSTR_OP(instr);
-
+	uint8_t opcode = DIF_INSTR_OP(instr);
 	switch (opcode) {
 	case DIF_OP_ULOAD:
 	case DIF_OP_UULOAD:
@@ -134,24 +128,27 @@ dt_clobbers_reg(dif_instr_t instr, uint8_t r)
 	case DIF_OP_RLDUB:
 	case DIF_OP_RLDUH:
 	case DIF_OP_RLDUW:
-	case DIF_OP_RLDX:
-		rd = DIF_INSTR_RD(instr);
+	case DIF_OP_RLDX: {
+		uint8_t rd = DIF_INSTR_RD(instr);
 		return (r == rd);
+	}
 
-	case DIF_OP_CALL:
-		rd = DIF_INSTR_RD(instr);
-		subr = DIF_INSTR_SUBR(instr);
-
-		if (dt_subr_clobbers(subr))
+	case DIF_OP_CALL: {
+		uint8_t rd = DIF_INSTR_RD(instr);
+		uint16_t subr = DIF_INSTR_SUBR(instr);
+		if (subrClobbers(subr))
 			return (r == rd);
 		return (0);
 	}
 
+	default:
+		break;
+	}
 	return (0);
 }
 
 int
-dt_var_is_builtin(uint16_t var)
+isBuiltinVariable(uint16_t var)
 {
 	if (var == DIF_VAR_ARGS || var == DIF_VAR_REGS || var == DIF_VAR_UREGS)
 		return (1);
@@ -163,20 +160,15 @@ dt_var_is_builtin(uint16_t var)
 }
 
 int
-dt_clobbers_var(dif_instr_t instr, DFGNodeData &data)
+clobbersVariable(dif_instr_t instr, DFGNodeData &data)
 {
-	uint8_t opcode;
-	uint16_t v;
-	uint8_t scope, varkind;
-
-	scope = data.scope();
-	varkind = data.varkind();
-
+	uint8_t scope = data.scope();
+	uint8_t varkind = data.varkind();
 	if (varkind == DIFV_KIND_ARRAY)
 		return (0);
 
-	opcode = DIF_INSTR_OP(instr);
-
+	uint8_t opcode = DIF_INSTR_OP(instr);
+	uint16_t v;
 	switch (opcode) {
 	case DIF_OP_STGS:
 		if (scope != DIFV_SCOPE_GLOBAL)
@@ -222,7 +214,7 @@ HyperTraceLinker::getVarFromVarVec(uint16_t varid, int scope, int kind)
 }
 
 void
-dt_get_varinfo(dif_instr_t instr, uint16_t *varid, int *scope, int *kind)
+getVariableInfo(dif_instr_t instr, uint16_t *varid, int *scope, int *kind)
 {
 	uint8_t opcode;
 
@@ -266,21 +258,17 @@ dt_get_varinfo(dif_instr_t instr, uint16_t *varid, int *scope, int *kind)
 	}
 }
 
-void
+int
 HyperTraceLinker::insertVar(dtrace_difo_t *difo, uint16_t varid, uint8_t scope,
     uint8_t kind)
 {
-	dtrace_difv_t *var = nullptr;
-	dtrace_difv_t *difv;
-	ctf_file_t *d_ctfp;
-	dt_module_t *d_mod;
-
 	/*
 	 * Search through the existing variable list looking for
 	 * the variable being currently defined. If we find it,
 	 * we will simply break out of the loop and move onto
 	 * the next instruction.
 	 */
+	dtrace_difv_t *var = nullptr;
 	for (auto &v : varVector) {
 		if (v->dtdv_scope == scope && v->dtdv_kind == kind &&
 		    v->dtdv_id == varid) {
@@ -290,12 +278,14 @@ HyperTraceLinker::insertVar(dtrace_difo_t *difo, uint16_t varid, uint8_t scope,
 	}
 
 	if (var && var->dtdv_ctfid != CTF_ERR)
-		return;
+		return (E_HYPERTRACE_NONE);
 
-	difv = dt_get_variable(difo, varid, scope, kind);
-	if (difv == nullptr)
-		errx(EXIT_FAILURE, "%s(): failed to find variable (%u, %d, %d)",
-		    __func__, varid, scope, kind);
+	dtrace_difv_t *difv = dt_get_variable(difo, varid, scope, kind);
+	if (difv == nullptr) {
+		setErrorMessage("failed to find variable (%u, %d, %d)", varid,
+		    scope, kind);
+		return (E_HYPERTRACE_LINKING);
+	}
 
 	/*
 	 * Allocate a new variable to be put into our list and
@@ -305,20 +295,21 @@ HyperTraceLinker::insertVar(dtrace_difo_t *difo, uint16_t varid, uint8_t scope,
 	if (var == nullptr) {
 		varVector.push_back(std::make_unique<dtrace_difv_t>());
 		var = varVector.back().get();
-		if (var == nullptr)
-			errx(EXIT_FAILURE, "failed to allocate a new variable");
+		if (var == nullptr) {
+			setErrorMessage("malloc failed for new variable: %s",
+			    strerror(errno));
+			return (E_HYPERTRACE_SYS);
+		}
 		memset(var, 0, sizeof(dtrace_difv_t));
 		var->dtdv_ctfid = CTF_ERR;
 	}
 
 	assert(var->dtdv_ctfid == CTF_ERR);
 	memcpy(var, difv, sizeof(dtrace_difv_t));
-
-	d_mod = dt_module_lookup_by_name(dtp, "D");
+	dt_module_t *d_mod = dt_module_lookup_by_name(dtp, "D");
 	assert(d_mod != NULL);
-	d_ctfp = dt_module_getctf(dtp, d_mod);
+	ctf_file_t *d_ctfp = dt_module_getctf(dtp, d_mod);
 	assert(d_ctfp != NULL);
-
 	if (difv->dtdv_ctfp != d_ctfp) {
 		var->dtdv_ctfid = CTF_ERR;
 		var->dtdv_sym = NULL;
@@ -336,29 +327,30 @@ HyperTraceLinker::insertVar(dtrace_difo_t *difo, uint16_t varid, uint8_t scope,
 		var->dtdv_tf = dt_typefile_D();
 		var->dtdv_storedtype = difv->dtdv_storedtype;
 	}
+	_HYPERTRACE_LOG_LINKER(
+	    "inserting variable = {varid=%u, scope=%d, kind=%d}\n", varid,
+	    scope, kind);
+	return (E_HYPERTRACE_NONE);
 }
 
 int
-dt_var_uninitialized(dtrace_difv_t *difv)
+varIsUninitialized(dtrace_difv_t *difv)
 {
 
 	return (difv->dtdv_ctfid == CTF_ERR && difv->dtdv_tf == NULL &&
 	    difv->dtdv_sym == NULL);
 }
 
-void
+int
 HyperTraceLinker::insertVar(dtrace_difv_t *difv)
 {
-	dtrace_difv_t *var = nullptr;
-	ctf_file_t *d_ctfp;
-	dt_module_t *d_mod;
-
 	/*
 	 * Search through the existing variable list looking for
 	 * the variable being currently defined. If we find it,
 	 * we will simply break out of the loop and move onto
 	 * the next instruction.
 	 */
+	dtrace_difv_t *var = nullptr;
 	for (auto &v : varVector) {
 		if (v->dtdv_scope == difv->dtdv_scope &&
 		    v->dtdv_kind == difv->dtdv_kind &&
@@ -369,7 +361,7 @@ HyperTraceLinker::insertVar(dtrace_difv_t *difv)
 	}
 
 	if (var && var->dtdv_ctfid != CTF_ERR)
-		return;
+		return (E_HYPERTRACE_NONE);
 
 	/*
 	 * Allocate a new variable to be put into our list and
@@ -379,20 +371,21 @@ HyperTraceLinker::insertVar(dtrace_difv_t *difv)
 	if (var == nullptr) {
 		varVector.push_back(std::make_unique<dtrace_difv_t>());
 		var = varVector.back().get();
-		if (var == nullptr)
-			errx(EXIT_FAILURE, "failed to allocate a new variable");
+		if (var == nullptr) {
+			setErrorMessage("malloc failed for new variable: %s",
+			    strerror(errno));
+			return (E_HYPERTRACE_SYS);
+		}
 		memset(var, 0, sizeof(dtrace_difv_t));
 		var->dtdv_ctfid = CTF_ERR;
 	}
 
 	assert(var->dtdv_ctfid == CTF_ERR);
 	memcpy(var, difv, sizeof(dtrace_difv_t));
-
-	d_mod = dt_module_lookup_by_name(dtp, "D");
+	dt_module_t *d_mod = dt_module_lookup_by_name(dtp, "D");
 	assert(d_mod != NULL);
-	d_ctfp = dt_module_getctf(dtp, d_mod);
+	ctf_file_t *d_ctfp = dt_module_getctf(dtp, d_mod);
 	assert(d_ctfp != NULL);
-
 	if (difv->dtdv_ctfp != d_ctfp) {
 		var->dtdv_ctfid = CTF_ERR;
 		var->dtdv_sym = NULL;
@@ -409,76 +402,90 @@ HyperTraceLinker::insertVar(dtrace_difv_t *difv)
 		var->dtdv_tf = dt_typefile_D();
 		var->dtdv_storedtype = difv->dtdv_type;
 	}
+	_HYPERTRACE_LOG_LINKER(
+	    "inserting variable = {varid=%u, scope=%d, kind=%d}\n",
+	    difv->dtdv_id, difv->dtdv_scope, difv->dtdv_kind);
+	return (E_HYPERTRACE_NONE);
 }
 
-void
+int
 HyperTraceLinker::populateVariablesFromDIFO(dtrace_difo_t *difo)
 {
-	dtrace_difv_t *difv;
-	size_t i;
-	uint8_t opcode;
-	dif_instr_t instr;
-	uint16_t varid;
-
-	for (i = 0; i < difo->dtdo_varlen; i++) {
-		difv = &difo->dtdo_vartab[i];
-		insertVar(difv);
+	int e;
+	for (uint_t i = 0; i < difo->dtdo_varlen; i++) {
+		dtrace_difv_t *difv = &difo->dtdo_vartab[i];
+		e = insertVar(difv);
+		if (e) [[unlikely]]
+			return (e);
 	}
 
-	for (i = 0; i < difo->dtdo_len; i++) {
-		instr = difo->dtdo_buf[i];
-		opcode = DIF_INSTR_OP(instr);
-
+	for (uint_t i = 0; i < difo->dtdo_len; i++) {
+		dif_instr_t instr = difo->dtdo_buf[i];
+		uint8_t opcode = DIF_INSTR_OP(instr);
+		uint16_t varid;
 		switch (opcode) {
 		case DIF_OP_STGS:
 		case DIF_OP_LDGS:
 			varid = DIF_INSTR_VAR(instr);
-			if (!dt_var_is_builtin(varid))
-				insertVar(difo, varid, DIFV_SCOPE_GLOBAL,
+			if (!isBuiltinVariable(varid)) {
+				e = insertVar(difo, varid, DIFV_SCOPE_GLOBAL,
 				    DIFV_KIND_SCALAR);
+				if (e) [[unlikely]]
+					return (e);
+			}
 			break;
 
 		case DIF_OP_LDLS:
 		case DIF_OP_STLS:
 			varid = DIF_INSTR_VAR(instr);
-			insertVar(difo, varid, DIFV_SCOPE_LOCAL,
+			e = insertVar(difo, varid, DIFV_SCOPE_LOCAL,
 			    DIFV_KIND_SCALAR);
+			if (e) [[unlikely]]
+				return (e);
 			break;
 
 		case DIF_OP_LDTS:
 		case DIF_OP_STTS:
 			varid = DIF_INSTR_VAR(instr);
-			insertVar(difo, varid, DIFV_SCOPE_THREAD,
+			e = insertVar(difo, varid, DIFV_SCOPE_THREAD,
 			    DIFV_KIND_SCALAR);
+			if (e) [[unlikely]]
+				return (e);
 			break;
 
 		case DIF_OP_LDGAA:
 		case DIF_OP_STGAA:
 			varid = DIF_INSTR_VAR(instr);
-			if (!dt_var_is_builtin(varid))
-				insertVar(difo, varid, DIFV_SCOPE_GLOBAL,
+			if (!isBuiltinVariable(varid)) {
+				e = insertVar(difo, varid, DIFV_SCOPE_GLOBAL,
 				    DIFV_KIND_ARRAY);
+				if (e) [[unlikely]]
+					return (e);
+			}
 			break;
 
 		case DIF_OP_LDTAA:
 		case DIF_OP_STTAA:
 			varid = DIF_INSTR_VAR(instr);
-			insertVar(difo, varid, DIFV_SCOPE_THREAD,
+			e = insertVar(difo, varid, DIFV_SCOPE_THREAD,
 			    DIFV_KIND_ARRAY);
+			if (e) [[unlikely]]
+				return (e);
 			break;
 
 		default:
 			break;
 		}
 	}
+	return (E_HYPERTRACE_NONE);
 }
 
 ssize_t
-dt_get_stack(Vec<BasicBlock *> &bb_path, DFGNode *n)
+getStack(Vec<BasicBlock *> &bb_path, DFGNode *n)
 {
 	assert(!bb_path.empty());
 
-	for (ssize_t i = 0; i < n->stacks.size(); i++) {
+	for (size_t i = 0; i < n->stacks.size(); i++) {
 		auto &s = n->stacks[i];
 		if (s.identifier == bb_path) {
 			return (i);
@@ -489,4 +496,4 @@ dt_get_stack(Vec<BasicBlock *> &bb_path, DFGNode *n)
 	return (n->stacks.size() - 1);
 }
 
-}
+} // namespace dtrace
