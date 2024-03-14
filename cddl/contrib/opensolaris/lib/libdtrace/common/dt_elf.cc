@@ -1213,10 +1213,11 @@ HyperTraceELFParser::createElfOptions(void)
 
 		if (op->dteo_arg != NULL) {
 			l = strlcpy(eop->eo_arg, op->dteo_arg, eop->eo_len);
-			if (l >= eop->eo_len)
-				errx(EXIT_FAILURE,
-				    "%s is too long to be copied",
+			if (l >= eop->eo_len) {
+				setErrorMessage("%s is too long to be copied",
 				    op->dteo_arg);
+				return (makeError(nullptr, E_HYPERTRACE_ELFCREATE));
+			}
 		}
 
 		if (strcmp("define", op->dteo_name) == 0 ||
@@ -1224,10 +1225,11 @@ HyperTraceELFParser::createElfOptions(void)
 		    strcmp("undef",  op->dteo_name) == 0) {
 			l = strlcpy((char *)eop->eo_option,
 			    (char *)op->dteo_option, sizeof(eop->eo_option));
-			if (l >= sizeof(eop->eo_option))
-				errx(EXIT_FAILURE,
-				    "%s is too long to be copied",
-				    (char *)op->dteo_option);
+			if (l >= sizeof(eop->eo_option)) {
+				setErrorMessage("%s is too long to be copied",
+				    op->dteo_arg);
+				return (makeError(nullptr, E_HYPERTRACE_ELFCREATE));
+			}
 		} else
 			eop->eo_option = op->dteo_option;
 
@@ -1291,22 +1293,29 @@ HyperTraceELFParser::createElfOptions(void)
 
 		size_t len = sizeof(_dt_elf_eopt_t) + arglen;
 		auto *eop = (_dt_elf_eopt_t *)malloc(len);
-		if (eop == NULL)
-			errx(EXIT_FAILURE, "failed to malloc eop");
+		if (eop == NULL) {
+			setErrorMessage("malloc for eop failed: %s",
+			    strerror(errno));
+			return (makeError(nullptr, E_HYPERTRACE_SYS));
+		}
 
 		auto l = strlcpy(eop->eo_name, op->dteo_name, sizeof(eop->eo_name));
-		if (l >= sizeof(eop->eo_name))
-			errx(EXIT_FAILURE, "%s is too long to be copied",
-			    op->dteo_name);
+		if (l >= sizeof(eop->eo_name)) {
+			setErrorMessage("%s is too long to be copied",
+			    op->dteo_arg);
+			return (makeError(nullptr, E_HYPERTRACE_ELFCREATE));
+		}
 
 		eop->eo_len = arglen;
 
 		if (op->dteo_arg != NULL) {
 			l = strlcpy(eop->eo_arg, op->dteo_arg, eop->eo_len);
-			if (l >= eop->eo_len)
-				errx(EXIT_FAILURE,
-				    "%s is too long to be copied",
+			if (l >= eop->eo_len) {
+				setErrorMessage("%s is too long to be copied",
 				    op->dteo_arg);
+				return (
+				    makeError(nullptr, E_HYPERTRACE_ELFCREATE));
+			}
 		}
 
 		if (strcmp("define", op->dteo_name) == 0 ||
@@ -1314,10 +1323,12 @@ HyperTraceELFParser::createElfOptions(void)
 		    strcmp("undef",  op->dteo_name) == 0) {
 			l = strlcpy((char *)eop->eo_option,
 			    (char *)op->dteo_option, sizeof(eop->eo_option));
-			if (l >= sizeof(eop->eo_option))
-				errx(EXIT_FAILURE,
-				    "%s is too long to be copied",
-				    (char *)op->dteo_option);
+			if (l >= sizeof(eop->eo_option)) {
+				setErrorMessage("%s is too long to be copied",
+				    op->dteo_arg);
+				return (
+				    makeError(nullptr, E_HYPERTRACE_ELFCREATE));
+			}
 		} else
 			eop->eo_option = op->dteo_option;
 
@@ -1381,23 +1392,31 @@ HyperTraceELFParser::createElfOptions(void)
 
 		size_t len = sizeof(_dt_elf_eopt_t) + arglen;
 		auto *eop = (_dt_elf_eopt_t *)malloc(len);
-		if (eop == NULL)
-			errx(EXIT_FAILURE, "failed to malloc eop");
+		if (eop == NULL) {
+			setErrorMessage("malloc for eop failed: %s",
+			    strerror(errno));
+			return (makeError(nullptr, E_HYPERTRACE_SYS));
+		}
 
 		auto l = strlcpy(eop->eo_name, op->dteo_name,
 		    sizeof(eop->eo_name));
-		if (l >= sizeof(eop->eo_name))
-			errx(EXIT_FAILURE, "%s is too long to be copied",
-			    op->dteo_name);
+		if (l >= sizeof(eop->eo_name)) {
+			setErrorMessage("%s is too long to be copied",
+			    op->dteo_arg);
+			return (makeError(nullptr, E_HYPERTRACE_ELFCREATE));
+		}
+
 
 		eop->eo_len = arglen;
 
 		if (op->dteo_arg != NULL) {
 			l = strlcpy(eop->eo_arg, op->dteo_arg, eop->eo_len);
-			if (l >= eop->eo_len)
-				errx(EXIT_FAILURE,
-				    "%s is too long to be copied",
+			if (l >= eop->eo_len) {
+				setErrorMessage("%s is too long to be copied",
 				    op->dteo_arg);
+				return (
+				    makeError(nullptr, E_HYPERTRACE_ELFCREATE));
+			}
 		}
 
 		if (strcmp("define", op->dteo_name) == 0 ||
@@ -1405,10 +1424,12 @@ HyperTraceELFParser::createElfOptions(void)
 		    strcmp("undef",  op->dteo_name) == 0) {
 			l = strlcpy((char *)eop->eo_option,
 			    (char *)op->dteo_option, sizeof(eop->eo_option));
-			if (l >= sizeof(eop->eo_option))
-				errx(EXIT_FAILURE,
-				    "%s is too long to be copied",
-				    (char *)op->dteo_option);
+			if (l >= sizeof(eop->eo_option)) {
+				setErrorMessage("%s is too long to be copied",
+				    op->dteo_arg);
+				return (
+				    makeError(nullptr, E_HYPERTRACE_ELFCREATE));
+			}
 		} else
 			eop->eo_option = op->dteo_option;
 
@@ -1836,8 +1857,10 @@ HyperTraceELFParser::parseElfPfd(dt_elf_ref_t epfd_ref, int newFD,
 	}
 
 	auto *pfd = (dt_pfargd_t *)dt_zalloc(dtp, sizeof(dt_pfargd_t));
-	if (pfd == NULL)
-		errx(EXIT_FAILURE, "malloc() failed with %s", strerror(errno));
+	if (pfd == NULL) {
+		setErrorMessage("malloc for pfd failed: %s", strerror(errno));
+		return (makeError(nullptr, E_HYPERTRACE_SYS));
+	}
 	pfd->pfd_prefix = strdup(idNameTable + epfd->epfd_prefix);
 	pfd->pfd_preflen = epfd->epfd_preflen;
 	memcpy(pfd->pfd_fmt, epfd->epfd_fmt, 8);
@@ -2471,7 +2494,7 @@ HyperTraceELFParser::verifyChecksum(ChecksumArray checksum, String &newFilename)
 	}
 	if (buf[0] != 0x7F || buf[1] != 'E' || buf[2] != 'L' || buf[3] != 'F') {
 		setErrorMessage("%s (%d): not an ELF file");
-		errx(EXIT_FAILURE, "Not an ELF file");
+		return (makeError(-1, E_HYPERTRACE_ELFPARSE));
 	}
 
 	ChecksumArray elfChecksum;
