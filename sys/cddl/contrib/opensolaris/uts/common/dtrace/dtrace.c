@@ -16843,20 +16843,29 @@ static int
 dtrace_state_immstack(dtrace_state_t *state)
 {
 	dtrace_optval_t *opt;
-	int i, stacksize;
+	int i, stacksize, j;
 	char *s;
 
 	opt = state->dts_options;
 	stacksize = opt[DTRACEOPT_IMMSTACKFRAMES] *
 	    opt[DTRACEOPT_IMMSTACKSTRSIZE];
 
-	CPU_FOREACH(i) {
+	CPU_FOREACH (i) {
 		if (state->dts_immstack[i] != NULL)
 			continue;
 
 		s = kmem_zalloc(stacksize + ALIGNBYTES + 1, KM_NOSLEEP);
-		if (s == NULL)
+		if (s == NULL) {
+			CPU_FOREACH (j) {
+				if (state->dts_realimmstack[j]) {
+					kmem_free(state->dts_realimmstack[j],
+					    stacksize + ALIGNBYTES + 1);
+					state->dts_realimmstack[j] = NULL;
+					state->dts_immstack[j] = NULL;
+				}
+			}
 			return (ENOMEM);
+		}
 		state->dts_realimmstack[i] = s;
 		state->dts_immstack[i] = (char *)ALIGN(s);
 	}
