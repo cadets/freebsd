@@ -8911,9 +8911,7 @@ dtrace_probe(dtrace_id_t id, uintptr_t _arg0, uintptr_t _arg1, uintptr_t _arg2,
 
 				flags = (volatile uint16_t *)&cpu_core[curcpu]
 				    .cpuc_dtrace_flags;
-
 				immstackframes = state->dts_immstackframes;
-
 				if (vm_guest != VM_GUEST_NO) {
 					isstrsize = state->dts_immstackstrsize;
 					dtrace_getpcimmstack(

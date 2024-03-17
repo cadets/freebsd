@@ -94,17 +94,31 @@ dtrace_populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 
 	stack_start = stack + *depth;
 	stack_end = stack + *depth + size - 8; /* -8 to fit a uintptr_t */
+	flags = (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags;
 
 	/* assert that our addresses are 8-byte aligned */
-	ASSERT((((uintptr_t)stack) & ALIGNBYTES) == 0);
-	ASSERT((((uintptr_t)stack_start) & ALIGNBYTES) == 0);
-	ASSERT((((uintptr_t)stack_end) & ALIGNBYTES) == 0);
-
-	if (stack_end <= stack_start) {
+	if (((uintptr_t)stack & ALIGNBYTES) != 0) {
+		*flags |= CPU_DTRACE_BADSTACK;
+		return (-1);
+	}
+	if (((uintptr_t)stack_start & ALIGNBYTES) != 0) {
+		*flags |= CPU_DTRACE_BADSTACK;
+		return (-1);
+	}
+	if (((uintptr_t)stack_end & ALIGNBYTES) != 0) {
+		*flags |= CPU_DTRACE_BADSTACK;
 		return (-1);
 	}
 
-	flags = (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags;
+	if (stack_end <= stack_start)
+		return (-1);
+
+	if (pc == 0) {
+		*stack_start = 0;
+		*depth += size;
+		return (0);
+	}
+
 	if (dtrace_immstack_caching_enabled == 0) {
 		needs_caching = 0;
 		goto lookup;
@@ -151,9 +165,10 @@ finalize:
 				*c = 0;
 		} else {
 			unk = "??";
-			for (c = stack_start, i = 0; i < sizeof("??");
+			for (c = stack_start, i = 0; i < sizeof("??") - 1;
 			     c++, i++)
 				*c = unk[i];
+			*c = 0;
 			needs_caching = 0;
 			goto end;
 		}
@@ -178,26 +193,33 @@ finalize:
 		*(c - 1) = 0;
 	else
 		*c = 0;
-
 end:
 	/*
 	 * Ensure we are 8-byte aligned.
 	 */
+	c++;
 	addr = ALIGN(c);
+	if ((addr + sizeof(db_expr_t)) > (uintptr_t)stack_end) {
+		*flags &= ~CPU_DTRACE_FAULT;
+		*flags |= CPU_DTRACE_BADSTACK;
+		return (-1);
+	}
+
+	ASSERT((addr & 7) == 0);
 	ASSERT(addr >= (uintptr_t)c);
-	*((uint64_t *)addr) = off; /* store the offset after our string */
+	*((db_expr_t *)addr) = off; /* store the offset after our string */
 
 	if (needs_caching != 0) {
 		/* cache the stack entry */
 		dtrace_immstack_cache(pc, symname, off);
 	}
-
 	*depth += size;
 	return (0);
 }
 
 static int
-dtrace_populate_stack_addr(void *_pcstack, int size __unused, int *depth, pc_t pc)
+dtrace_populate_stack_addr(void *_pcstack, int size __unused, int *depth,
+    pc_t pc)
 {
 	pc_t *pcstack = _pcstack;
 
@@ -227,9 +249,7 @@ dtrace_getpcstack_generic(void *stack, int stack_limit, int size, int aframes,
 	}
 
 	aframes++;
-
 	__asm __volatile("movq %%rbp,%0" : "=r" (rbp));
-
 	frame = (struct amd64_frame *)rbp;
 	td = curthread;
 
@@ -262,8 +282,7 @@ dtrace_getpcstack_generic(void *stack, int stack_limit, int size, int aframes,
 		frame = frame->f_frame;
 	}
 
-end:
-	while (depth < stack_limit) {
+	while (depth < stack_limit * size) {
 		populate_stack(stack, size, &depth, 0);
 	}
 }
