@@ -118,6 +118,10 @@ dtrace_populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 		*depth += size;
 		return (0);
 	}
+	if (pc == (uintptr_t)dtrace_invop_callsite) {
+		/* Skip the callsite */
+		return (0);
+	}
 
 	if (dtrace_immstack_caching_enabled == 0) {
 		needs_caching = 0;
@@ -131,7 +135,7 @@ dtrace_populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 	 * FIXME: This duplicates a lot of the stuff...
 	 */
 lookup:
-	if (symname != NULL || pc == 0 || off >= (db_addr_t)dtrace_db_maxoff) {
+	if (symname != NULL || off >= (db_addr_t)dtrace_db_maxoff) {
 		needs_caching = 0;
 		goto finalize;
 	}
