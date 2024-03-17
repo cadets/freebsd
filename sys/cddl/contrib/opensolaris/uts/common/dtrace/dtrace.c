@@ -221,7 +221,7 @@ dtrace_optval_t dtrace_stackframes_default = 20;
 dtrace_optval_t dtrace_ustackframes_default = 20;
 dtrace_optval_t dtrace_jstackframes_default = 50;
 dtrace_optval_t dtrace_jstackstrsize_default = 512;
-dtrace_optval_t dtrace_immstackstrsize_default = 32;
+dtrace_optval_t dtrace_immstackstrsize_default = 64;
 dtrace_optval_t dtrace_immstackframes_default = 20;
 int		dtrace_msgdsize_max = 128;
 hrtime_t	dtrace_chill_max = MSEC2NSEC(500);		/* 500 ms */
@@ -13257,6 +13257,11 @@ dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 			 * FIXME: This should probably be something more
 			 * configurable with an option, rather than predicating
 			 * on vm_guest.
+			 *
+			 * FIXME(dstolfa): This doesn't correctly calculate the
+			 * required size because userspace loads these options
+			 * after loading the program, so we should not rely on
+			 * this being set correctly.
 			 */
 			if (vm_guest == VM_GUEST_NO) {
 				if ((nframes = arg) == 0) {
