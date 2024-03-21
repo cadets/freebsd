@@ -329,13 +329,12 @@ dtrace_augment_tracing(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	args.n_matched = 0;
 	args.n_desc = 0;
 	args.vmid = pgp->dp_vmid;
-	args.ps = malloc(sizeof(dtrace_probedesc_t) * expected_nprobes);
+	args.ps = dt_zalloc(dtp, sizeof(dtrace_probedesc_t) * expected_nprobes);
 	if (args.ps == NULL) {
 		fprintf(stderr, "could not allocate args.ps\n");
 		return (-1);
 	}
 
-	memset(args.ps, 0, sizeof(dtrace_probedesc_t) * expected_nprobes);
 	args.ps_bufsize = sizeof(dtrace_probedesc_t) * expected_nprobes;
 	n = dt_ioctl(dtp, DTRACEIOC_AUGMENT, &args);
 	dtrace_dof_destroy(dtp, dof);
@@ -358,11 +357,11 @@ dtrace_augment_tracing(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			err = errno;
 		}
 
-		free(args.ps);
+		dt_free(dtp, args.ps);
 		return (dt_set_errno(dtp, err));
 	}
 
-	free(args.ps);
+	dt_free(dtp, args.ps);
 	return (0);
 }
 
