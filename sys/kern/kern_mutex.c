@@ -36,8 +36,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_adaptive_mutexes.h"
 #include "opt_ddb.h"
 #include "opt_hwpmc_hooks.h"
@@ -426,7 +424,7 @@ _mtx_trylock_flags_int(struct mtx *m, int opts LOCK_FILE_LINE_ARG_DEF)
 
 	td = curthread;
 	tid = (uintptr_t)td;
-	if (SCHEDULER_STOPPED_TD(td))
+	if (SCHEDULER_STOPPED())
 		return (1);
 
 	KASSERT(kdb_active != 0 || !TD_IS_IDLETHREAD(td),
@@ -536,7 +534,7 @@ __mtx_lock_sleep(volatile uintptr_t *c, uintptr_t v)
 	doing_lockprof = 1;
 #endif
 
-	if (SCHEDULER_STOPPED_TD(td))
+	if (SCHEDULER_STOPPED())
 		return;
 
 	if (__predict_false(v == MTX_UNOWNED))
@@ -575,6 +573,8 @@ __mtx_lock_sleep(volatile uintptr_t *c, uintptr_t v)
 		CTR4(KTR_LOCK,
 		    "_mtx_lock_sleep: %s contested (lock=%p) at %s:%d",
 		    m->lock_object.lo_name, (void *)m->mtx_lock, file, line);
+
+	THREAD_CONTENDS_ON_LOCK(&m->lock_object);
 
 	for (;;) {
 		if (v == MTX_UNOWNED) {
@@ -672,6 +672,7 @@ retry_turnstile:
 #endif
 		v = MTX_READ_VALUE(m);
 	}
+	THREAD_CONTENTION_DONE(&m->lock_object);
 #if defined(KDTRACE_HOOKS) || defined(LOCK_PROFILING)
 	if (__predict_true(!doing_lockprof))
 		return;

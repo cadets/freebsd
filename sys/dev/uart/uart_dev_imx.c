@@ -29,8 +29,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_ddb.h"
 
 #include <sys/param.h>
@@ -51,7 +49,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #ifdef IMX_ENABLE_CLOCKS
-#include <dev/extres/clk/clk.h>
+#include <dev/clk/clk.h>
 #endif
 
 #include "uart_if.h"

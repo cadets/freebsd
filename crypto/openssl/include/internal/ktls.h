@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2018-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -22,6 +22,8 @@
 
 #ifndef HEADER_INTERNAL_KTLS
 # define HEADER_INTERNAL_KTLS
+# pragma once
+
 # ifndef OPENSSL_NO_KTLS
 
 #  if defined(__FreeBSD__)
@@ -30,7 +32,7 @@
 #   include <sys/ktls.h>
 #   include <netinet/in.h>
 #   include <netinet/tcp.h>
-#   include "openssl/ssl3.h"
+#   include <openssl/ssl3.h>
 
 #   ifndef TCP_RXTLS_ENABLE
 #    define OPENSSL_NO_KTLS_RX
@@ -229,9 +231,9 @@ static ossl_inline ossl_ssize_t ktls_sendfile(int s, int fd, off_t off,
 #   include <sys/sendfile.h>
 #   include <netinet/tcp.h>
 #   include <linux/socket.h>
-#   include "openssl/ssl3.h"
-#   include "openssl/tls1.h"
-#   include "openssl/evp.h"
+#   include <openssl/ssl3.h>
+#   include <openssl/tls1.h>
+#   include <openssl/evp.h>
 
 #   ifndef SOL_TLS
 #    define SOL_TLS 282

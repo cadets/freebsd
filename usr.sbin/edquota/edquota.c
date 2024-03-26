@@ -32,21 +32,6 @@
  * SUCH DAMAGE.
  */
 
-#if 0
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1980, 1990, 1993\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#ifndef lint
-static char sccsid[] = "@(#)edquota.c	8.1 (Berkeley) 6/6/93";
-#endif /* not lint */
-#endif
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Disk quota editor.
  */
@@ -110,7 +95,7 @@ struct quotause *getprivs(long, int, char *);
 void putprivs(long, struct quotause *);
 int readprivs(struct quotause *, char *);
 int readtimes(struct quotause *, char *);
-static void usage(void);
+static void usage(void) __dead2;
 int writetimes(struct quotause *, int, int);
 int writeprivs(struct quotause *, int, char *, int);
 

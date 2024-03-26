@@ -21,8 +21,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef MLX5_DEVICE_H
@@ -995,6 +993,7 @@ enum mlx5_cap_type {
 	MLX5_CAP_DEC,
 	MLX5_CAP_TLS,
 	MLX5_CAP_DEV_EVENT = 0x14,
+	MLX5_CAP_GENERAL_2 = 0x20,
 	/* NUM OF CAP Types */
 	MLX5_CAP_NUM
 };
@@ -1032,6 +1031,9 @@ enum mlx5_mcam_feature_groups {
 
 #define MLX5_CAP_GEN_MAX(mdev, cap) \
 	MLX5_GET(cmd_hca_cap, mdev->hca_caps_max[MLX5_CAP_GENERAL], cap)
+
+#define MLX5_CAP_GEN_2(mdev, cap) \
+	MLX5_GET(cmd_hca_cap_2, mdev->hca_caps_cur[MLX5_CAP_GENERAL_2], cap)
 
 #define MLX5_CAP_ETH(mdev, cap) \
 	MLX5_GET(per_protocol_networking_offload_caps,\

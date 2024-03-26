@@ -32,8 +32,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 #pragma once
 /* musl libc does not provide a sys/cdefs.h header */
@@ -120,6 +118,12 @@
 #else
 #define __weak_reference(sym, alias) \
 	static int alias() __attribute__((weakref(#sym)));
+#endif
+#endif
+
+#ifndef __WEAK
+#ifdef __ELF__
+#define	__WEAK(sym)	__asm__(".weak " __XSTRING(sym))
 #endif
 #endif
 
@@ -251,6 +255,13 @@
 #define __DEQUALIFY(type, var) ((type)(__uintptr_t)(const volatile void *)(var))
 #endif
 
+#ifndef __nosanitizeaddress
+#if __has_attribute(no_sanitize) && defined(__clang__)
+#define __nosanitizeaddress	__attribute__((no_sanitize("address")))
+#else
+#define __nosanitizeaddress
+#endif
+#endif
 
 /* Expose all declarations when using FreeBSD headers */
 #define	__POSIX_VISIBLE		200809

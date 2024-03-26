@@ -60,6 +60,7 @@
 #include <dt_string.h>
 #include <dt_provider.h>
 #include <dt_hypertrace.h>
+#include <dt_oformat.h>
 #ifndef illumos
 #include <sys/sysctl.h>
 #include <string.h>
@@ -1865,6 +1866,8 @@ dtrace_close(dtrace_hdl_t *dtp)
 	free(dtp->dt_kmods);
 #endif
 	free(dtp->dt_provs);
+
+	xo_finish();
 	free(dtp);
 }
 

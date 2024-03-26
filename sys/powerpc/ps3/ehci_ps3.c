@@ -23,13 +23,9 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/stdint.h>
 #include <sys/stddef.h>
 #include <sys/param.h>
@@ -65,11 +61,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/controller/ehcireg.h>
 
 #include "ps3bus.h"
-
-struct ps3_ehci_softc {
-	ehci_softc_t            base;
-	struct bus_space         tag;
-};
 
 static void
 ehci_ps3_post_reset(struct ehci_softc *ehci_softc)

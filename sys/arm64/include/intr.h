@@ -22,8 +22,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _MACHINE_INTR_H_
@@ -43,10 +41,6 @@ static inline void
 arm_irq_memory_barrier(uintptr_t irq)
 {
 }
-
-#ifdef SMP
-void intr_ipi_dispatch(u_int);
-#endif
 
 #ifdef DEV_ACPI
 #define	ACPI_INTR_XREF	1

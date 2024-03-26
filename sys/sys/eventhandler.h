@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SYS_EVENTHANDLER_H_
@@ -327,5 +325,10 @@ EVENTHANDLER_DECLARE(device_nomatch, device_nomatch_fn);
 struct ifaddr;
 typedef void (*rt_addrmsg_fn)(void *, struct ifaddr *, int);
 EVENTHANDLER_DECLARE(rt_addrmsg, rt_addrmsg_fn);
+
+/* Kernel environment variable change event */
+typedef void (*env_change_fn)(void *, const char *);
+EVENTHANDLER_DECLARE(setenv, env_change_fn);
+EVENTHANDLER_DECLARE(unsetenv, env_change_fn);
 
 #endif /* _SYS_EVENTHANDLER_H_ */

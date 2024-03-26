@@ -30,9 +30,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)btree.h	8.11 (Berkeley) 8/17/94
- * $FreeBSD$
  */
 
 /* Macros to set/clear/test flags. */

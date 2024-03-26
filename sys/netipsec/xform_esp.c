@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 /*	$OpenBSD: ip_esp.c,v 1.69 2001/06/26 06:18:59 angelos Exp $ */
 /*-
  * The authors of this code are John Ioannidis (ji@tla.org),
@@ -509,6 +508,13 @@ esp_input_cb(struct cryptop *crp)
 	xd = crp->crp_opaque;
 	CURVNET_SET(xd->vnet);
 	sav = xd->sav;
+	if (sav->state >= SADB_SASTATE_DEAD) {
+		/* saidx is freed */
+		DPRINTF(("%s: dead SA %p spi %#x\n", __func__, sav, sav->spi));
+		ESPSTAT_INC(esps_notdb);
+		error = ESRCH;
+		goto bad;
+	}
 	skip = xd->skip;
 	protoff = xd->protoff;
 	cryptoid = xd->cryptoid;

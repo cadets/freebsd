@@ -1,4 +1,4 @@
-# $NetBSD: cond-op-or.mk,v 1.8 2021/12/10 19:14:35 rillig Exp $
+# $NetBSD: cond-op-or.mk,v 1.11 2023/12/17 09:44:00 rillig Exp $
 #
 # Tests for the || operator in .if conditions.
 
@@ -43,10 +43,13 @@ DEF=	defined
 .endif
 .if 1 && (${DEF} || ${UNDEF})
 .endif
+# expect+1: Malformed conditional (1 && (!${DEF} || ${UNDEF}))
 .if 1 && (!${DEF} || ${UNDEF})
 .endif
+# expect+1: Malformed conditional (1 && (${UNDEF} || ${UNDEF}))
 .if 1 && (${UNDEF} || ${UNDEF})
 .endif
+# expect+1: Malformed conditional (1 && (!${UNDEF} || ${UNDEF}))
 .if 1 && (!${UNDEF} || ${UNDEF})
 .endif
 
@@ -68,9 +71,14 @@ DEF=	defined
 .endif
 
 # There is no operator |||.
+# expect+1: Malformed conditional (0 ||| 0)
 .if 0 ||| 0
 .  error
 .endif
 
-all:
-	@:;
+# The '||' operator must be preceded by whitespace, otherwise it becomes part
+# of the preceding bare word.  The condition is parsed as '"1||" != "" || 0'.
+.if 1|| || 0
+.else
+.  error
+.endif

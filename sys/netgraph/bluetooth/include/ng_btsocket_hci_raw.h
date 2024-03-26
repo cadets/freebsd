@@ -30,7 +30,6 @@
  * SUCH DAMAGE.
  *
  * $Id: ng_btsocket_hci_raw.h,v 1.3 2003/03/25 23:53:32 max Exp $
- * $FreeBSD$
  */
 
 #ifndef _NETGRAPH_BTSOCKET_HCI_RAW_H_
@@ -79,11 +78,10 @@ int  ng_btsocket_hci_raw_control    (struct socket *, u_long, void *,
 int  ng_btsocket_hci_raw_ctloutput  (struct socket *, struct sockopt *);
 void ng_btsocket_hci_raw_detach     (struct socket *);
 int  ng_btsocket_hci_raw_disconnect (struct socket *);
-int  ng_btsocket_hci_raw_peeraddr   (struct socket *, struct sockaddr **);
 int  ng_btsocket_hci_raw_send       (struct socket *, int, struct mbuf *,
                                      struct sockaddr *, struct mbuf *,
                                      struct thread *);
-int  ng_btsocket_hci_raw_sockaddr   (struct socket *, struct sockaddr **);
+int  ng_btsocket_hci_raw_sockaddr   (struct socket *, struct sockaddr *);
 
 #endif /* _KERNEL */
 

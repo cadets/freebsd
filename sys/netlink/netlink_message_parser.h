@@ -41,12 +41,12 @@ struct linear_buffer {
 	char		*base;	/* Base allocated memory pointer */
 	uint32_t	offset;	/* Currently used offset */
 	uint32_t	size;	/* Total buffer size */
-};
+} __aligned(_Alignof(__max_align_t));
 
 static inline void *
 lb_alloc(struct linear_buffer *lb, int len)
 {
-	len = roundup2(len, sizeof(uint64_t));
+	len = roundup2(len, _Alignof(__max_align_t));
 	if (lb->offset + len > lb->size)
 		return (NULL);
 	void *data = (void *)(lb->base + lb->offset);
@@ -150,11 +150,15 @@ static const struct nlhdr_parser _name = {		\
 	.np_size = NL_ARRAY_LEN(_np),			\
 }
 
-#define	NL_DECLARE_ATTR_PARSER(_name, _np)		\
+#define	NL_DECLARE_ATTR_PARSER_EXT(_name, _np, _pp)	\
 static const struct nlhdr_parser _name = {		\
 	.np = &((_np)[0]),				\
 	.np_size = NL_ARRAY_LEN(_np),			\
+	.post_parse = (_pp)				\
 }
+
+#define	NL_DECLARE_ATTR_PARSER(_name, _np)		\
+	NL_DECLARE_ATTR_PARSER_EXT(_name, _np, NULL)
 
 #define	NL_ATTR_BMASK_SIZE	128
 BITSET_DEFINE(nlattr_bmask, NL_ATTR_BMASK_SIZE);
@@ -168,6 +172,8 @@ int nl_parse_attrs_raw(struct nlattr *nla_head, int len, const struct nlattr_par
 int nlattr_get_flag(struct nlattr *nla, struct nl_pstate *npt,
     const void *arg, void *target);
 int nlattr_get_ip(struct nlattr *nla, struct nl_pstate *npt,
+    const void *arg, void *target);
+int nlattr_get_bool(struct nlattr *nla, struct nl_pstate *npt,
     const void *arg, void *target);
 int nlattr_get_uint8(struct nlattr *nla, struct nl_pstate *npt,
     const void *arg, void *target);
@@ -187,13 +193,19 @@ int nlattr_get_ifpz(struct nlattr *nla, struct nl_pstate *npt,
     const void *arg, void *target);
 int nlattr_get_ipvia(struct nlattr *nla, struct nl_pstate *npt,
     const void *arg, void *target);
+int nlattr_get_chara(struct nlattr *nla, struct nl_pstate *npt,
+    const void *arg, void *target);
 int nlattr_get_string(struct nlattr *nla, struct nl_pstate *npt,
     const void *arg, void *target);
 int nlattr_get_stringn(struct nlattr *nla, struct nl_pstate *npt,
     const void *arg, void *target);
+int nlattr_get_bytes(struct nlattr *nla, struct nl_pstate *npt,
+    const void *arg, void *target);
 int nlattr_get_nla(struct nlattr *nla, struct nl_pstate *npt,
     const void *arg, void *target);
 int nlattr_get_nested(struct nlattr *nla, struct nl_pstate *npt,
+    const void *arg, void *target);
+int nlattr_get_nested_ptr(struct nlattr *nla, struct nl_pstate *npt,
     const void *arg, void *target);
 
 bool nlmsg_report_err_msg(struct nl_pstate *npt, const char *fmt, ...);
@@ -283,6 +295,14 @@ nl_verify_parsers(const struct nlhdr_parser **parser, int count)
 		for (int j = 0; j < p->np_size; j++) {
 			MPASS(p->np[j].type > attr_type);
 			attr_type = p->np[j].type;
+
+			/* Recurse into nested objects. */
+			if (p->np[j].cb == nlattr_get_nested ||
+			    p->np[j].cb == nlattr_get_nested_ptr) {
+				const struct nlhdr_parser *np =
+				    (const struct nlhdr_parser *)p->np[j].arg;
+				nl_verify_parsers(&np, 1);
+			}
 		}
 	}
 #endif

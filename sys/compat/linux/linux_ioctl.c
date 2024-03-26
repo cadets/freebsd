@@ -26,9 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/capsicum.h>
 #include <sys/cdio.h>
@@ -1452,7 +1449,7 @@ linux_ioctl_cdrom(struct thread *td, struct linux_ioctl_args *args)
 		if (!error) {
 			lth.cdth_trk0 = th.starting_track;
 			lth.cdth_trk1 = th.ending_track;
-			copyout(&lth, (void *)args->arg, sizeof(lth));
+			error = copyout(&lth, (void *)args->arg, sizeof(lth));
 		}
 		break;
 	}
@@ -1614,7 +1611,8 @@ linux_ioctl_cdrom(struct thread *td, struct linux_ioctl_args *args)
 		if (error) {
 			if (lda.type == LINUX_DVD_HOST_SEND_KEY2) {
 				lda.type = LINUX_DVD_AUTH_FAILURE;
-				copyout(&lda, (void *)args->arg, sizeof(lda));
+				(void)copyout(&lda, (void *)args->arg,
+				    sizeof(lda));
 			}
 			break;
 		}
@@ -1774,9 +1772,10 @@ linux_ioctl_sound(struct thread *td, struct linux_ioctl_args *args)
 			struct linux_old_mixer_info info;
 			bzero(&info, sizeof(info));
 			strncpy(info.id, "OSS", sizeof(info.id) - 1);
-			strncpy(info.name, "FreeBSD OSS Mixer", sizeof(info.name) - 1);
-			copyout(&info, (void *)args->arg, sizeof(info));
-			return (0);
+			strncpy(info.name, "FreeBSD OSS Mixer",
+			    sizeof(info.name) - 1);
+			return (copyout(&info, (void *)args->arg,
+			    sizeof(info)));
 		}
 		default:
 			return (ENOIOCTL);
@@ -2274,6 +2273,12 @@ linux_ioctl_socket_ifreq(struct thread *td, int fd, u_int cmd,
 	case LINUX_SIOCGIFHWADDR:
 		cmd = SIOCGHWADDR;
 		break;
+	case LINUX_SIOCGIFMETRIC:
+		cmd = SIOCGIFMETRIC;
+		break;
+	case LINUX_SIOCSIFMETRIC:
+		cmd = SIOCSIFMETRIC;
+		break;
 	/*
 	 * XXX This is slightly bogus, but these ioctls are currently
 	 * XXX only used by the aironet (if_an) network driver.
@@ -2285,6 +2290,9 @@ linux_ioctl_socket_ifreq(struct thread *td, int fd, u_int cmd,
 		cmd = SIOCGPRIVATE_1;
 		break;
 	default:
+		LINUX_RATELIMIT_MSG_OPT2(
+		    "ioctl_socket_ifreq fd=%d, cmd=0x%x is not implemented",
+		    fd, cmd);
 		return (ENOIOCTL);
 	}
 
@@ -3208,7 +3216,9 @@ linux_ioctl_v4l2(struct thread *td, struct linux_ioctl_args *args)
 			error = fo_ioctl(fp, VIDIOC_TRY_FMT, &vformat,
 			    td->td_ucred, td);
 		bsd_to_linux_v4l2_format(&vformat, &l_vformat);
-		copyout(&l_vformat, (void *)args->arg, sizeof(l_vformat));
+		if (error == 0)
+			error = copyout(&l_vformat, (void *)args->arg,
+			    sizeof(l_vformat));
 		fdrop(fp, td);
 		return (error);
 
@@ -3277,7 +3287,9 @@ linux_ioctl_v4l2(struct thread *td, struct linux_ioctl_args *args)
 			error = fo_ioctl(fp, VIDIOC_DQBUF, &vbuf,
 			    td->td_ucred, td);
 		bsd_to_linux_v4l2_buffer(&vbuf, &l_vbuf);
-		copyout(&l_vbuf, (void *)args->arg, sizeof(l_vbuf));
+		if (error == 0)
+			error = copyout(&l_vbuf, (void *)args->arg,
+			    sizeof(l_vbuf));
 		fdrop(fp, td);
 		return (error);
 

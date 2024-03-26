@@ -29,9 +29,6 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/fcntl.h>
 #include <stdarg.h>
@@ -57,5 +54,6 @@ openat(int fd, const char *path, int flags, ...)
 		mode = 0;
 	}
 	return (((int (*)(int, const char *, int, ...))
-	    __libc_interposing[INTERPOS_openat])(fd, path, flags, mode));
+	    *(__libc_interposing_slot(INTERPOS_openat)))
+	    (fd, path, flags, mode));
 }

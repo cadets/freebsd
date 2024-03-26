@@ -32,8 +32,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
@@ -111,6 +109,13 @@ SYSCTL_INT(_net_inet6_ip6, OID_AUTO, dad_enhanced, CTLFLAG_VNET | CTLFLAG_RW,
 VNET_DEFINE_STATIC(int, dad_maxtry) = 15;	/* max # of *tries* to
 						   transmit DAD packet */
 #define	V_dad_maxtry			VNET(dad_maxtry)
+
+VNET_DEFINE_STATIC(int, nd6_onlink_ns_rfc4861) = 0;
+#define	V_nd6_onlink_ns_rfc4861		VNET(nd6_onlink_ns_rfc4861)
+SYSCTL_INT(_net_inet6_icmp6, ICMPV6CTL_ND6_ONLINKNSRFC4861,
+    nd6_onlink_ns_rfc4861, CTLFLAG_VNET | CTLFLAG_RW,
+    &VNET_NAME(nd6_onlink_ns_rfc4861), 0,
+    "Accept 'on-link' ICMPv6 NS messages in compliance with RFC 4861");
 
 /*
  * Input a Neighbor Solicitation Message.
@@ -264,7 +269,7 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 	}
 	if (ifa == NULL) {
 		/*
-		 * We've got an NS packet, and we don't have that adddress
+		 * We've got an NS packet, and we don't have that address
 		 * assigned for us.  We MUST silently ignore it.
 		 * See RFC2461 7.2.3.
 		 */
@@ -517,9 +522,9 @@ nd6_ns_output_fib(struct ifnet *ifp, const struct in6_addr *saddr6,
 			 */
 			if (ifa != NULL && ifa->ifa_carp != NULL &&
 			    !(*carp_master_p)(ifa)) {
-				log(LOG_DEBUG,
+				nd6log((LOG_DEBUG,
 				    "nd6_ns_output: NS from BACKUP CARP address %s\n",
-				    ip6_sprintf(ip6buf, &ip6->ip6_src));
+				    ip6_sprintf(ip6buf, &ip6->ip6_src)));
 				ifa_free(ifa);
 				goto bad;
 			}
@@ -742,9 +747,9 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 		 * the CARP master.
 		 */
 		if (!(*carp_master_p)(ifa)) {
-			log(LOG_DEBUG,
+			nd6log((LOG_DEBUG,
 			    "nd6_na_input: NA for BACKUP CARP address %s\n",
-			    ip6_sprintf(ip6bufs, &taddr6));
+			    ip6_sprintf(ip6bufs, &taddr6)));
 			ifa_free(ifa);
 			goto freeit;
 		}

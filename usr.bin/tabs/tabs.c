@@ -34,9 +34,6 @@
  * and optionally sets a soft margin.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/tty.h>
 

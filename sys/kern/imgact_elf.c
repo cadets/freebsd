@@ -31,9 +31,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_capsicum.h"
 
 #include <sys/param.h>
@@ -91,8 +88,9 @@ static Elf_Brandinfo *__elfN(get_brandinfo)(struct image_params *imgp,
     const char *interp, int32_t *osrel, uint32_t *fctl0);
 static int __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
     u_long *entry);
-static int __elfN(load_section)(struct image_params *imgp, vm_ooffset_t offset,
-    caddr_t vmaddr, size_t memsz, size_t filsz, vm_prot_t prot);
+static int __elfN(load_section)(const struct image_params *imgp,
+    vm_ooffset_t offset, caddr_t vmaddr, size_t memsz, size_t filsz,
+    vm_prot_t prot);
 static int __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp);
 static bool __elfN(freebsd_trans_osrel)(const Elf_Note *note,
     int32_t *osrel);
@@ -202,7 +200,7 @@ SYSCTL_INT(ASLR_NODE_OID, OID_AUTO, honor_sbrk, CTLFLAG_RW,
     &__elfN(aslr_honor_sbrk), 0,
     __XSTRING(__CONCAT(ELF, __ELF_WORD_SIZE)) ": assume sbrk is used");
 
-static int __elfN(aslr_stack) = 1;
+static int __elfN(aslr_stack) = __ELF_WORD_SIZE == 64;
 SYSCTL_INT(ASLR_NODE_OID, OID_AUTO, stack, CTLFLAG_RWTUN,
     &__elfN(aslr_stack), 0,
     __XSTRING(__CONCAT(ELF, __ELF_WORD_SIZE))
@@ -249,7 +247,6 @@ __elfN(freebsd_trans_osrel)(const Elf_Note *note, int32_t *osrel)
 	return (true);
 }
 
-static const char GNU_ABI_VENDOR[] = "GNU";
 static int GNU_KFREEBSD_ABI_DESC = 3;
 
 Elf_Brandnote __elfN(kfreebsd_brandnote) = {
@@ -549,9 +546,9 @@ __elfN(map_partial)(vm_map_t map, vm_object_t object, vm_ooffset_t offset,
 }
 
 static int
-__elfN(map_insert)(struct image_params *imgp, vm_map_t map, vm_object_t object,
-    vm_ooffset_t offset, vm_offset_t start, vm_offset_t end, vm_prot_t prot,
-    int cow)
+__elfN(map_insert)(const struct image_params *imgp, vm_map_t map,
+    vm_object_t object, vm_ooffset_t offset, vm_offset_t start, vm_offset_t end,
+    vm_prot_t prot, int cow)
 {
 	struct sf_buf *sf;
 	vm_offset_t off;
@@ -620,9 +617,9 @@ __elfN(map_insert)(struct image_params *imgp, vm_map_t map, vm_object_t object,
 	return (KERN_SUCCESS);
 }
 
-static int
-__elfN(load_section)(struct image_params *imgp, vm_ooffset_t offset,
-    caddr_t vmaddr, size_t memsz, size_t filsz, vm_prot_t prot)
+static int __elfN(load_section)(const struct image_params *imgp,
+    vm_ooffset_t offset, caddr_t vmaddr, size_t memsz, size_t filsz,
+    vm_prot_t prot)
 {
 	struct sf_buf *sf;
 	size_t map_len;
@@ -725,7 +722,7 @@ __elfN(load_section)(struct image_params *imgp, vm_ooffset_t offset,
 }
 
 static int
-__elfN(load_sections)(struct image_params *imgp, const Elf_Ehdr *hdr,
+__elfN(load_sections)(const struct image_params *imgp, const Elf_Ehdr *hdr,
     const Elf_Phdr *phdr, u_long rbase, u_long *base_addrp)
 {
 	vm_prot_t prot;
@@ -865,6 +862,9 @@ __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
 	if (error != 0)
 		goto fail;
 
+	if (p->p_sysent->sv_protect != NULL)
+		p->p_sysent->sv_protect(imgp, SVP_INTERP);
+
 	*addr = base_addr;
 	*entry = (unsigned long)hdr->e_entry + rbase;
 
@@ -924,7 +924,7 @@ __CONCAT(rnd_, __elfN(base))(vm_map_t map, u_long minv, u_long maxv,
 
 static int
 __elfN(enforce_limits)(struct image_params *imgp, const Elf_Ehdr *hdr,
-    const Elf_Phdr *phdr, u_long et_dyn_addr)
+    const Elf_Phdr *phdr)
 {
 	struct vmspace *vmspace;
 	const char *err_str;
@@ -939,9 +939,9 @@ __elfN(enforce_limits)(struct image_params *imgp, const Elf_Ehdr *hdr,
 		if (phdr[i].p_type != PT_LOAD || phdr[i].p_memsz == 0)
 			continue;
 
-		seg_addr = trunc_page(phdr[i].p_vaddr + et_dyn_addr);
+		seg_addr = trunc_page(phdr[i].p_vaddr + imgp->et_dyn_addr);
 		seg_size = round_page(phdr[i].p_memsz +
-		    phdr[i].p_vaddr + et_dyn_addr - seg_addr);
+		    phdr[i].p_vaddr + imgp->et_dyn_addr - seg_addr);
 
 		/*
 		 * Make the largest executable segment the official
@@ -1069,19 +1069,7 @@ static int
 __elfN(load_interp)(struct image_params *imgp, const Elf_Brandinfo *brand_info,
     const char *interp, u_long *addr, u_long *entry)
 {
-	char *path;
 	int error;
-
-	if (brand_info->emul_path != NULL &&
-	    brand_info->emul_path[0] != '\0') {
-		path = malloc(MAXPATHLEN, M_TEMP, M_WAITOK);
-		snprintf(path, MAXPATHLEN, "%s%s",
-		    brand_info->emul_path, interp);
-		error = __elfN(load_file)(imgp->proc, path, addr, entry);
-		free(path, M_TEMP);
-		if (error == 0)
-			return (0);
-	}
 
 	if (brand_info->interp_newpath != NULL &&
 	    (brand_info->interp_path == NULL ||
@@ -1118,7 +1106,7 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 	char *interp;
 	Elf_Brandinfo *brand_info;
 	struct sysentvec *sv;
-	u_long addr, baddr, et_dyn_addr, entry, proghdr;
+	u_long addr, baddr, entry, proghdr;
 	u_long maxalign, maxsalign, mapsz, maxv, maxv1, anon_loc;
 	uint32_t fctl0;
 	int32_t osrel;
@@ -1247,7 +1235,6 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		goto ret;
 	}
 	sv = brand_info->sysvec;
-	et_dyn_addr = 0;
 	if (hdr->e_type == ET_DYN) {
 		if ((brand_info->flags & BI_CAN_EXEC_DYN) == 0) {
 			uprintf("Cannot execute shared object\n");
@@ -1261,13 +1248,13 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		if (baddr == 0) {
 			if ((sv->sv_flags & SV_ASLR) == 0 ||
 			    (fctl0 & NT_FREEBSD_FCTL_ASLR_DISABLE) != 0)
-				et_dyn_addr = __elfN(pie_base);
+				imgp->et_dyn_addr = __elfN(pie_base);
 			else if ((__elfN(pie_aslr_enabled) &&
 			    (imgp->proc->p_flag2 & P2_ASLR_DISABLE) == 0) ||
 			    (imgp->proc->p_flag2 & P2_ASLR_ENABLE) != 0)
-				et_dyn_addr = ET_DYN_ADDR_RAND;
+				imgp->et_dyn_addr = ET_DYN_ADDR_RAND;
 			else
-				et_dyn_addr = __elfN(pie_base);
+				imgp->et_dyn_addr = __elfN(pie_base);
 		}
 	}
 
@@ -1300,11 +1287,11 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 	if ((sv->sv_flags & SV_ASLR) == 0 ||
 	    (imgp->proc->p_flag2 & P2_ASLR_DISABLE) != 0 ||
 	    (fctl0 & NT_FREEBSD_FCTL_ASLR_DISABLE) != 0) {
-		KASSERT(et_dyn_addr != ET_DYN_ADDR_RAND,
-		    ("et_dyn_addr == RAND and !ASLR"));
+		KASSERT(imgp->et_dyn_addr != ET_DYN_ADDR_RAND,
+		    ("imgp->et_dyn_addr == RAND and !ASLR"));
 	} else if ((imgp->proc->p_flag2 & P2_ASLR_ENABLE) != 0 ||
 	    (__elfN(aslr_enabled) && hdr->e_type == ET_EXEC) ||
-	    et_dyn_addr == ET_DYN_ADDR_RAND) {
+	    imgp->et_dyn_addr == ET_DYN_ADDR_RAND) {
 		imgp->map_flags |= MAP_ASLR;
 		/*
 		 * If user does not care about sbrk, utilize the bss
@@ -1341,24 +1328,24 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		error = ENOEXEC;
 	}
 
-	if (error == 0 && et_dyn_addr == ET_DYN_ADDR_RAND) {
+	if (error == 0 && imgp->et_dyn_addr == ET_DYN_ADDR_RAND) {
 		KASSERT((map->flags & MAP_ASLR) != 0,
 		    ("ET_DYN_ADDR_RAND but !MAP_ASLR"));
 		error = __CONCAT(rnd_, __elfN(base))(map,
 		    vm_map_min(map) + mapsz + lim_max(td, RLIMIT_DATA),
 		    /* reserve half of the address space to interpreter */
-		    maxv / 2, maxalign, &et_dyn_addr);
+		    maxv / 2, maxalign, &imgp->et_dyn_addr);
 	}
 
 	vn_lock(imgp->vp, LK_SHARED | LK_RETRY);
 	if (error != 0)
 		goto ret;
 
-	error = __elfN(load_sections)(imgp, hdr, phdr, et_dyn_addr, NULL);
+	error = __elfN(load_sections)(imgp, hdr, phdr, imgp->et_dyn_addr, NULL);
 	if (error != 0)
 		goto ret;
 
-	error = __elfN(enforce_limits)(imgp, hdr, phdr, et_dyn_addr);
+	error = __elfN(enforce_limits)(imgp, hdr, phdr);
 	if (error != 0)
 		goto ret;
 
@@ -1382,8 +1369,11 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		map->anon_loc = addr;
 	}
 
-	entry = (u_long)hdr->e_entry + et_dyn_addr;
+	entry = (u_long)hdr->e_entry + imgp->et_dyn_addr;
 	imgp->entry_addr = entry;
+
+	if (sv->sv_protect != NULL)
+		sv->sv_protect(imgp, SVP_IMAGE);
 
 	if (interp != NULL) {
 		VOP_UNLOCK(imgp->vp);
@@ -1401,7 +1391,7 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		if (error != 0)
 			goto ret;
 	} else
-		addr = et_dyn_addr;
+		addr = imgp->et_dyn_addr;
 
 	error = exec_map_stack(imgp);
 	if (error != 0)
@@ -1417,7 +1407,7 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		vn_lock(imgp->vp, LK_SHARED | LK_RETRY);
 	}
 	elf_auxargs->execfd = -1;
-	elf_auxargs->phdr = proghdr + et_dyn_addr;
+	elf_auxargs->phdr = proghdr + imgp->et_dyn_addr;
 	elf_auxargs->phent = hdr->e_phentsize;
 	elf_auxargs->phnum = hdr->e_phnum;
 	elf_auxargs->pagesz = PAGE_SIZE;
@@ -1449,7 +1439,8 @@ __elfN(freebsd_copyout_auxargs)(struct image_params *imgp, uintptr_t base)
 	Elf_Auxinfo *argarray, *pos;
 	struct vmspace *vmspace;
 	rlim_t stacksz;
-	int error, bsdflags, oc;
+	int error, oc;
+	uint32_t bsdflags;
 
 	argarray = pos = malloc(AT_COUNT * sizeof(*pos), M_TEMP,
 	    M_WAITOK | M_ZERO);
@@ -2719,8 +2710,9 @@ __elfN(note_procstat_auxv)(void *arg, struct sbuf *sb, size_t *sizep)
 	}
 }
 
-static bool
-__elfN(parse_notes)(struct image_params *imgp, Elf_Note *checknote,
+#define	MAX_NOTES_LOOP	4096
+bool
+__elfN(parse_notes)(const struct image_params *imgp, const Elf_Note *checknote,
     const char *note_vendor, const Elf_Phdr *pnote,
     bool (*cb)(const Elf_Note *, void *, bool *), void *cb_arg)
 {
@@ -2758,9 +2750,15 @@ __elfN(parse_notes)(struct image_params *imgp, Elf_Note *checknote,
 		    pnote->p_offset + pnote->p_filesz);
 		buf = NULL;
 	}
-	for (i = 0; i < 100 && note >= note0 && note < note_end; i++) {
-		if (!aligned(note, Elf32_Addr) || (const char *)note_end -
-		    (const char *)note < sizeof(Elf_Note)) {
+	for (i = 0; i < MAX_NOTES_LOOP && note >= note0 && note < note_end;
+	    i++) {
+		if (!aligned(note, Elf32_Addr)) {
+			uprintf("Unaligned ELF note\n");
+			goto retf;
+		}
+		if ((const char *)note_end - (const char *)note <
+		    sizeof(Elf_Note)) {
+			uprintf("ELF note to short\n");
 			goto retf;
 		}
 		if (note->n_namesz != checknote->n_namesz ||
@@ -2780,6 +2778,8 @@ nextnote:
 		    roundup2(note->n_namesz, ELF_NOTE_ROUNDSIZE) +
 		    roundup2(note->n_descsz, ELF_NOTE_ROUNDSIZE));
 	}
+	if (i >= MAX_NOTES_LOOP)
+		uprintf("ELF note parser reached %d notes\n", i);
 retf:
 	res = false;
 ret:

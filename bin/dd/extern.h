@@ -31,9 +31,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)extern.h	8.3 (Berkeley) 4/2/94
- * $FreeBSD$
  */
 
 void block(void);
@@ -49,8 +46,9 @@ void progress(void);
 void summary(void);
 void sigalarm_handler(int);
 void siginfo_handler(int);
-void terminate(int);
-void check_terminate(void);
+void prepare_io(void);
+void before_io(void);
+void after_io(void);
 void unblock(void);
 void unblock_close(void);
 

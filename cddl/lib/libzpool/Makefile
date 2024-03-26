@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 ZFSTOP=	${SRCTOP}/sys/contrib/openzfs
 
@@ -69,6 +68,7 @@ KERNEL_C = \
 	dbuf.c \
 	dbuf_stats.c \
 	ddt.c \
+	ddt_stats.c \
 	ddt_zap.c \
 	dmu.c \
 	dmu_diff.c \
@@ -135,7 +135,6 @@ KERNEL_C = \
 	uberblock.c \
 	unique.c \
 	vdev.c \
-	vdev_cache.c \
 	vdev_draid.c \
 	vdev_draid_rand.c \
 	vdev_file.c \
@@ -144,6 +143,7 @@ KERNEL_C = \
 	vdev_indirect_mapping.c \
 	vdev_initialize.c \
 	vdev_label.c \
+	vdev_label_os.c \
 	vdev_mirror.c \
 	vdev_missing.c \
 	vdev_queue.c \

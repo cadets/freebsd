@@ -32,9 +32,6 @@
  * The psim iobus attachment for the OpenPIC interrupt controller.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/module.h>

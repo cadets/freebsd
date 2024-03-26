@@ -1,8 +1,8 @@
 /*
  * memcpy test.
  *
- * Copyright (c) 2019-2020, Arm Limited.
- * SPDX-License-Identifier: MIT
+ * Copyright (c) 2019-2023, Arm Limited.
+ * SPDX-License-Identifier: MIT OR Apache-2.0 WITH LLVM-exception
  */
 
 #include <stdint.h>
@@ -30,6 +30,9 @@ static const struct fun
 # endif
 # if __ARM_FEATURE_SVE
   F(__memcpy_aarch64_sve, 1)
+# endif
+# if WANT_MOPS
+  F(__memcpy_aarch64_mops, 1)
 # endif
 #elif __arm__
   F(__memcpy_arm, 0)

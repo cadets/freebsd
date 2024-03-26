@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_acpi.h"
 #include "opt_cpu.h"
 #include "opt_ddb.h"
@@ -302,11 +300,12 @@ amd64_mp_alloc_pcpu(void)
 		m = NULL;
 		if (vm_ndomains > 1) {
 			m = vm_page_alloc_noobj_domain(
-			    acpi_pxm_get_cpu_locality(cpu_apic_ids[cpu]), 0);
+			    acpi_pxm_get_cpu_locality(cpu_apic_ids[cpu]),
+			    VM_ALLOC_ZERO);
 		}
 		if (m == NULL)
 #endif
-			m = vm_page_alloc_noobj(0);
+			m = vm_page_alloc_noobj(VM_ALLOC_ZERO);
 		if (m == NULL)
 			panic("cannot alloc pcpu page for cpu %d", cpu);
 		pmap_qenter((vm_offset_t)&__pcpu[cpu], &m, 1);

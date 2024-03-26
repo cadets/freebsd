@@ -32,11 +32,12 @@
  * POSSIBILITY OF SUCH DAMAGES.
  *
  * $Id: //depot/users/kenm/FreeBSD-test2/sys/cam/ctl/ctl_ha.h#1 $
- * $FreeBSD$
  */
 
 #ifndef _CTL_HA_H_
 #define	_CTL_HA_H_
+
+#include <sys/queue.h>
 
 /*
  * CTL High Availability Modes:

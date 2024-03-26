@@ -1,8 +1,9 @@
-# $FreeBSD$
 
 .include <bsd.init.mk>
 
 LIB=		clang_rt.xray-${CRTARCH}
+
+CFLAGS+=	-DSANITIZER_COMMON_NO_REDEFINE_BUILTINS
 
 SRCS+=		sanitizer_common/sanitizer_allocator.cpp
 SRCS+=		sanitizer_common/sanitizer_allocator_checks.cpp
@@ -20,8 +21,6 @@ SRCS+=		sanitizer_common/sanitizer_linux.cpp
 SRCS+=		sanitizer_common/sanitizer_linux_libcdep.cpp
 SRCS+=		sanitizer_common/sanitizer_mutex.cpp
 SRCS+=		sanitizer_common/sanitizer_platform_limits_freebsd.cpp
-SRCS+=		sanitizer_common/sanitizer_platform_limits_linux.cpp
-SRCS+=		sanitizer_common/sanitizer_platform_limits_posix.cpp
 SRCS+=		sanitizer_common/sanitizer_posix.cpp
 SRCS+=		sanitizer_common/sanitizer_posix_libcdep.cpp
 SRCS+=		sanitizer_common/sanitizer_printf.cpp
@@ -29,6 +28,7 @@ SRCS+=		sanitizer_common/sanitizer_procmaps_bsd.cpp
 SRCS+=		sanitizer_common/sanitizer_procmaps_common.cpp
 SRCS+=		sanitizer_common/sanitizer_suppressions.cpp
 SRCS+=		sanitizer_common/sanitizer_termination.cpp
+SRCS+=		sanitizer_common/sanitizer_thread_arg_retval.cpp
 SRCS+=		sanitizer_common/sanitizer_thread_registry.cpp
 SRCS+=		sanitizer_common/sanitizer_tls_get_addr.cpp
 SRCS+=		sanitizer_common/sanitizer_type_traits.cpp

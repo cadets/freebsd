@@ -36,9 +36,6 @@
  *	All Rights Reserved.
  */
 
-/* $FreeBSD$ */
-/* From: %#pragma ident	"@(#)nis_object.x	1.10	94/05/03 SMI" */
-
 #if RPC_HDR
 %
 %#ifndef __nis_object_h

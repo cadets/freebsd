@@ -41,8 +41,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
@@ -629,6 +627,15 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip,
 	/* Save protocol */
 	m_copydata(m, protoff, 1, &nxt8);
 	prot = nxt8;
+
+	/*
+	 * Check that we have NAT-T enabled and apply transport mode
+	 * decapsulation NAT procedure (RFC3948).
+	 * Do this before invoking into the PFIL.
+	 */
+	if (sav->natt != NULL &&
+	    (prot == IPPROTO_UDP || prot == IPPROTO_TCP))
+		udp_ipsec_adjust_cksum(m, sav, prot, skip);
 
 	/* IPv6-in-IP encapsulation */
 	if (prot == IPPROTO_IPV6 &&

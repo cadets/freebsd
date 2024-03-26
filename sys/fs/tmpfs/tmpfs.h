@@ -30,8 +30,6 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _FS_TMPFS_TMPFS_H_
@@ -183,7 +181,7 @@ struct tmpfs_node {
 	 * types instead of a custom enumeration is to make things simpler
 	 * and faster, as we do not need to convert between two types.
 	 */
-	enum vtype		tn_type;	/* (c) */
+	__enum_uint8(vtype)	tn_type;	/* (c) */
 
 	/*
 	 * See the top comment. Reordered here to fill LP64 hole.
@@ -428,6 +426,9 @@ struct tmpfs_mount {
 	bool			tm_nonc;
 	/* Do not update mtime on writes through mmaped areas. */
 	bool			tm_nomtime;
+
+	/* Read from page cache directly. */
+	bool			tm_pgread;
 };
 #define	TMPFS_LOCK(tm) mtx_lock(&(tm)->tm_allnode_lock)
 #define	TMPFS_UNLOCK(tm) mtx_unlock(&(tm)->tm_allnode_lock)
@@ -455,7 +456,7 @@ struct tmpfs_dir_cursor {
  */
 
 void	tmpfs_ref_node(struct tmpfs_node *node);
-int	tmpfs_alloc_node(struct mount *mp, struct tmpfs_mount *, enum vtype,
+int	tmpfs_alloc_node(struct mount *mp, struct tmpfs_mount *, __enum_uint8(vtype),
 	    uid_t uid, gid_t gid, mode_t mode, struct tmpfs_node *,
 	    const char *, dev_t, struct tmpfs_node **);
 int	tmpfs_fo_close(struct file *fp, struct thread *td);
@@ -540,6 +541,14 @@ tmpfs_update(struct vnode *vp)
  */
 #if !defined(TMPFS_PAGES_MINRESERVED)
 #define TMPFS_PAGES_MINRESERVED		(4 * 1024 * 1024 / PAGE_SIZE)
+#endif
+
+/*
+ * Percent of available memory + swap available to use by tmpfs file systems
+ * without a size limit.
+ */
+#if !defined(TMPFS_MEM_PERCENT)
+#define TMPFS_MEM_PERCENT		100
 #endif
 
 /*

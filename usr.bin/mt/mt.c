@@ -59,21 +59,6 @@
  * Authors: Ken Merry           (Spectra Logic Corporation)
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1980, 1993\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#ifndef lint
-#if 0
-static char sccsid[] = "@(#)mt.c	8.2 (Berkeley) 5/4/95";
-#endif
-#endif /* not lint */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * mt --
  *   magnetic tape manipulation program
@@ -180,7 +165,7 @@ static const struct commands {
 static const char *getblksiz(int);
 static void printreg(const char *, u_int, const char *);
 static void status(struct mtget *);
-static void usage(void);
+static void usage(void) __dead2;
 const char *get_driver_state_str(int dsreg);
 static void st_status (struct mtget *);
 static int mt_locate(int argc, char **argv, int mtfd, const char *tape);
@@ -1555,14 +1540,14 @@ mt_getdensity(int argc, char **argv, char *xml_str,
     struct mt_status_data *status_data)
 {
 	int retval = 0;
-	int verbose = 0, xml_dump = 0;
+	int xml_dump = 0;
 	struct mt_status_entry *density_root = NULL;
 	int c;
 
 	while ((c = getopt(argc, argv, "vx")) != -1) {
 		switch (c) {
 		case 'v':
-			verbose = 1;
+			/* Ignore. */
 			break;
 		case 'x':
 			xml_dump = 1;

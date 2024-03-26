@@ -1,4 +1,6 @@
 /******************************************************************************
+ * SPDX-License-Identifier: MIT OR GPL-2.0-only
+ *
  * privcmd.h
  * 
  * Interface to /proc/xen/privcmd.
@@ -28,8 +30,6 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
- *
- * $FreeBSD$
  */
 
 #ifndef __XEN_PRIVCMD_H__

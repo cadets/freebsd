@@ -27,9 +27,6 @@
 #include "opt_inet6.h"
 #include "opt_kbd.h"
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/devctl.h>

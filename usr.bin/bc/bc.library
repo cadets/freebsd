@@ -1,4 +1,3 @@
-/*	$FreeBSD$							*/
 /*      $OpenBSD: bc.library,v 1.4 2012/03/14 07:35:53 otto Exp $	*/
 
 /*
@@ -36,7 +35,6 @@
  */
 
 /*
- *	@(#)bc.library	5.1 (Berkeley) 4/17/91
  */
 
 scale = 20

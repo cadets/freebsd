@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Microsemi / Vitesse VSC8501 (and similar).
  */
@@ -106,6 +104,7 @@ static int  vscphy_service(struct mii_softc *, struct mii_data *, int);
 static const struct mii_phydesc vscphys[] = {
 	MII_PHY_DESC(xxVITESSE, VSC8501),
 	MII_PHY_DESC(xxVITESSE, VSC8504),
+	MII_PHY_DESC(xxVITESSE, VSC8514),
 	MII_PHY_END
 };
 

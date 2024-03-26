@@ -26,9 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 
 #include <machine/armreg.h>
@@ -42,16 +39,16 @@ void _ctx_start(void);
 
 void
 ctx_done(ucontext_t *ucp)
-{       
-	        
+{
+
 	if (ucp->uc_link == NULL) {
 		exit(0);
-	} else {  
+	} else {
 		setcontext((const ucontext_t *)ucp->uc_link);
 		abort();
-	}                                                      
+	}
 }
-   
+
 __weak_reference(__makecontext, makecontext);
 
 void

@@ -1,5 +1,4 @@
 /*
- * $FreeBSD$
  *
  * Copyright (c) 2011-2023, Juniper Networks, Inc.
  * All rights reserved.
@@ -26,7 +25,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/buf.h>

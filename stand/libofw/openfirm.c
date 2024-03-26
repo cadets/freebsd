@@ -55,9 +55,6 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/endian.h>
 
 #include <machine/stdarg.h>
@@ -137,7 +134,7 @@ OF_test(char *name)
 
 /* Return firmware millisecond count. */
 int
-OF_milliseconds()
+OF_milliseconds(void)
 {
 	static struct {
 		cell_t name;
@@ -695,7 +692,7 @@ OF_boot(char *bootspec)
 
 /* Suspend and drop back to the Open Firmware interface. */
 void
-OF_enter()
+OF_enter(void)
 {
 	static struct {
 		cell_t name;
@@ -710,7 +707,7 @@ OF_enter()
 
 /* Shut down and drop back to the Open Firmware interface. */
 void
-OF_exit()
+OF_exit(void)
 {
 	static struct {
 		cell_t name;
@@ -725,7 +722,7 @@ OF_exit()
 }
 
 void
-OF_quiesce()
+OF_quiesce(void)
 {
 	static struct {
 		cell_t name;

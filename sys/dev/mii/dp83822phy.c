@@ -31,9 +31,6 @@
  * Driver for TI DP83822 Ethernet PHY
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>

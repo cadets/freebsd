@@ -1,4 +1,5 @@
-# $FreeBSD$
+
+.include <src.opts.mk>
 
 .include <src.opts.mk>
 
@@ -28,15 +29,16 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${SRCTOP}/sys
 CFLAGS+= -DHAVE_ISSETUGID
 
-CFLAGS+=	-DNEED_ERRLOC -g
-
-.if ${MK_DTRACE_DEBUG_ASAN} != "no"
+.if ${MK_DTRACE_ASAN} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 .elif ${MK_DTRACE_DEBUG_TSAN} != "no"
 CFLAGS+=	-fsanitize=thread
 LDFLAGS+=	-fsanitize=thread
 .endif
+
+CFLAGS+=	-DNEED_ERRLOC -g
+
 
 #YFLAGS+=	-d
 

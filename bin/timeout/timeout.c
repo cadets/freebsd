@@ -26,8 +26,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/procctl.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -211,7 +209,6 @@ main(int argc, char **argv)
 			case 'h':
 			default:
 				usage();
-				break;
 		}
 	}
 

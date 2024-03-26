@@ -1,7 +1,5 @@
 #!/bin/sh
 
-# $FreeBSD$
-
 #
 # Full list of all arches we don't build.
 #
@@ -95,4 +93,13 @@ for i in \
 	; do
     ta=${i##*/}
     dobuild $ta _.boot.${ta}.no_zfs.log "MK_LOADER_ZFS=no"
+done
+
+# Build w/ LOADER_BIOS_TEXTONLY
+for i in \
+	amd64/amd64 \
+	i386/i386 \
+	; do
+    ta=${i##*/}
+    dobuild $ta _.boot.${ta}.no_zfs.log "MK_LOADER_BIOS_TEXTONLY=yes"
 done

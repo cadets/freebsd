@@ -27,8 +27,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _THR_PRIVATE_H
@@ -39,7 +37,6 @@
  */
 #include <sys/types.h>
 #include <sys/time.h>
-#include <sys/cdefs.h>
 #include <sys/queue.h>
 #include <sys/param.h>
 #include <sys/cpuset.h>
@@ -263,7 +260,6 @@ struct pthread_atfork {
 };
 
 struct pthread_attr {
-#define pthread_attr_start_copy	sched_policy
 	int	sched_policy;
 	int	sched_inherit;
 	int	prio;
@@ -273,7 +269,6 @@ struct pthread_attr {
 	void	*stackaddr_attr;
 	size_t	stacksize_attr;
 	size_t	guardsize_attr;
-#define pthread_attr_end_copy	cpuset
 	cpuset_t	*cpuset;
 	size_t	cpusetsize;
 };
@@ -1075,6 +1070,7 @@ int _thr_cond_wait(pthread_cond_t *, pthread_mutex_t *);
 int _thr_detach(pthread_t);
 int _thr_equal(pthread_t, pthread_t);
 void _Tthr_exit(void *);
+int _thr_getname_np(pthread_t, char *, size_t);
 int _thr_key_create(pthread_key_t *, void (*)(void *));
 int _thr_key_delete(pthread_key_t);
 int _thr_setspecific(pthread_key_t, const void *);

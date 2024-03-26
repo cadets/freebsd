@@ -22,8 +22,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _TCP_FASTOPEN_H_
@@ -81,6 +79,7 @@ struct tcp_fastopen_ccache {
 	uint32_t 	secret;
 };
 
+struct tcpcb;
 #ifdef TCP_RFC7413
 void	tcp_fastopen_init(void);
 void	tcp_fastopen_destroy(void);

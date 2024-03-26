@@ -17,8 +17,6 @@
  * information: Portions Copyright [yyyy] [name of copyright owner]
  *
  * CDDL HEADER END
- *
- * $FreeBSD$
  */
 
 /*
@@ -601,6 +599,11 @@ do {									\
 #define	DTRACE_INSCRATCH(mstate, alloc_sz) \
 	((mstate)->dtms_scratch_base + (mstate)->dtms_scratch_size - \
 	(mstate)->dtms_scratch_ptr >= (alloc_sz))
+
+#define DTRACE_INSCRATCHPTR(mstate, ptr, howmany) \
+	((ptr) >= (mstate)->dtms_scratch_base && \
+	(ptr) <= \
+	((mstate)->dtms_scratch_base + (mstate)->dtms_scratch_size - (howmany)))
 
 static struct vm_guest_paging *
 dtrace_get_paging(const void *_vmhdl)
@@ -9038,8 +9041,23 @@ dtrace_probe(dtrace_id_t id, uintptr_t _arg0, uintptr_t _arg1, uintptr_t _arg2,
 			}
 
 			case DTRACEACT_PRINTM: {
-				/* The DIF returns a 'memref'. */
+				/*
+				 * printm() assumes that the DIF returns a
+				 * pointer returned by memref(). memref() is a
+				 * subroutine that is used to get around the
+				 * single-valued returns of DIF and is assumed
+				 * to always be allocated in the scratch space.
+				 * Therefore, we need to validate that the
+				 * pointer given to printm() is in the scratch
+				 * space in order to avoid a potential panic.
+				 */
 				uintptr_t *memref = (uintptr_t *)(uintptr_t) val;
+
+				if (!DTRACE_INSCRATCHPTR(&mstate,
+				    (uintptr_t)memref, 2 * sizeof(uintptr_t))) {
+					*flags |= CPU_DTRACE_BADADDR;
+					continue;
+				}
 
 				/* Get the size from the memref. */
 				size = memref[1];
@@ -13835,7 +13853,6 @@ dtrace_buffer_switch(dtrace_buffer_t *buf)
 	hrtime_t now;
 
 	ASSERT(!(buf->dtb_flags & DTRACEBUF_NOSWITCH));
-	ASSERT(!(buf->dtb_flags & DTRACEBUF_RING));
 
 	cookie = dtrace_interrupt_disable();
 	now = dtrace_gethrtime();
@@ -16774,10 +16791,10 @@ dtrace_state_buffer(dtrace_state_t *state, dtrace_buffer_t *buf, int which)
 
 	if (which == DTRACEOPT_BUFSIZE) {
 		if (opt[DTRACEOPT_BUFPOLICY] == DTRACEOPT_BUFPOLICY_RING)
-			flags |= DTRACEBUF_RING;
+			flags |= DTRACEBUF_RING | DTRACEBUF_NOSWITCH;
 
 		if (opt[DTRACEOPT_BUFPOLICY] == DTRACEOPT_BUFPOLICY_FILL)
-			flags |= DTRACEBUF_FILL;
+			flags |= DTRACEBUF_FILL | DTRACEBUF_NOSWITCH;
 
 		if (state != dtrace_anon.dta_state ||
 		    state->dts_activity != DTRACE_ACTIVITY_ACTIVE)

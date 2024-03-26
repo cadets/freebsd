@@ -20,9 +20,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 static uint32_t cpu_features;
 static uint32_t cpu_features2;
 

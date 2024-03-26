@@ -37,9 +37,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <ufs/ufs/dinode.h>
 #include <ufs/ufs/dir.h>

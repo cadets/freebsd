@@ -25,8 +25,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _NET_ROUTE_DEBUG_H_
@@ -109,10 +107,11 @@ SYSCTL_DECL(_net_route_debug);
  * Example: [nhop_neigh] nhops_update_neigh: L2 prepend update from lle/inet/valid/vtnet0/10.0.0.157
  */
 #define	RT_LOG(_l, _fmt, ...)	RT_LOG_##_l(_l, _fmt, ## __VA_ARGS__)
-#define	_RT_LOG(_l, _fmt, ...)	if (_DEBUG_PASS_MSG(_l)) {	\
-	_output("[" DEBUG_PREFIX_NAME "] %s: " _fmt "\n",  __func__, ##__VA_ARGS__);	\
-}
-
+#define	_RT_LOG(_l, _fmt, ...)	do {					\
+	if (_DEBUG_PASS_MSG(_l))					\
+		_output("[" DEBUG_PREFIX_NAME "] %s: " _fmt "\n",	\
+		     __func__, ##__VA_ARGS__);				\
+} while (0)
 
 /*
  * Wrapper logic to avoid compiling high levels of debugging messages for production systems.

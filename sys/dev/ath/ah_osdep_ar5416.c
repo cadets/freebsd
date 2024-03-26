@@ -22,14 +22,11 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
- *
  */
 
 #include "opt_ah.h"
 #include "opt_wlan.h"
 
-#include <sys/cdefs.h>
 #include <sys/types.h>
 #include <sys/systm.h>
 #include <sys/conf.h>
@@ -41,7 +38,6 @@
 #include <dev/ath/ath_hal/ah_internal.h>
 
 extern struct ath_hal_chip AR5416_chip;
-extern struct ath_hal_chip AR9130_chip;
 extern struct ath_hal_chip AR9160_chip;
 extern struct ath_hal_chip AR9280_chip;
 extern struct ath_hal_chip AR9285_chip;
@@ -60,7 +56,6 @@ ath_hal_ar5416_modevent(module_t mod __unused, int type, void *data __unused)
 	switch (type) {
 	case MOD_LOAD:
 		ath_hal_add_chip(&AR5416_chip);
-		ath_hal_add_chip(&AR9130_chip);
 		ath_hal_add_chip(&AR9160_chip);
 		ath_hal_add_chip(&AR9280_chip);
 		ath_hal_add_chip(&AR9285_chip);
@@ -74,7 +69,6 @@ ath_hal_ar5416_modevent(module_t mod __unused, int type, void *data __unused)
 
 	case MOD_UNLOAD:
 		ath_hal_remove_chip(&AR5416_chip);
-		ath_hal_remove_chip(&AR9130_chip);
 		ath_hal_remove_chip(&AR9160_chip);
 		ath_hal_remove_chip(&AR9280_chip);
 		ath_hal_remove_chip(&AR9285_chip);

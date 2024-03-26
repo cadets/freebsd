@@ -1,5 +1,4 @@
 /* $NetBSD: machdep.h,v 1.7 2002/02/21 02:52:21 thorpej Exp $ */
-/* $FreeBSD$ */
 
 #ifndef _MACHDEP_BOOT_MACHDEP_H_
 #define _MACHDEP_BOOT_MACHDEP_H_
@@ -50,6 +49,13 @@ struct efi_map_header;
 struct mem_region;
 void arm_add_efi_map_entries(struct efi_map_header *efihdr,
     struct mem_region *mr, int *mrcnt);
+#endif
+
+#ifdef SOCDEV_PA
+/*
+ * The virtual address SOCDEV_PA is mapped at.
+ */
+extern uintptr_t socdev_va;
 #endif
 
 /*

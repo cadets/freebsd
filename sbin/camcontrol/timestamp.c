@@ -35,9 +35,6 @@
  * SCSI tape drive timestamp support
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 
 #include <assert.h>

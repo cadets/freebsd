@@ -24,8 +24,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/stdint.h>
 #include <sys/stddef.h>
 #include <sys/param.h>
@@ -68,8 +66,8 @@ __FBSDID("$FreeBSD$");
 
 #include <arm/ti/am335x/am335x_scm.h>
 #include <arm/ti/ti_sysc.h>
-#include <dev/extres/clk/clk.h>
-#include <dev/extres/syscon/syscon.h>
+#include <dev/clk/clk.h>
+#include <dev/syscon/syscon.h>
 #include "syscon_if.h"
 
 #define USBCTRL_REV		0x00

@@ -26,9 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet6.h"
 
 #include <sys/param.h>
@@ -38,10 +35,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/proc.h>
+#include <sys/protosw.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysproto.h>
+#include <sys/vnode.h>
 #include <sys/un.h>
 #include <sys/unistd.h>
 
@@ -58,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #ifdef COMPAT_LINUX32
+#include <compat/freebsd32/freebsd32_util.h>
 #include <machine/../linux32/linux.h>
 #include <machine/../linux32/linux32_proto.h>
 #else
@@ -1017,31 +1017,29 @@ static int
 linux_accept_common(struct thread *td, int s, l_uintptr_t addr,
     l_uintptr_t namelen, int flags)
 {
-	struct sockaddr *sa;
+	struct sockaddr_storage ss = { .ss_len = sizeof(ss) };
 	struct file *fp, *fp1;
-	int bflags, len;
 	struct socket *so;
-	int error, error1;
+	socklen_t len;
+	int bflags, error, error1;
 
 	bflags = 0;
 	fp = NULL;
-	sa = NULL;
 
 	error = linux_set_socket_flags(flags, &bflags);
 	if (error != 0)
 		return (error);
 
-	if (PTRIN(addr) == NULL) {
-		len = 0;
-		error = kern_accept4(td, s, NULL, NULL, bflags, NULL);
-	} else {
+	if (PTRIN(addr) != NULL) {
 		error = copyin(PTRIN(namelen), &len, sizeof(len));
 		if (error != 0)
 			return (error);
 		if (len < 0)
 			return (EINVAL);
-		error = kern_accept4(td, s, &sa, &len, bflags, &fp);
-	}
+	} else
+		len = 0;
+
+	error = kern_accept4(td, s, (struct sockaddr *)&ss, bflags, &fp);
 
 	/*
 	 * Translate errno values into ones used by Linux.
@@ -1071,11 +1069,14 @@ linux_accept_common(struct thread *td, int s, l_uintptr_t addr,
 		return (error);
 	}
 
-	if (len != 0) {
-		error = linux_copyout_sockaddr(sa, PTRIN(addr), len);
-		if (error == 0)
-			error = copyout(&len, PTRIN(namelen),
-			    sizeof(len));
+	if (PTRIN(addr) != NULL) {
+		len = min(ss.ss_len, len);
+		error = linux_copyout_sockaddr((struct sockaddr *)&ss,
+		    PTRIN(addr), len);
+		if (error == 0) {
+			len = ss.ss_len;
+			error = copyout(&len, PTRIN(namelen), sizeof(len));
+		}
 		if (error != 0) {
 			fdclose(td, fp, td->td_retval[0]);
 			td->td_retval[0] = 0;
@@ -1083,7 +1084,6 @@ linux_accept_common(struct thread *td, int s, l_uintptr_t addr,
 	}
 	if (fp != NULL)
 		fdrop(fp, td);
-	free(sa, M_SONAME);
 	return (error);
 }
 
@@ -1106,48 +1106,50 @@ linux_accept4(struct thread *td, struct linux_accept4_args *args)
 int
 linux_getsockname(struct thread *td, struct linux_getsockname_args *args)
 {
-	struct sockaddr *sa;
-	int len, error;
+	struct sockaddr_storage ss = { .ss_len = sizeof(ss) };
+	socklen_t len;
+	int error;
 
 	error = copyin(PTRIN(args->namelen), &len, sizeof(len));
 	if (error != 0)
 		return (error);
 
-	error = kern_getsockname(td, args->s, &sa, &len);
+	error = kern_getsockname(td, args->s, (struct sockaddr *)&ss);
 	if (error != 0)
 		return (error);
 
-	if (len != 0)
-		error = linux_copyout_sockaddr(sa, PTRIN(args->addr), len);
-
-	free(sa, M_SONAME);
-	if (error == 0)
+	len = min(ss.ss_len, len);
+	error = linux_copyout_sockaddr((struct sockaddr *)&ss,
+	    PTRIN(args->addr), len);
+	if (error == 0) {
+		len = ss.ss_len;
 		error = copyout(&len, PTRIN(args->namelen), sizeof(len));
+	}
 	return (error);
 }
 
 int
 linux_getpeername(struct thread *td, struct linux_getpeername_args *args)
 {
-	struct sockaddr *sa;
-	int len, error;
+	struct sockaddr_storage ss = { .ss_len = sizeof(ss) };
+	socklen_t len;
+	int error;
 
 	error = copyin(PTRIN(args->namelen), &len, sizeof(len));
 	if (error != 0)
 		return (error);
-	if (len < 0)
-		return (EINVAL);
 
-	error = kern_getpeername(td, args->s, &sa, &len);
+	error = kern_getpeername(td, args->s, (struct sockaddr *)&ss);
 	if (error != 0)
 		return (error);
 
-	if (len != 0)
-		error = linux_copyout_sockaddr(sa, PTRIN(args->addr), len);
-
-	free(sa, M_SONAME);
-	if (error == 0)
+	len = min(ss.ss_len, len);
+	error = linux_copyout_sockaddr((struct sockaddr *)&ss,
+	    PTRIN(args->addr), len);
+	if (error == 0) {
+		len = ss.ss_len;
 		error = copyout(&len, PTRIN(args->namelen), sizeof(len));
+	}
 	return (error);
 }
 
@@ -1348,6 +1350,7 @@ static int
 linux_sendmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
     l_uint flags)
 {
+	struct sockaddr_storage ss = { .ss_len = sizeof(ss) };
 	struct cmsghdr *cmsg;
 	struct mbuf *control;
 	struct msghdr msg;
@@ -1356,7 +1359,6 @@ linux_sendmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 	struct l_msghdr linux_msghdr;
 	struct iovec *iov;
 	socklen_t datalen;
-	struct sockaddr *sa;
 	struct socket *so;
 	sa_family_t sa_family;
 	struct file *fp;
@@ -1385,7 +1387,7 @@ linux_sendmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 		return (error);
 
 #ifdef COMPAT_LINUX32
-	error = linux32_copyiniov(PTRIN(msg.msg_iov), msg.msg_iovlen,
+	error = freebsd32_copyiniov(PTRIN(msg.msg_iov), msg.msg_iovlen,
 	    &iov, EMSGSIZE);
 #else
 	error = copyiniov(msg.msg_iov, msg.msg_iovlen, &iov, EMSGSIZE);
@@ -1395,11 +1397,10 @@ linux_sendmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 
 	control = NULL;
 
-	error = kern_getsockname(td, s, &sa, &datalen);
+	error = kern_getsockname(td, s, (struct sockaddr *)&ss);
 	if (error != 0)
 		goto bad;
-	sa_family = sa->sa_family;
-	free(sa, M_SONAME);
+	sa_family = ss.ss_family;
 
 	if (flags & LINUX_MSG_OOB) {
 		error = EOPNOTSUPP;
@@ -1700,6 +1701,39 @@ _Static_assert(sizeof(struct bintime) >= sizeof(struct timespec),
 #endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
 
 static int
+recvmsg_scm_sol_socket(struct thread *td, l_int msg_type, l_int lmsg_type,
+    l_uint flags, socklen_t *datalen, void **data, void **udata)
+{
+	int error;
+
+	error = 0;
+	switch (msg_type) {
+	case SCM_RIGHTS:
+		error = recvmsg_scm_rights(td, flags, datalen,
+		    data, udata);
+		break;
+	case SCM_CREDS:
+		error = recvmsg_scm_creds(datalen, data, udata);
+		break;
+	case SCM_CREDS2:
+		error = recvmsg_scm_creds2(datalen, data, udata);
+		break;
+	case SCM_TIMESTAMP:
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
+		error = recvmsg_scm_timestamp(lmsg_type, datalen,
+		    data, udata);
+#endif
+		break;
+	case SCM_BINTIME:
+		error = recvmsg_scm_timestampns(lmsg_type, datalen,
+		    data, udata);
+		break;
+	}
+
+	return (error);
+}
+
+static int
 recvmsg_scm_ip_origdstaddr(socklen_t *datalen, void **data, void **udata)
 {
 	struct l_sockaddr *lsa;
@@ -1710,6 +1744,23 @@ recvmsg_scm_ip_origdstaddr(socklen_t *datalen, void **data, void **udata)
 		*data = *udata = lsa;
 		*datalen = sizeof(*lsa);
 	}
+	return (error);
+}
+
+static int
+recvmsg_scm_ipproto_ip(l_int msg_type, l_int lmsg_type, socklen_t *datalen,
+    void **data, void **udata)
+{
+	int error;
+
+	error = 0;
+	switch (msg_type) {
+	case IP_ORIGDSTADDR:
+		error = recvmsg_scm_ip_origdstaddr(datalen, data,
+		    udata);
+		break;
+	}
+
 	return (error);
 }
 
@@ -1728,7 +1779,7 @@ linux_recvmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 	struct sockaddr *sa;
 	caddr_t outbuf;
 	void *data, *udata;
-	int error;
+	int error, skiped;
 
 	error = copyin(msghdr, &l_msghdr, sizeof(l_msghdr));
 	if (error != 0)
@@ -1745,7 +1796,7 @@ linux_recvmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 		return (error);
 
 #ifdef COMPAT_LINUX32
-	error = linux32_copyiniov(PTRIN(msg->msg_iov), msg->msg_iovlen,
+	error = freebsd32_copyiniov(PTRIN(msg->msg_iov), msg->msg_iovlen,
 	    &iov, EMSGSIZE);
 #else
 	error = copyiniov(msg->msg_iov, msg->msg_iovlen, &iov, EMSGSIZE);
@@ -1785,8 +1836,8 @@ linux_recvmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 	if (error != 0)
 		goto bad;
 
+	skiped = outlen = 0;
 	maxlen = l_msghdr.msg_controllen;
-	l_msghdr.msg_controllen = 0;
 	if (control == NULL)
 		goto out;
 
@@ -1794,61 +1845,38 @@ linux_recvmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 	msg->msg_control = mtod(control, struct cmsghdr *);
 	msg->msg_controllen = control->m_len;
 	outbuf = PTRIN(l_msghdr.msg_control);
-	outlen = 0;
 	for (m = control; m != NULL; m = m->m_next) {
 		cm = mtod(m, struct cmsghdr *);
 		lcm->cmsg_type = bsd_to_linux_cmsg_type(p, cm->cmsg_type,
 		    cm->cmsg_level);
 		lcm->cmsg_level = bsd_to_linux_sockopt_level(cm->cmsg_level);
 
+		if (lcm->cmsg_type == -1 ||
+		    cm->cmsg_level == -1) {
+			LINUX_RATELIMIT_MSG_OPT2(
+			    "unsupported recvmsg cmsg level %d type %d",
+			    cm->cmsg_level, cm->cmsg_type);
+			/* Skip unsupported messages */
+			skiped++;
+			continue;
+		}
 		data = CMSG_DATA(cm);
 		datalen = (caddr_t)cm + cm->cmsg_len - (caddr_t)data;
 		udata = NULL;
 		error = 0;
 
-		/* Process non SOL_SOCKET types. */
-		if (cm->cmsg_level == IPPROTO_IP &&
-		    lcm->cmsg_type == LINUX_IP_ORIGDSTADDR) {
-			error = recvmsg_scm_ip_origdstaddr(&datalen, &data, &udata);
-			goto cont;
-		}
+		switch (cm->cmsg_level) {
+		case IPPROTO_IP:
+			error = recvmsg_scm_ipproto_ip(cm->cmsg_type,
+			    lcm->cmsg_type, &datalen, &data, &udata);
+ 			break;
+		case SOL_SOCKET:
+			error = recvmsg_scm_sol_socket(td, cm->cmsg_type,
+			    lcm->cmsg_type, flags, &datalen, &data, &udata);
+ 			break;
+ 		}
 
-		if (lcm->cmsg_type == -1 ||
-		    cm->cmsg_level != SOL_SOCKET) {
-			LINUX_RATELIMIT_MSG_OPT2(
-			    "unsupported recvmsg cmsg level %d type %d",
-			    cm->cmsg_level, cm->cmsg_type);
-			error = EINVAL;
-			goto bad;
-		}
-
-
-		switch (cm->cmsg_type) {
-		case SCM_RIGHTS:
-			error = recvmsg_scm_rights(td, flags,
-			    &datalen, &data, &udata);
-			break;
-		case SCM_CREDS:
-			error = recvmsg_scm_creds(&datalen,
-			    &data, &udata);
-			break;
-		case SCM_CREDS2:
-			error = recvmsg_scm_creds2(&datalen,
-			    &data, &udata);
-			break;
-		case SCM_TIMESTAMP:
-#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
-			error = recvmsg_scm_timestamp(lcm->cmsg_type,
-			    &datalen, &data, &udata);
-#endif
-			break;
-		case SCM_BINTIME:
-			error = recvmsg_scm_timestampns(lcm->cmsg_type,
-			    &datalen, &data, &udata);
-			break;
-		}
-
-cont:
+		/* The recvmsg_scm_ is responsible to free udata on error. */
 		if (error != 0)
 			goto bad;
 
@@ -1867,11 +1895,10 @@ cont:
 		lcm->cmsg_len = LINUX_CMSG_LEN(datalen);
 		error = copyout(lcm, outbuf, L_CMSG_HDRSZ);
 		if (error == 0) {
-			outbuf += L_CMSG_HDRSZ;
-			error = copyout(data, outbuf, datalen);
+			error = copyout(data, LINUX_CMSG_DATA(outbuf), datalen);
 			if (error == 0) {
-				outbuf += LINUX_CMSG_ALIGN(datalen);
-				outlen += LINUX_CMSG_LEN(datalen);
+				outbuf += LINUX_CMSG_SPACE(datalen);
+				outlen += LINUX_CMSG_SPACE(datalen);
 			}
 		}
 err:
@@ -1879,9 +1906,13 @@ err:
 		if (error != 0)
 			goto bad;
 	}
-	l_msghdr.msg_controllen = outlen;
+	if (outlen == 0 && skiped > 0) {
+		error = EINVAL;
+		goto bad;
+	}
 
 out:
+	l_msghdr.msg_controllen = outlen;
 	error = copyout(&l_msghdr, msghdr, sizeof(l_msghdr));
 
 bad:
@@ -2086,7 +2117,6 @@ linux_setsockopt(struct thread *td, struct linux_setsockopt_args *args)
 		name = linux_to_bsd_tcp_sockopt(args->optname);
 		break;
 	case SOL_NETLINK:
-		level = SOL_SOCKET;
 		name = args->optname;
 		break;
 	default:
@@ -2346,57 +2376,210 @@ out:
 	return (error);
 }
 
+/*
+ * Based on sendfile_getsock from kern_sendfile.c
+ * Determines whether an fd is a stream socket that can be used
+ * with FreeBSD sendfile.
+ */
+static bool
+is_sendfile(struct file *fp, struct file *ofp)
+{
+	struct socket *so;
+
+	/*
+	 * FreeBSD sendfile() system call sends a regular file or
+	 * shared memory object out a stream socket.
+	 */
+	if ((fp->f_type != DTYPE_SHM && fp->f_type != DTYPE_VNODE) ||
+	    (fp->f_type == DTYPE_VNODE &&
+	    (fp->f_vnode == NULL || fp->f_vnode->v_type != VREG)))
+		return (false);
+	/*
+	 * The socket must be a stream socket and connected.
+	 */
+	if (ofp->f_type != DTYPE_SOCKET)
+		return (false);
+	so = ofp->f_data;
+	if (so->so_type != SOCK_STREAM)
+		return (false);
+	/*
+	 * SCTP one-to-one style sockets currently don't work with
+	 * sendfile().
+	 */
+	if (so->so_proto->pr_protocol == IPPROTO_SCTP)
+		return (false);
+	return (!SOLISTENING(so));
+}
+
+static bool
+is_regular_file(struct file *fp)
+{
+
+	return (fp->f_type == DTYPE_VNODE && fp->f_vnode != NULL &&
+	    fp->f_vnode->v_type == VREG);
+}
+
+static int
+sendfile_fallback(struct thread *td, struct file *fp, l_int out,
+    off_t *offset, l_size_t count, off_t *sbytes)
+{
+	off_t current_offset, out_offset, to_send;
+	l_size_t bytes_sent, n_read;
+	struct file *ofp;
+	struct iovec aiov;
+	struct uio auio;
+	bool seekable;
+	size_t bufsz;
+	void *buf;
+	int flags, error;
+
+	if (offset == NULL) {
+		if ((error = fo_seek(fp, 0, SEEK_CUR, td)) != 0)
+			return (error);
+		current_offset = td->td_uretoff.tdu_off;
+	} else {
+		if ((fp->f_ops->fo_flags & DFLAG_SEEKABLE) == 0)
+			return (ESPIPE);
+		current_offset = *offset;
+	}
+	error = fget_write(td, out, &cap_pwrite_rights, &ofp);
+	if (error != 0)
+		return (error);
+	seekable = (ofp->f_ops->fo_flags & DFLAG_SEEKABLE) != 0;
+	if (seekable) {
+		if ((error = fo_seek(ofp, 0, SEEK_CUR, td)) != 0)
+			goto drop;
+		out_offset = td->td_uretoff.tdu_off;
+	} else
+		out_offset = 0;
+
+	flags = FOF_OFFSET | FOF_NOUPDATE;
+	bufsz = min(count, MAXPHYS);
+	buf = malloc(bufsz, M_LINUX, M_WAITOK);
+	bytes_sent = 0;
+	while (bytes_sent < count) {
+		to_send = min(count - bytes_sent, bufsz);
+		aiov.iov_base = buf;
+		aiov.iov_len = bufsz;
+		auio.uio_iov = &aiov;
+		auio.uio_iovcnt = 1;
+		auio.uio_segflg = UIO_SYSSPACE;
+		auio.uio_td = td;
+		auio.uio_rw = UIO_READ;
+		auio.uio_offset = current_offset;
+		auio.uio_resid = to_send;
+		error = fo_read(fp, &auio, fp->f_cred, flags, td);
+		if (error != 0)
+			break;
+		n_read = to_send - auio.uio_resid;
+		if (n_read == 0)
+			break;
+		aiov.iov_base = buf;
+		aiov.iov_len = bufsz;
+		auio.uio_iov = &aiov;
+		auio.uio_iovcnt = 1;
+		auio.uio_segflg = UIO_SYSSPACE;
+		auio.uio_td = td;
+		auio.uio_rw = UIO_WRITE;
+		auio.uio_offset = (seekable) ? out_offset : 0;
+		auio.uio_resid = n_read;
+		error = fo_write(ofp, &auio, ofp->f_cred, flags, td);
+		if (error != 0)
+			break;
+		bytes_sent += n_read;
+		current_offset += n_read;
+		out_offset += n_read;
+	}
+	free(buf, M_LINUX);
+
+	if (error == 0) {
+		*sbytes = bytes_sent;
+		if (offset != NULL)
+			*offset = current_offset;
+		else
+			error = fo_seek(fp, current_offset, SEEK_SET, td);
+	}
+	if (error == 0 && seekable)
+		error = fo_seek(ofp, out_offset, SEEK_SET, td);
+
+drop:
+	fdrop(ofp, td);
+	return (error);
+}
+
+static int
+sendfile_sendfile(struct thread *td, struct file *fp, l_int out,
+    off_t *offset, l_size_t count, off_t *sbytes)
+{
+	off_t current_offset;
+	int error;
+
+	if (offset == NULL) {
+		if ((fp->f_ops->fo_flags & DFLAG_SEEKABLE) == 0)
+			return (ESPIPE);
+		if ((error = fo_seek(fp, 0, SEEK_CUR, td)) != 0)
+			return (error);
+		current_offset = td->td_uretoff.tdu_off;
+	} else
+		current_offset = *offset;
+	error = fo_sendfile(fp, out, NULL, NULL, current_offset, count,
+	    sbytes, 0, td);
+	if (error == 0) {
+		current_offset += *sbytes;
+		if (offset != NULL)
+			*offset = current_offset;
+		else
+			error = fo_seek(fp, current_offset, SEEK_SET, td);
+	}
+	return (error);
+}
+
 static int
 linux_sendfile_common(struct thread *td, l_int out, l_int in,
-    l_loff_t *offset, l_size_t count)
+    off_t *offset, l_size_t count)
 {
-	off_t bytes_read;
+	struct file *fp, *ofp;
+	off_t sbytes;
 	int error;
-	l_loff_t current_offset;
-	struct file *fp;
+
+	/* Linux cannot have 0 count. */
+	if (count <= 0 || (offset != NULL && *offset < 0))
+		return (EINVAL);
 
 	AUDIT_ARG_FD(in);
 	error = fget_read(td, in, &cap_pread_rights, &fp);
 	if (error != 0)
 		return (error);
-
-	if (offset != NULL) {
-		current_offset = *offset;
-	} else {
-		error = (fp->f_ops->fo_flags & DFLAG_SEEKABLE) != 0 ?
-		    fo_seek(fp, 0, SEEK_CUR, td) : ESPIPE;
-		if (error != 0)
-			goto drop;
-		current_offset = td->td_uretoff.tdu_off;
-	}
-
-	bytes_read = 0;
-
-	/* Linux cannot have 0 count. */
-	if (count <= 0 || current_offset < 0) {
+	if ((fp->f_type != DTYPE_SHM && fp->f_type != DTYPE_VNODE) ||
+	    (fp->f_type == DTYPE_VNODE &&
+	    (fp->f_vnode == NULL || fp->f_vnode->v_type != VREG))) {
 		error = EINVAL;
 		goto drop;
 	}
-
-	error = fo_sendfile(fp, out, NULL, NULL, current_offset, count,
-	    &bytes_read, 0, td);
+	error = fget_unlocked(td, out, &cap_no_rights, &ofp);
 	if (error != 0)
 		goto drop;
-	current_offset += bytes_read;
 
-	if (offset != NULL) {
-		*offset = current_offset;
+	if (is_regular_file(fp) && is_regular_file(ofp)) {
+		error = kern_copy_file_range(td, in, offset, out, NULL, count,
+		    0);
 	} else {
-		error = fo_seek(fp, current_offset, SEEK_SET, td);
-		if (error != 0)
-			goto drop;
+		sbytes = 0;
+		if (is_sendfile(fp, ofp))
+			error = sendfile_sendfile(td, fp, out, offset, count,
+			    &sbytes);
+		else
+			error = sendfile_fallback(td, fp, out, offset, count,
+			    &sbytes);
+		if (error == ENOBUFS && (ofp->f_flag & FNONBLOCK) != 0)
+			error = EAGAIN;
+		if (error == 0)
+			td->td_retval[0] = sbytes;
 	}
+	fdrop(ofp, td);
 
-	td->td_retval[0] = (ssize_t)bytes_read;
 drop:
 	fdrop(fp, td);
-	if (error == ENOTSOCK)
-		error = EINVAL;
 	return (error);
 }
 
@@ -2406,10 +2589,10 @@ linux_sendfile(struct thread *td, struct linux_sendfile_args *arg)
 	/*
 	 * Differences between FreeBSD and Linux sendfile:
 	 * - Linux doesn't send anything when count is 0 (FreeBSD uses 0 to
-	 *   mean send the whole file.)  In linux_sendfile given fds are still
-	 *   checked for validity when the count is 0.
+	 *   mean send the whole file).
 	 * - Linux can send to any fd whereas FreeBSD only supports sockets.
-	 *   The same restriction follows for linux_sendfile.
+	 *   We therefore use FreeBSD sendfile where possible for performance,
+	 *   but fall back on a manual copy (sendfile_fallback).
 	 * - Linux doesn't have an equivalent for FreeBSD's flags and sf_hdtr.
 	 * - Linux takes an offset pointer and updates it to the read location.
 	 *   FreeBSD takes in an offset and a 'bytes read' parameter which is
@@ -2419,44 +2602,37 @@ linux_sendfile(struct thread *td, struct linux_sendfile_args *arg)
 	 *   returns 0.  We use the 'bytes read' parameter to get this value.
 	 */
 
-	l_loff_t offset64;
-	l_long offset;
-	int ret;
+	off_t offset64;
+	l_off_t offset;
 	int error;
 
 	if (arg->offset != NULL) {
 		error = copyin(arg->offset, &offset, sizeof(offset));
 		if (error != 0)
 			return (error);
-		offset64 = (l_loff_t)offset;
+		offset64 = offset;
 	}
 
-	ret = linux_sendfile_common(td, arg->out, arg->in,
+	error = linux_sendfile_common(td, arg->out, arg->in,
 	    arg->offset != NULL ? &offset64 : NULL, arg->count);
 
-	if (arg->offset != NULL) {
-#if defined(__i386__) || defined(__arm__) || \
-    (defined(__amd64__) && defined(COMPAT_LINUX32))
+	if (error == 0 && arg->offset != NULL) {
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
 		if (offset64 > INT32_MAX)
 			return (EOVERFLOW);
 #endif
-		offset = (l_long)offset64;
+		offset = (l_off_t)offset64;
 		error = copyout(&offset, arg->offset, sizeof(offset));
-		if (error != 0)
-			return (error);
 	}
 
-	return (ret);
+	return (error);
 }
 
-#if defined(__i386__) || defined(__arm__) || \
-    (defined(__amd64__) && defined(COMPAT_LINUX32))
-
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
 int
 linux_sendfile64(struct thread *td, struct linux_sendfile64_args *arg)
 {
-	l_loff_t offset;
-	int ret;
+	off_t offset;
 	int error;
 
 	if (arg->offset != NULL) {
@@ -2465,16 +2641,13 @@ linux_sendfile64(struct thread *td, struct linux_sendfile64_args *arg)
 			return (error);
 	}
 
-	ret = linux_sendfile_common(td, arg->out, arg->in,
+	error = linux_sendfile_common(td, arg->out, arg->in,
 		arg->offset != NULL ? &offset : NULL, arg->count);
 
-	if (arg->offset != NULL) {
+	if (error == 0 && arg->offset != NULL)
 		error = copyout(&offset, arg->offset, sizeof(offset));
-		if (error != 0)
-			return (error);
-	}
 
-	return (ret);
+	return (error);
 }
 
 /* Argument list sizes for linux_socketcall */
@@ -2565,4 +2738,4 @@ linux_socketcall(struct thread *td, struct linux_socketcall_args *args)
 	linux_msg(td, "socket type %d not implemented", args->what);
 	return (ENOSYS);
 }
-#endif /* __i386__ || __arm__ || (__amd64__ && COMPAT_LINUX32) */
+#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */

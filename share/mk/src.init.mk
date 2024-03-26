@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 .if !target(__<src.init.mk>__)
 __<src.init.mk>__:
@@ -33,10 +32,6 @@ LIBADD+= egacy
 .endif
 .endif
 
-.if ${MK_STAGING} == "yes"
-ISYSTEM=	/usr/include
-CFLAGS+=	-I${STAGE_INCLUDEDIR}
-.endif
 .endif
 
 .endif	# !target(__<src.init.mk>__)

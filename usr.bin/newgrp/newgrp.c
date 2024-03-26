@@ -30,9 +30,6 @@
  * newgrp -- change to a new group
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 
 #include <err.h>

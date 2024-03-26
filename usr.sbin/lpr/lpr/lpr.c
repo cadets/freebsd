@@ -39,21 +39,7 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1983, 1989, 1993\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#if 0
-#ifndef lint
-static char sccsid[] = "@(#)lpr.c	8.4 (Berkeley) 4/28/95";
-#endif /* not lint */
-#endif
-
 #include "lp.cdefs.h"		/* A cross-platform version of <sys/cdefs.h> */
-__FBSDID("$FreeBSD$");
-
 /*
  *      lpr -- off line print
  *
@@ -190,7 +176,7 @@ main(int argc, char *argv[])
 			jobname = optarg;
 			break;
 
-		case 'P':		/* specifiy printer name */
+		case 'P':		/* specify printer name */
 			printer = optarg;
 			break;
 

@@ -27,9 +27,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/pmc.h>
 #include <sys/pmckern.h>
@@ -168,6 +165,9 @@ power8_allocate_pmc(int cpu, int ri, struct pmc *pm,
 	config = PM_EVENT_CODE(pe);
 
 	if (a->pm_class != PMC_CLASS_POWER8)
+		return (EINVAL);
+
+	if ((a->pm_flags & PMC_F_EV_PMU) == 0)
 		return (EINVAL);
 
 	/*

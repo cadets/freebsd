@@ -10,14 +10,11 @@
  */
 
 /*
- * from: @(#)fdlibm.h 5.1 93/09/24
- * $FreeBSD$
  */
 
 #ifndef _MATH_H_
 #define	_MATH_H_
 
-#include <sys/cdefs.h>
 #include <sys/_types.h>
 #include <machine/_limits.h>
 
@@ -79,9 +76,9 @@ extern const union __nan_un {
 
 #if __STDC_VERSION__ >= 201112L || __has_extension(c_generic_selections)
 #define	__fp_type_select(x, f, d, ld) __extension__ _Generic((x),	\
-    float: f(x),							\
-    double: d(x),							\
-    long double: ld(x))
+    float: f,								\
+    double: d,								\
+    long double: ld)(x)
 #elif __GNUC_PREREQ__(3, 1) && !defined(__cplusplus)
 #define	__fp_type_select(x, f, d, ld) __builtin_choose_expr(		\
     __builtin_types_compatible_p(__typeof(x), long double), ld(x),	\
@@ -184,21 +181,21 @@ int	__signbitf(float) __pure2;
 int	__signbitl(long double) __pure2;
 
 static __inline int
-__inline_isnan(__const double __x)
+__inline_isnan(const double __x)
 {
 
 	return (__x != __x);
 }
 
 static __inline int
-__inline_isnanf(__const float __x)
+__inline_isnanf(const float __x)
 {
 
 	return (__x != __x);
 }
 
 static __inline int
-__inline_isnanl(__const long double __x)
+__inline_isnanl(const long double __x)
 {
 
 	return (__x != __x);

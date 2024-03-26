@@ -28,7 +28,6 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-/*$FreeBSD$*/
 
 #ifndef _VIRTCHNL_H_
 #define _VIRTCHNL_H_
@@ -204,7 +203,7 @@ enum virtchnl_ops {
 	VIRTCHNL_OP_CONFIG_QUANTA = 113,
 	VIRTCHNL_OP_FLOW_SUBSCRIBE = 114,
 	VIRTCHNL_OP_FLOW_UNSUBSCRIBE = 115,
-	/* opcode 116 through 128 are reserved */
+	/* opcode 116 through 130 are reserved */
 	VIRTCHNL_OP_MAX,
 };
 

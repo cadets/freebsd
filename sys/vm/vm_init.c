@@ -31,8 +31,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- *	from: @(#)vm_init.c	8.1 (Berkeley) 6/11/93
- *
  *
  * Copyright (c) 1987, 1990 Carnegie-Mellon University.
  * All rights reserved.
@@ -63,9 +61,6 @@
 /*
  *	Initialize the Virtual Memory subsystem.
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/domainset.h>
@@ -156,6 +151,7 @@ vm_ksubmap_init(struct kva_md_info *kmi)
 	vm_offset_t minaddr;
 	vm_offset_t maxaddr;
 
+	TSENTER();
 	/*
 	 * Allocate space for system data structures.
 	 * The first available kernel virtual address is in "v".
@@ -252,4 +248,5 @@ again:
 	    exec_map_entries * exec_map_entry_size + 64 * PAGE_SIZE, false);
 	kmem_subinit(pipe_map, kernel_map, &minaddr, &maxaddr, maxpipekva,
 	    false);
+	TSEXIT();
 }

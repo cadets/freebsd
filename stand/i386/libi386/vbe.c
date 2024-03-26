@@ -25,11 +25,8 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
-#include <sys/cdefs.h>
 #include <stand.h>
 #include <sys/param.h>
 #include <machine/psl.h>
@@ -85,6 +82,11 @@ static struct named_resolution {
 		.name = "1080p",
 		.width = 1920,
 		.height = 1080,
+	},
+	{
+		.name = "1440p",
+		.width = 2560,
+		.height = 1440,
 	},
 	{
 		.name = "2160p",

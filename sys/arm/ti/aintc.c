@@ -29,8 +29,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_platform.h"
 
 #include <sys/param.h>
@@ -232,7 +230,7 @@ ti_aintc_pic_attach(struct ti_aintc_softc *sc)
 	if (pic == NULL)
 		return (ENXIO);
 
-	return (intr_pic_claim_root(sc->sc_dev, xref, ti_aintc_intr, sc, 0));
+	return (intr_pic_claim_root(sc->sc_dev, xref, ti_aintc_intr, sc));
 }
 
 static int

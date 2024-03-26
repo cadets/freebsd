@@ -2,8 +2,6 @@
  * Copyright (c) 2018 VMware, Inc.
  *
  * SPDX-License-Identifier: (BSD-2-Clause OR GPL-2.0)
- *
- * $FreeBSD$
  */
 
 #ifndef _VMCI_DEFS_H_
@@ -261,7 +259,7 @@ static const struct vmci_handle VMCI_INVALID_HANDLE = {VMCI_INVALID_ID,
 #define VMCI_ERROR_QUEUEPAIR_NOT_READY		(-40)
 #define VMCI_ERROR_WOULD_BLOCK			(-41)
 
-/* VMCI clients should return error code withing this range */
+/* VMCI clients should return error code within this range */
 #define VMCI_ERROR_CLIENT_MIN			(-500)
 #define VMCI_ERROR_CLIENT_MAX			(-550)
 

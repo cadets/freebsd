@@ -27,9 +27,8 @@
  */
 
 #include <machine/asm.h>
-__FBSDID("$FreeBSD$");
-
 #include <machine/setjmp.h>
+#include <sys/elf_common.h>
 
 ENTRY(sigsetjmp)
 	cmp	x1, #0
@@ -54,3 +53,5 @@ ENTRY(siglongjmp)
 .Lmagic:
 	.quad	_JB_MAGIC__SETJMP
 END(siglongjmp)
+
+GNU_PROPERTY_AARCH64_FEATURE_1_NOTE(GNU_PROPERTY_AARCH64_FEATURE_1_VAL)

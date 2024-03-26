@@ -28,8 +28,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SYS_PMC_H_
@@ -61,8 +59,8 @@
  *
  * The patch version is incremented for every bug fix.
  */
-#define	PMC_VERSION_MAJOR	0x09
-#define	PMC_VERSION_MINOR	0x04
+#define	PMC_VERSION_MAJOR	0x0A
+#define	PMC_VERSION_MINOR	0x00
 #define	PMC_VERSION_PATCH	0x0000
 
 #define	PMC_VERSION		(PMC_VERSION_MAJOR << 24 |		\
@@ -83,7 +81,6 @@ extern char pmc_cpuid[PMC_CPUID_LEN];
  * Please keep the pmc(3) manual page in sync with this list.
  */
 #define	__PMC_CPUS()								\
-    __PMC_CPU(AMD_K7,			0x00,	"AMD K7")			\
     __PMC_CPU(AMD_K8,			0x01,	"AMD K8")			\
     __PMC_CPU(INTEL_CORE,		0x87,	"Intel Core Solo/Duo")		\
     __PMC_CPU(INTEL_CORE2,		0x88,	"Intel Core2")			\
@@ -132,7 +129,7 @@ enum pmc_cputype {
 	__PMC_CPUS()
 };
 
-#define	PMC_CPU_FIRST	PMC_CPU_AMD_K7
+#define	PMC_CPU_FIRST	PMC_CPU_AMD_K8
 #define	PMC_CPU_LAST	PMC_CPU_ARMV8_CORTEX_A76
 
 /*
@@ -140,7 +137,6 @@ enum pmc_cputype {
  */
 #define	__PMC_CLASSES()								\
     __PMC_CLASS(TSC,		0x00,	"CPU Timestamp counter")		\
-    __PMC_CLASS(K7,		0x01,	"AMD K7 performance counters")		\
     __PMC_CLASS(K8,		0x02,	"AMD K8 performance counters")		\
     __PMC_CLASS(IAF,		0x06,	"Intel Core2/Atom, fixed function")	\
     __PMC_CLASS(IAP,		0x07,	"Intel Core...Atom, programmable")	\
@@ -370,6 +366,14 @@ enum pmc_ops {
 /* V2 API */
 #define	PMC_F_CALLCHAIN		0x00000080 /*OP ALLOCATE capture callchains */
 #define	PMC_F_USERCALLCHAIN	0x00000100 /*OP ALLOCATE use userspace stack */
+
+/* V10 API */
+#define	PMC_F_EV_PMU		0x00000200 /*
+					    * OP ALLOCATE: pm_ev has special
+					    * userspace meaning; counter
+					    * configuration is communicated
+					    * through class-dependent fields
+					    */
 
 /* internal flags */
 #define	PMC_F_ATTACHED_TO_OWNER	0x00010000 /*attached to owner*/
@@ -1069,9 +1073,21 @@ extern struct pmc_cpu **pmc_pcpu;
 extern struct pmc_driverstats pmc_stats;
 
 #if	defined(HWPMC_DEBUG)
+
+/* HWPMC_DEBUG without KTR will compile but is a no-op. */
+#if !defined(KTR) || !defined(KTR_COMPILE) || ((KTR_COMPILE & KTR_SUBSYS) == 0)
+#error "HWPMC_DEBUG requires KTR and KTR_COMPILE=KTR_SUBSYS -- see ktr(4)"
+#endif
+
 #include <sys/ktr.h>
 
-/* debug flags, major flag groups */
+#define	__pmcdbg_used		/* unused variable annotation */
+
+/*
+ * Debug flags, major flag groups.
+ *
+ * Please keep the DEBUGGING section of the hwpmc(4) man page in sync.
+ */
 struct pmc_debugflags {
 	int	pdb_CPU;
 	int	pdb_CSW;
@@ -1187,6 +1203,7 @@ extern struct pmc_debugflags pmc_debugflags;
 #define	PMC_DEBUG_MIN_CLO	       12 /* close */
 
 #else
+#define	__pmcdbg_used			__unused
 #define	PMCDBG0(M, N, L, F)		/* nothing */
 #define	PMCDBG1(M, N, L, F, p1)
 #define	PMCDBG2(M, N, L, F, p1, p2)

@@ -30,9 +30,6 @@ this code that are retained.
 ===============================================================================
 */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>

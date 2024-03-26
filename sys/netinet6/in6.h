@@ -58,9 +58,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)in.h	8.3 (Berkeley) 1/3/94
- * $FreeBSD$
  */
 
 #ifndef __KAME_NETINET_IN_H_INCLUDED_
@@ -659,10 +656,10 @@ struct ip6_mtuinfo {
 struct cmsghdr;
 struct ip6_hdr;
 
+int	in6_cksum(struct mbuf *, uint8_t, uint32_t, uint32_t);
+int	in6_cksum_partial(struct mbuf *, uint8_t, uint32_t, uint32_t, uint32_t);
 int	in6_cksum_pseudo(struct ip6_hdr *, uint32_t, uint8_t, uint16_t);
-int	in6_cksum(struct mbuf *, u_int8_t, u_int32_t, u_int32_t);
-int	in6_cksum_partial(struct mbuf *, u_int8_t, u_int32_t, u_int32_t,
-			  u_int32_t);
+
 int	in6_localaddr(struct in6_addr *);
 int	in6_localip(struct in6_addr *);
 bool	in6_localip_fib(struct in6_addr *, uint16_t);
@@ -678,7 +675,6 @@ void	in6_sin6_2_sin(struct sockaddr_in *sin,
 void	in6_sin_2_v4mapsin6(struct sockaddr_in *sin,
 				 struct sockaddr_in6 *sin6);
 void	in6_sin6_2_sin_in_sock(struct sockaddr *nam);
-void	in6_sin_2_v4mapsin6_in_sock(struct sockaddr **nam);
 extern void addrsel_policy_init(void);
 
 #define	satosin6(sa)	((struct sockaddr_in6 *)(sa))

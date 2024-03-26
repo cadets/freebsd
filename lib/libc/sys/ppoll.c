@@ -29,9 +29,6 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/poll.h>
 #include "libc_private.h"
@@ -43,8 +40,7 @@ int
 ppoll(struct pollfd pfd[], nfds_t nfds, const struct timespec *__restrict
     timeout, const sigset_t *__restrict newsigmask)
 {
-
 	return (((int (*)(struct pollfd *, nfds_t, const struct timespec *,
-	    const sigset_t *)) __libc_interposing[INTERPOS_ppoll])(pfd, nfds,
-	    timeout, newsigmask));
+	    const sigset_t *))*(__libc_interposing_slot(INTERPOS_ppoll)))
+	    (pfd, nfds, timeout, newsigmask));
 }

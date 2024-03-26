@@ -30,8 +30,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _NFS_NFS_H_
@@ -638,6 +636,7 @@ struct nfssockreq {
 	u_int32_t	nr_vers;
 	struct __rpc_client *nr_client;
 	AUTH		*nr_auth;
+	char		nr_srvprinc[1];
 };
 
 /*

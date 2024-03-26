@@ -34,8 +34,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * These functions support the macros and help fiddle mbuf chains for
  * the nfs op functions. They do things like create the rpc header and
@@ -45,20 +43,20 @@ __FBSDID("$FreeBSD$");
 
 extern struct nfsstatsv1 nfsstatsv1;
 extern int ncl_mbuf_mlen;
-extern enum vtype newnv2tov_type[8];
-extern enum vtype nv34tov_type[8];
+extern __enum_uint8(vtype) newnv2tov_type[8];
+extern __enum_uint8(vtype) nv34tov_type[8];
 NFSCLSTATEMUTEX;
 
 /*
  * copies a uio scatter/gather list to an mbuf chain.
  * NOTE: can only handle iovcnt == 1
  */
-void
+int
 nfsm_uiombuf(struct nfsrv_descript *nd, struct uio *uiop, int siz)
 {
 	char *uiocp;
 	struct mbuf *mp, *mp2;
-	int xfer, left, mlen;
+	int error, xfer, left, mlen;
 	int uiosiz, clflg, rem;
 	char *mcp, *tcp;
 
@@ -106,8 +104,11 @@ nfsm_uiombuf(struct nfsrv_descript *nd, struct uio *uiop, int siz)
 			xfer = (left > mlen) ? mlen : left;
 			if (uiop->uio_segflg == UIO_SYSSPACE)
 				NFSBCOPY(uiocp, mcp, xfer);
-			else
-				copyin(uiocp, mcp, xfer);
+			else {
+				error = copyin(uiocp, mcp, xfer);
+				if (error != 0)
+					return (error);
+			}
 			mp->m_len += xfer;
 			left -= xfer;
 			uiocp += xfer;
@@ -150,6 +151,7 @@ nfsm_uiombuf(struct nfsrv_descript *nd, struct uio *uiop, int siz)
 	}
 	nd->nd_bpos = mcp;
 	nd->nd_mb = mp;
+	return (0);
 }
 
 /*
@@ -162,7 +164,7 @@ nfsm_uiombuflist(struct uio *uiop, int siz, u_int maxext)
 {
 	char *uiocp;
 	struct mbuf *mp, *mp2, *firstmp;
-	int extpg, extpgsiz = 0, i, left, mlen, rem, xfer;
+	int error, extpg, extpgsiz = 0, i, left, mlen, rem, xfer;
 	int uiosiz, clflg;
 	char *mcp, *tcp;
 
@@ -220,8 +222,13 @@ nfsm_uiombuflist(struct uio *uiop, int siz, u_int maxext)
 			xfer = (left > mlen) ? mlen : left;
 			if (uiop->uio_segflg == UIO_SYSSPACE)
 				NFSBCOPY(uiocp, mcp, xfer);
-			else
-				copyin(uiocp, mcp, xfer);
+			else {
+				error = copyin(uiocp, mcp, xfer);
+				if (error != 0) {
+					m_freem(firstmp);
+					return (NULL);
+				}
+			}
 			mp->m_len += xfer;
 			mcp += xfer;
 			if (maxext > 0) {

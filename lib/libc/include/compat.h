@@ -25,8 +25,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /*
@@ -75,8 +73,6 @@ __sym_compat(swapoff, freebsd13_swapoff, FBSD_1.0);
 
 #define	__weak_reference(sym,alias)	\
 	.weak	alias;.equ	alias,sym
-
-__weak_reference(__sys_fcntl, __fcntl_compat)
 
 #undef __weak_reference
 

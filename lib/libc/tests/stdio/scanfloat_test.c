@@ -28,9 +28,6 @@
  * Test for scanf() floating point formats.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <fenv.h>
 #include <float.h>
 #include <locale.h>

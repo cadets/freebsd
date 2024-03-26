@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 # Set default CPU compile flags and baseline CPUTYPE for each arch.  The
 # compile flags must support the minimum CPU type for each architecture but
@@ -14,8 +13,12 @@ MACHINE_CPU = amd64 sse2 sse mmx
 MACHINE_CPU = arm
 . elif ${MACHINE_CPUARCH} == "i386"
 MACHINE_CPU = i486
-. elif ${MACHINE_CPUARCH} == "powerpc"
+. elif ${MACHINE_ARCH} == "powerpc"
 MACHINE_CPU = aim
+. elif ${MACHINE_ARCH} == "powerpc64"
+MACHINE_CPU = aim altivec
+. elif ${MACHINE_ARCH} == "powerpc64le"
+MACHINE_CPU = aim altivec vsx vsx2
 . elif ${MACHINE_CPUARCH} == "riscv"
 MACHINE_CPU = riscv
 . endif
@@ -125,7 +128,7 @@ _CPUCFLAGS = -mcpu=${CPUTYPE}
 .  if ${CPUTYPE} == "e500"
 _CPUCFLAGS = -Wa,-me500 -msoft-float
 .  else
-_CPUCFLAGS = -mcpu=${CPUTYPE} -mno-powerpc64
+_CPUCFLAGS = -mcpu=${CPUTYPE}
 .  endif
 . elif ${MACHINE_ARCH:Mpowerpc64*} != ""
 _CPUCFLAGS = -mcpu=${CPUTYPE}
@@ -145,7 +148,9 @@ _CPUCFLAGS = -mcpu=${CPUTYPE}
 
 ########## i386
 . if ${MACHINE_CPUARCH} == "i386"
-.  if ${CPUTYPE} == "znver3" || ${CPUTYPE} == "znver2" || \
+.  if ${CPUTYPE} == "znver4"
+MACHINE_CPU = avx512 avx2 avx sse42 sse41 ssse3 sse4a sse3 sse2 sse mmx k6 k5 i586
+.  elif ${CPUTYPE} == "znver3" || ${CPUTYPE} == "znver2" || \
     ${CPUTYPE} == "znver1"
 MACHINE_CPU = avx2 avx sse42 sse41 ssse3 sse4a sse3 sse2 sse mmx k6 k5 i586
 .  elif ${CPUTYPE} == "bdver4"
@@ -226,7 +231,9 @@ MACHINE_CPU = mmx
 MACHINE_CPU += i486
 ########## amd64
 . elif ${MACHINE_CPUARCH} == "amd64"
-.  if ${CPUTYPE} == "znver3" || ${CPUTYPE} == "znver2" || \
+.  if ${CPUTYPE} == "znver4"
+MACHINE_CPU = avx512 avx2 avx sse42 sse41 ssse3 sse4a sse3
+.  elif ${CPUTYPE} == "znver3" || ${CPUTYPE} == "znver2" || \
     ${CPUTYPE} == "znver1"
 MACHINE_CPU = avx2 avx sse42 sse41 ssse3 sse4a sse3
 .  elif ${CPUTYPE} == "bdver4"
@@ -277,7 +284,9 @@ MACHINE_CPU += amd64 sse2 sse mmx
 .  if ${CPUTYPE} == "e500"
 MACHINE_CPU = booke softfp
 .  elif ${CPUTYPE} == "g4"
-MACHINE_CPU = altivec
+MACHINE_CPU = aim altivec
+.  else
+MACHINE_CPU= aim
 .  endif
 . elif ${MACHINE_ARCH} == "powerpc64"
 .  if ${CPUTYPE} == "e5500"
@@ -289,10 +298,10 @@ MACHINE_CPU = altivec vsx vsx2
 .  elif ${CPUTYPE} == power9
 MACHINE_CPU = altivec vsx vsx2 vsx3
 .  else
-MACHINE_CPU = altivec
+MACHINE_CPU = aim altivec
 .  endif
 . elif ${MACHINE_ARCH} == "powerpc64le"
-MACHINE_CPU = altivec vsx vsx2
+MACHINE_CPU = aim altivec vsx vsx2
 .  if ${CPUTYPE} == power9
 MACHINE_CPU += vsx3
 .  endif

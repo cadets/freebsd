@@ -26,9 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
@@ -69,7 +66,7 @@ ipmi_isa_identify(driver_t *driver, device_t parent)
 		 * create an isa ipmi device.  For now we hardcode the list
 		 * of bus, device, function tuples.
 		 */
-		devid = pci_cfgregread(0, 4, 2, PCIR_DEVVENDOR, 4);
+		devid = pci_cfgregread(0, 0, 4, 2, PCIR_DEVVENDOR, 4);
 		if (devid != 0xffffffff &&
 		    ipmi_pci_match(devid & 0xffff, devid >> 16) != NULL)
 			return;
@@ -188,16 +185,17 @@ ipmi_isa_attach(device_t dev)
 
 	switch (info.iface_type) {
 	case KCS_MODE:
-		count = 2;
+		count = IPMI_IF_KCS_NRES;
 		mode = "KCS";
 		break;
 	case SMIC_MODE:
-		count = 3;
+		count = IPMI_IF_SMIC_NRES;
 		mode = "SMIC";
 		break;
 	case BT_MODE:
-		device_printf(dev, "BT mode is unsupported\n");
-		return (ENXIO);
+		count = IPMI_IF_BT_NRES;
+		mode = "BT";
+		break;
 	default:
 		return (ENXIO);
 	}
@@ -248,19 +246,21 @@ ipmi_isa_attach(device_t dev)
 		    RF_SHAREABLE | RF_ACTIVE);
 	}
 
+	error = ENXIO;
 	switch (info.iface_type) {
 	case KCS_MODE:
 		error = ipmi_kcs_attach(sc);
-		if (error)
-			goto bad;
 		break;
 	case SMIC_MODE:
 		error = ipmi_smic_attach(sc);
-		if (error)
-			goto bad;
+		break;
+	case BT_MODE:
+		error = ipmi_bt_attach(sc);
 		break;
 	}
 
+	if (error)
+		goto bad;
 	error = ipmi_attach(dev);
 	if (error)
 		goto bad;

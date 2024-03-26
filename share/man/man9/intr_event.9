@@ -27,8 +27,6 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\" $FreeBSD$
-.\"
 .Dd October 30, 2022
 .Dt INTR_EVENT 9
 .Os
@@ -232,7 +230,7 @@ argument specifies the priority of this handler,
 corresponding to the values defined in
 .In sys/priority.h .
 It determines the order this handler is called relative to the other handlers
-for this event, as well as the scheduling priority of of the backing kernel
+for this event, as well as the scheduling priority of the backing kernel
 thread.
 .Fa flags
 argument can be used to specify properties of this handler as defined in

@@ -1,6 +1,5 @@
-# $FreeBSD$
 
-.PATH: ${SRCTOP}/sys/arm64/rockchip
+.PATH: ${SRCTOP}/sys/dev/iicbus/controller/rockchip
 
 KMOD=	rk_i2c
 SRCS=	rk_i2c.c

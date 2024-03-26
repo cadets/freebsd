@@ -33,20 +33,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1991, 1993, 1994\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#ifndef lint
-#if 0
-static char sccsid[] = "@(#)join.c	8.6 (Berkeley) 5/4/95";
-#endif
-#endif /* not lint */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 
 #include <err.h>
@@ -114,7 +100,7 @@ static void outoneline(INPUT *, LINE *);
 static void outtwoline(INPUT *, LINE *, INPUT *, LINE *);
 static void slurp(INPUT *);
 static wchar_t *towcs(const char *);
-static void usage(void);
+static void usage(void) __dead2;
 
 int
 main(int argc, char *argv[])
@@ -394,9 +380,9 @@ static int
 cmp(LINE *lp1, u_long fieldno1, LINE *lp2, u_long fieldno2)
 {
 	if (lp1->fieldcnt <= fieldno1)
-		return (lp2->fieldcnt <= fieldno2 ? 0 : 1);
+		return (lp2->fieldcnt <= fieldno2 ? 0 : -1);
 	if (lp2->fieldcnt <= fieldno2)
-		return (-1);
+		return (1);
 	return (mbscoll(lp1->fields[fieldno1], lp2->fields[fieldno2]));
 }
 

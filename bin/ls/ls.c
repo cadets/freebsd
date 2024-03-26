@@ -32,20 +32,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1989, 1993, 1994\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#if 0
-#ifndef lint
-static char sccsid[] = "@(#)ls.c	8.5 (Berkeley) 4/2/94";
-#endif /* not lint */
-#endif
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
@@ -144,6 +130,7 @@ static int f_singlecol;		/* use single column output */
 static int f_sizesort;
        int f_slash;		/* similar to f_type, but only for dirs */
        int f_sortacross;	/* sort across rows, not down columns */
+       int f_sowner;		/* disable showing owner's name */
        int f_statustime;	/* use time of last mode change */
 static int f_stream;		/* stream the output, separate with commas */
        int f_thousands;		/* show file sizes with thousands separators */
@@ -326,14 +313,21 @@ main(int argc, char *argv[])
 		case 'A':
 			f_listdot = 1;
 			break;
-		/* The -t and -S options override each other. */
+		/* The -S, -t and -v options override each other. */
 		case 'S':
 			f_sizesort = 1;
 			f_timesort = 0;
+			f_verssort = 0;
 			break;
 		case 't':
 			f_timesort = 1;
 			f_sizesort = 0;
+			f_verssort = 0;
+			break;
+		case 'v':
+			f_verssort = 1;
+			f_sizesort = 0;
+			f_timesort = 0;
 			break;
 		/* Other flags.  Please keep alphabetic. */
 		case ',':
@@ -402,7 +396,11 @@ main(int argc, char *argv[])
 			f_listdir = 1;
 			f_recursive = 0;
 			break;
-		case 'g':	/* Compatibility with 4.3BSD. */
+		case 'g':
+			f_longform = 1;
+			f_singlecol = 0;
+			f_stream = 0;
+			f_sowner = 1;
 			break;
 		case 'h':
 			f_humanval = 1;
@@ -421,6 +419,9 @@ main(int argc, char *argv[])
 			break;
 		case 'n':
 			f_numericonly = 1;
+			f_longform = 1;
+			f_singlecol = 0;
+			f_stream = 0;
 			break;
 		case 'o':
 			f_flags = 1;
@@ -439,9 +440,6 @@ main(int argc, char *argv[])
 			break;
 		case 's':
 			f_size = 1;
-			break;
-		case 'v':
-			f_verssort = 1;
 			break;
 		case 'w':
 			f_nonprint = 0;
@@ -568,6 +566,7 @@ main(int argc, char *argv[])
 			blocksize /= 512;
 		}
 	}
+
 	/* Select a sort function. */
 	if (f_reversesort) {
 		if (f_sizesort)

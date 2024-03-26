@@ -390,7 +390,6 @@ zfs_inode_destroy(struct inode *ip)
 	mutex_enter(&zfsvfs->z_znodes_lock);
 	if (list_link_active(&zp->z_link_node)) {
 		list_remove(&zfsvfs->z_all_znodes, zp);
-		zfsvfs->z_nr_znodes--;
 	}
 	mutex_exit(&zfsvfs->z_znodes_lock);
 
@@ -415,7 +414,11 @@ zfs_inode_set_ops(zfsvfs_t *zfsvfs, struct inode *ip)
 	switch (ip->i_mode & S_IFMT) {
 	case S_IFREG:
 		ip->i_op = &zpl_inode_operations;
+#ifdef HAVE_VFS_FILE_OPERATIONS_EXTEND
+		ip->i_fop = &zpl_file_operations.kabi_fops;
+#else
 		ip->i_fop = &zpl_file_operations;
+#endif
 		ip->i_mapping->a_ops = &zpl_address_space_operations;
 		break;
 
@@ -455,7 +458,11 @@ zfs_inode_set_ops(zfsvfs_t *zfsvfs, struct inode *ip)
 		/* Assume the inode is a file and attempt to continue */
 		ip->i_mode = S_IFREG | 0644;
 		ip->i_op = &zpl_inode_operations;
+#ifdef HAVE_VFS_FILE_OPERATIONS_EXTEND
+		ip->i_fop = &zpl_file_operations.kabi_fops;
+#else
 		ip->i_fop = &zpl_file_operations;
+#endif
 		ip->i_mapping->a_ops = &zpl_address_space_operations;
 		break;
 	}
@@ -535,6 +542,7 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	uint64_t links;
 	uint64_t z_uid, z_gid;
 	uint64_t atime[2], mtime[2], ctime[2], btime[2];
+	inode_timespec_t tmp_ts;
 	uint64_t projid = ZFS_DEFAULT_PROJID;
 	sa_bulk_attr_t bulk[12];
 	int count = 0;
@@ -606,9 +614,12 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	if (zp->z_pflags & ZFS_XATTR)
 		zp->z_xattr_parent = parent;
 
-	ZFS_TIME_DECODE(&ip->i_atime, atime);
-	ZFS_TIME_DECODE(&ip->i_mtime, mtime);
-	ZFS_TIME_DECODE(&ip->i_ctime, ctime);
+	ZFS_TIME_DECODE(&tmp_ts, atime);
+	zpl_inode_set_atime_to_ts(ip, tmp_ts);
+	ZFS_TIME_DECODE(&tmp_ts, mtime);
+	zpl_inode_set_mtime_to_ts(ip, tmp_ts);
+	ZFS_TIME_DECODE(&tmp_ts, ctime);
+	zpl_inode_set_ctime_to_ts(ip, tmp_ts);
 	ZFS_TIME_DECODE(&zp->z_btime, btime);
 
 	ip->i_ino = zp->z_id;
@@ -633,7 +644,6 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 
 	mutex_enter(&zfsvfs->z_znodes_lock);
 	list_insert_tail(&zfsvfs->z_all_znodes, zp);
-	zfsvfs->z_nr_znodes++;
 	mutex_exit(&zfsvfs->z_znodes_lock);
 
 	if (links > 0)
@@ -1189,6 +1199,7 @@ zfs_rezget(znode_t *zp)
 	uint64_t gen;
 	uint64_t z_uid, z_gid;
 	uint64_t atime[2], mtime[2], ctime[2], btime[2];
+	inode_timespec_t tmp_ts;
 	uint64_t projid = ZFS_DEFAULT_PROJID;
 	znode_hold_t *zh;
 
@@ -1281,9 +1292,12 @@ zfs_rezget(znode_t *zp)
 	zfs_uid_write(ZTOI(zp), z_uid);
 	zfs_gid_write(ZTOI(zp), z_gid);
 
-	ZFS_TIME_DECODE(&ZTOI(zp)->i_atime, atime);
-	ZFS_TIME_DECODE(&ZTOI(zp)->i_mtime, mtime);
-	ZFS_TIME_DECODE(&ZTOI(zp)->i_ctime, ctime);
+	ZFS_TIME_DECODE(&tmp_ts, atime);
+	zpl_inode_set_atime_to_ts(ZTOI(zp), tmp_ts);
+	ZFS_TIME_DECODE(&tmp_ts, mtime);
+	zpl_inode_set_mtime_to_ts(ZTOI(zp), tmp_ts);
+	ZFS_TIME_DECODE(&tmp_ts, ctime);
+	zpl_inode_set_ctime_to_ts(ZTOI(zp), tmp_ts);
 	ZFS_TIME_DECODE(&zp->z_btime, btime);
 
 	if ((uint32_t)gen != ZTOI(zp)->i_generation) {
@@ -1391,21 +1405,24 @@ zfs_zinactive(znode_t *zp)
 boolean_t
 zfs_relatime_need_update(const struct inode *ip)
 {
-	inode_timespec_t now;
+	inode_timespec_t now, tmp_atime, tmp_ts;
 
 	gethrestime(&now);
+	tmp_atime = zpl_inode_get_atime(ip);
 	/*
 	 * In relatime mode, only update the atime if the previous atime
 	 * is earlier than either the ctime or mtime or if at least a day
 	 * has passed since the last update of atime.
 	 */
-	if (zfs_compare_timespec(&ip->i_mtime, &ip->i_atime) >= 0)
+	tmp_ts = zpl_inode_get_mtime(ip);
+	if (zfs_compare_timespec(&tmp_ts, &tmp_atime) >= 0)
 		return (B_TRUE);
 
-	if (zfs_compare_timespec(&ip->i_ctime, &ip->i_atime) >= 0)
+	tmp_ts = zpl_inode_get_ctime(ip);
+	if (zfs_compare_timespec(&tmp_ts, &tmp_atime) >= 0)
 		return (B_TRUE);
 
-	if ((hrtime_t)now.tv_sec - (hrtime_t)ip->i_atime.tv_sec >= 24*60*60)
+	if ((hrtime_t)now.tv_sec - (hrtime_t)tmp_atime.tv_sec >= 24*60*60)
 		return (B_TRUE);
 
 	return (B_FALSE);
@@ -1428,7 +1445,7 @@ void
 zfs_tstamp_update_setup(znode_t *zp, uint_t flag, uint64_t mtime[2],
     uint64_t ctime[2])
 {
-	inode_timespec_t now;
+	inode_timespec_t now, tmp_ts;
 
 	gethrestime(&now);
 
@@ -1436,7 +1453,8 @@ zfs_tstamp_update_setup(znode_t *zp, uint_t flag, uint64_t mtime[2],
 
 	if (flag & ATTR_MTIME) {
 		ZFS_TIME_ENCODE(&now, mtime);
-		ZFS_TIME_DECODE(&(ZTOI(zp)->i_mtime), mtime);
+		ZFS_TIME_DECODE(&tmp_ts, mtime);
+		zpl_inode_set_mtime_to_ts(ZTOI(zp), tmp_ts);
 		if (ZTOZSB(zp)->z_use_fuids) {
 			zp->z_pflags |= (ZFS_ARCHIVE |
 			    ZFS_AV_MODIFIED);
@@ -1445,7 +1463,8 @@ zfs_tstamp_update_setup(znode_t *zp, uint_t flag, uint64_t mtime[2],
 
 	if (flag & ATTR_CTIME) {
 		ZFS_TIME_ENCODE(&now, ctime);
-		ZFS_TIME_DECODE(&(ZTOI(zp)->i_ctime), ctime);
+		ZFS_TIME_DECODE(&tmp_ts, ctime);
+		zpl_inode_set_ctime_to_ts(ZTOI(zp), tmp_ts);
 		if (ZTOZSB(zp)->z_use_fuids)
 			zp->z_pflags |= ZFS_ARCHIVE;
 	}
@@ -2251,6 +2270,91 @@ zfs_obj_to_stats(objset_t *osp, uint64_t obj, zfs_stat_t *sb,
 	error = zfs_obj_to_path_impl(osp, obj, hdl, sa_table, buf, len);
 
 	zfs_release_sa_handle(hdl, db, FTAG);
+	return (error);
+}
+
+/*
+ * Read a property stored within the master node.
+ */
+int
+zfs_get_zplprop(objset_t *os, zfs_prop_t prop, uint64_t *value)
+{
+	uint64_t *cached_copy = NULL;
+
+	/*
+	 * Figure out where in the objset_t the cached copy would live, if it
+	 * is available for the requested property.
+	 */
+	if (os != NULL) {
+		switch (prop) {
+		case ZFS_PROP_VERSION:
+			cached_copy = &os->os_version;
+			break;
+		case ZFS_PROP_NORMALIZE:
+			cached_copy = &os->os_normalization;
+			break;
+		case ZFS_PROP_UTF8ONLY:
+			cached_copy = &os->os_utf8only;
+			break;
+		case ZFS_PROP_CASE:
+			cached_copy = &os->os_casesensitivity;
+			break;
+		default:
+			break;
+		}
+	}
+	if (cached_copy != NULL && *cached_copy != OBJSET_PROP_UNINITIALIZED) {
+		*value = *cached_copy;
+		return (0);
+	}
+
+	/*
+	 * If the property wasn't cached, look up the file system's value for
+	 * the property. For the version property, we look up a slightly
+	 * different string.
+	 */
+	const char *pname;
+	int error = ENOENT;
+	if (prop == ZFS_PROP_VERSION)
+		pname = ZPL_VERSION_STR;
+	else
+		pname = zfs_prop_to_name(prop);
+
+	if (os != NULL) {
+		ASSERT3U(os->os_phys->os_type, ==, DMU_OST_ZFS);
+		error = zap_lookup(os, MASTER_NODE_OBJ, pname, 8, 1, value);
+	}
+
+	if (error == ENOENT) {
+		/* No value set, use the default value */
+		switch (prop) {
+		case ZFS_PROP_VERSION:
+			*value = ZPL_VERSION;
+			break;
+		case ZFS_PROP_NORMALIZE:
+		case ZFS_PROP_UTF8ONLY:
+			*value = 0;
+			break;
+		case ZFS_PROP_CASE:
+			*value = ZFS_CASE_SENSITIVE;
+			break;
+		case ZFS_PROP_ACLTYPE:
+			*value = ZFS_ACLTYPE_OFF;
+			break;
+		default:
+			return (error);
+		}
+		error = 0;
+	}
+
+	/*
+	 * If one of the methods for getting the property value above worked,
+	 * copy it into the objset_t's cache.
+	 */
+	if (error == 0 && cached_copy != NULL) {
+		*cached_copy = *value;
+	}
+
 	return (error);
 }
 

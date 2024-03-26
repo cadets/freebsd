@@ -32,9 +32,6 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #ifndef _NETINET_SCTP_OUTPUT_H_
 #define _NETINET_SCTP_OUTPUT_H_
 
@@ -83,7 +80,9 @@ sctp_send_initiate_ack(struct sctp_inpcb *, struct sctp_tcb *,
 
 struct mbuf *
 sctp_arethere_unrecognized_parameters(struct mbuf *, int, int *,
-    struct sctp_chunkhdr *, int *, int *);
+    struct sctp_chunkhdr *, int *, int *,
+    uint32_t *);
+
 void sctp_queue_op_err(struct sctp_tcb *, struct mbuf *);
 
 int

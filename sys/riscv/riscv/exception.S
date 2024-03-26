@@ -33,8 +33,6 @@
  */
 
 #include <machine/asm.h>
-__FBSDID("$FreeBSD$");
-
 #include "assym.inc"
 
 #include <machine/trap.h>
@@ -45,9 +43,9 @@ __FBSDID("$FreeBSD$");
 
 	sd	ra, (TF_RA)(sp)
 	sd	tp, (TF_TP)(sp)
+	sd	gp, (TF_GP)(sp)
 
 .if \mode == 0	/* We came from userspace. */
-	sd	gp, (TF_GP)(sp)
 .option push
 .option norelax
 	/* Load the kernel's global pointer */

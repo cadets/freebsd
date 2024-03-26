@@ -36,10 +36,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)procfs_vfsops.c	8.7 (Berkeley) 5/10/95
- *
- * $FreeBSD$
  */
 
 #include <sys/param.h>
@@ -162,6 +158,8 @@ procfs_init(PFS_INIT_ARGS)
 
 	pfs_create_link(root, "curproc", procfs_docurproc,
 	    NULL, NULL, NULL, 0);
+	pfs_create_link(root, "self", procfs_docurproc,
+	    NULL, NULL, NULL, 0);
 
 	dir = pfs_create_dir(root, "pid",
 	    procfs_attr_all_rx, NULL, NULL, PFS_PROCDEP);
@@ -191,6 +189,8 @@ procfs_init(PFS_INIT_ARGS)
 	    procfs_attr_rw, procfs_candebug, NULL, PFS_RDWR);
 
 	pfs_create_link(dir, "file", procfs_doprocfile,
+	    NULL, procfs_notsystem, NULL, 0);
+	pfs_create_link(dir, "exe", procfs_doprocfile,
 	    NULL, procfs_notsystem, NULL, 0);
 
 	return (0);

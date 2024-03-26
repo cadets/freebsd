@@ -25,9 +25,6 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\"	@(#)tests.ms	6.2 (Berkeley) 4/16/91
-.\" $FreeBSD$
-.\"
 .ds RH Tests
 .NH
 Tests

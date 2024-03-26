@@ -1,4 +1,3 @@
-/* $FreeBSD$ */
 #ifndef _EFI_CON_H
 #define _EFI_CON_H
 
@@ -486,7 +485,7 @@ EFI_STATUS
 
   Returns:
     EFI_SUCCESS             - The notification function was registered successfully.
-    EFI_OUT_OF_RESOURCES    - Unable to allocate resources for necesssary data structures.
+    EFI_OUT_OF_RESOURCES    - Unable to allocate resources for necessary data structures.
     EFI_INVALID_PARAMETER   - KeyData or NotifyHandle is NULL.
 
 --*/

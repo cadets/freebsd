@@ -25,8 +25,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- *
- * $FreeBSD$
  */
 
 #include <sys/errno.h>
@@ -64,8 +62,8 @@ mfi_ctrl_set_properties(int fd, struct mfi_ctrl_props *info)
 }
 
 /*
- * aquire the controller properties data structure modify the
- * rebuild rate if requested and then retun
+ * Acquire the controller properties data structure, modify the
+ * rebuild rate if requested and then return
  */
 static int
 mfi_ctrl_rebuild_rate(int ac, char **av)

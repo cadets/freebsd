@@ -493,10 +493,8 @@ zfs_acl_release_nodes(zfs_acl_t *aclp)
 {
 	zfs_acl_node_t *aclnode;
 
-	while ((aclnode = list_head(&aclp->z_acl))) {
-		list_remove(&aclp->z_acl, aclnode);
+	while ((aclnode = list_remove_head(&aclp->z_acl)))
 		zfs_acl_node_free(aclnode);
-	}
 	aclp->z_acl_count = 0;
 	aclp->z_acl_bytes = 0;
 }
@@ -1923,8 +1921,8 @@ zfs_acl_ids_create(znode_t *dzp, int flag, vattr_t *vap, cred_t *cr,
 			    zfsvfs->z_acl_inherit != ZFS_ACL_PASSTHROUGH &&
 			    zfsvfs->z_acl_inherit != ZFS_ACL_PASSTHROUGH_X)
 				trim = B_TRUE;
-			zfs_acl_chmod(vap->va_mode, acl_ids->z_mode, B_FALSE,
-			    trim, acl_ids->z_aclp);
+			zfs_acl_chmod(S_ISDIR(vap->va_mode), acl_ids->z_mode,
+			    B_FALSE, trim, acl_ids->z_aclp);
 		}
 	}
 

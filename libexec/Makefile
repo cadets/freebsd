@@ -1,7 +1,6 @@
-#	@(#)Makefile	8.1 (Berkeley) 6/4/93
-# $FreeBSD$
-
 .include <src.opts.mk>
+
+.include <bsd.compat.pre.mk>
 
 SUBDIR=	${_atf} \
 	${_atrun} \
@@ -11,6 +10,7 @@ SUBDIR=	${_atf} \
 	flua \
 	getty \
 	${_hyperv} \
+	kgdb \
 	${_mail.local} \
 	${_makewhatis.local} \
 	${_mknetid} \
@@ -27,6 +27,7 @@ SUBDIR=	${_atf} \
 	${_rshd} \
 	${_rtld-elf} \
 	save-entropy \
+	${_nuageinit} \
 	${_smrsh} \
 	${_tests} \
 	${_tftp-proxy} \
@@ -84,7 +85,9 @@ _tftp-proxy=	tftp-proxy
 
 .if !defined(NO_PIC) && !defined(NO_RTLD)
 _rtld-elf=	rtld-elf
-SUBDIR.${MK_LIB32}+=	rtld-elf32
+.for LIBCOMPAT libcompat in ${_ALL_LIBCOMPATS_libcompats}
+SUBDIR.${MK_LIB${LIBCOMPAT}}+=	rtld-elf${libcompat}
+.endfor
 .endif
 
 .if ${MK_RBOOTD} != "no"
@@ -115,6 +118,10 @@ SUBDIR+=	tftpd
 .if ${MK_TESTS} != "no"
 _atf=		atf
 _tests=		tests
+.endif
+
+.if ${MK_NUAGEINIT} != "no"
+_nuageinit=	nuageinit
 .endif
 
 .include <bsd.arch.inc.mk>

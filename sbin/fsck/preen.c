@@ -29,18 +29,9 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
-#include <sys/cdefs.h>
-#ifndef lint
-#if 0
-static char sccsid[] = "@(#)preen.c	8.5 (Berkeley) 4/28/95";
-#else
-__RCSID("$NetBSD: preen.c,v 1.18 1998/07/26 20:02:36 mycroft Exp $");
-#endif
-#endif /* not lint */
+/* $NetBSD: preen.c,v 1.18 1998/07/26 20:02:36 mycroft Exp $ */
 
 #include <sys/param.h>
 #include <sys/stat.h>

@@ -26,8 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 #include <sys/param.h>
 
 #include <stand.h>
@@ -341,7 +339,7 @@ get_load_device(int *type, int *unit, int *slice, int *partition)
 } 
 
 static void
-print_disk_probe_info()
+print_disk_probe_info(void)
 {
 	char slice[32];
 	char partition[32];

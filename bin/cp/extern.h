@@ -27,9 +27,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)extern.h	8.2 (Berkeley) 4/1/94
- * $FreeBSD$
  */
 
 typedef struct {
@@ -39,7 +36,7 @@ typedef struct {
 } PATH_T;
 
 extern PATH_T to;
-extern int fflag, iflag, lflag, nflag, pflag, sflag, vflag;
+extern int Nflag, fflag, iflag, lflag, nflag, pflag, sflag, vflag;
 extern volatile sig_atomic_t info;
 
 __BEGIN_DECLS
@@ -50,5 +47,5 @@ int	copy_special(struct stat *, int);
 int	setfile(struct stat *, int);
 int	preserve_dir_acls(struct stat *, char *, char *);
 int	preserve_fd_acls(int, int);
-void	usage(void);
+void	usage(void) __dead2;
 __END_DECLS

@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #if 0
@@ -452,11 +450,7 @@ struct ata_channel {
 #define         ATA_LED_MASK            0x03
 
 /* externs */
-extern int (*ata_raid_ioctl_func)(u_long cmd, caddr_t data);
-extern struct intr_config_hook *ata_delayed_attach;
 extern devclass_t ata_devclass;
-extern int ata_wc;
-extern int ata_setmax;
 extern int ata_dma_check_80pin;
 
 /* public prototypes */

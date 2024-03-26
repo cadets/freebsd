@@ -1,8 +1,8 @@
-#	from: @(#)Makefile	5.11 (Berkeley) 5/21/91
-# $FreeBSD$
 
 .include <src.opts.mk>
 .include <src.tools.mk>
+
+.include <bsd.compat.pre.mk>
 
 FILESGROUPS=	FILES
 NLS_ALIASES=	POSIX C \
@@ -20,7 +20,7 @@ SUBDIR+=sendmail
 
 ETCMAIL=aliases
 .if ${MK_SENDMAIL} != "no"
-ETCMAIL+=Makefile README access.sample virtusertable.sample \
+ETCMAIL_SENDMAIL+=Makefile README access.sample virtusertable.sample \
 	mailertable.sample
 .endif
 
@@ -39,8 +39,9 @@ distribute:
 	# Avoid installing tests here; "make distribution" will do this and
 	# correctly place them in the right location.
 	${_+_}cd ${.CURDIR} ; ${MAKE} MK_TESTS=no install \
-	    DESTDIR=${DISTDIR}/${DISTRIBUTION}
-	${_+_}cd ${.CURDIR} ; ${MAKE} distribution DESTDIR=${DISTDIR}/${DISTRIBUTION}
+	    DISTBASE=/${DISTRIBUTION} DESTDIR=${DISTDIR}/${DISTRIBUTION}
+	${_+_}cd ${.CURDIR} ; ${MAKE} distribution \
+	    DISTBASE=/${DISTRIBUTION} DESTDIR=${DISTDIR}/${DISTRIBUTION}
 
 .include <bsd.endian.mk>
 
@@ -77,12 +78,16 @@ distribution:
 
 .if ${MK_MAIL} != "no"
 	cd ${.CURDIR}/mail; ${INSTALL} -o ${BINOWN} -g ${BINGRP} -m 644 \
-	    -T "package=sendmail" ${ETCMAIL} ${DESTDIR}/etc/mail
+	    -T "package=runtime,config" ${ETCMAIL} ${DESTDIR}/etc/mail
 	if [ -d ${DESTDIR}/etc/mail -a -f ${DESTDIR}/etc/mail/aliases -a \
 	      ! -f ${DESTDIR}/etc/aliases ]; then \
-		${INSTALL_SYMLINK} -T "package=sendmail" \
+		${INSTALL_SYMLINK} -T "package=runtime" \
 		mail/aliases ${DESTDIR}/etc/aliases; \
 	fi
+.endif
+.if ${MK_SENDMAIL} != "no"
+	cd ${.CURDIR}/mail; ${INSTALL} -o ${BINOWN} -g ${BINGRP} -m 644 \
+		-T "package=sendmail" ${ETCMAIL_SENDMAIL} ${DESTDIR}/etc/mail
 .endif
 .if ${MK_LOCATE} != "no"
 	${INSTALL} -o nobody -g ${BINGRP} -m 644 -T "package=runtime"\
@@ -104,10 +109,12 @@ MTREES=		mtree/BSD.root.dist		/		\
 		mtree/BSD.usr.dist		/usr		\
 		mtree/BSD.include.dist		/usr/include	\
 		mtree/BSD.debug.dist		/usr/lib
-.if ${MK_LIB32} != "no"
-MTREES+=	mtree/BSD.lib32.dist		/usr
-MTREES+=	mtree/BSD.lib32.dist		/usr/lib/debug/usr
+.for LIBCOMPAT libcompat in ${_ALL_LIBCOMPATS_libcompats}
+.if ${MK_LIB${LIBCOMPAT}} != "no"
+MTREES+=	mtree/BSD.lib${libcompat}.dist	/usr
+MTREES+=	mtree/BSD.lib${libcompat}.dist	/usr/lib/debug/usr
 .endif
+.endfor
 .if ${MK_TESTS} != "no"
 MTREES+=	mtree/BSD.tests.dist		${TESTSBASE}
 MTREES+=	mtree/BSD.tests.dist		/usr/lib/debug/${TESTSBASE}
@@ -122,6 +129,8 @@ MTREES+=	../${mtree}			/
 # Clean up files that have changed into directories, as mtree cannot handle this
 # scenario.
 DISTRIB_CLEANUP_FILES+=	${INCLUDEDIR}/c++/v1/__string
+DISTRIB_CLEANUP_FILES+=	${INCLUDEDIR}/c++/v1/__tuple
+DISTRIB_CLEANUP_FILES+=	${LIBEXECDIR}/kgdb
 distrib-cleanup: .PHONY
 	for file in ${DISTRIB_CLEANUP_FILES}; do \
 		if [ -f ${DESTDIR}/$${file} ]; then \
@@ -146,7 +155,6 @@ distrib-dirs: ${MTREES:N/*} distrib-cleanup .PHONY
 	d=${_d}; \
 	test "$$d" = "/" && d=""; \
 	d=${DISTBASE}$$d; \
-	test -d ${DESTDIR}/$$d || mkdir -p ${DESTDIR}/$$d; \
 	${ECHO} "${MTREE_CMD:N-W} -C -f $$m -K all | " \
 	    "sed s#^\.#.$$d# | ${METALOG.add}" ; \
 	${MTREE_FILTER} $$m | \

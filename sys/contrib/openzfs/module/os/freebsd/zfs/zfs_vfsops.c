@@ -89,10 +89,6 @@ int zfs_debug_level;
 SYSCTL_INT(_vfs_zfs, OID_AUTO, debug, CTLFLAG_RWTUN, &zfs_debug_level, 0,
 	"Debug level");
 
-int zfs_bclone_enabled;
-SYSCTL_INT(_vfs_zfs, OID_AUTO, bclone_enabled, CTLFLAG_RWTUN,
-	&zfs_bclone_enabled, 0, "Enable block cloning");
-
 struct zfs_jailparam {
 	int mount_snapshot;
 };
@@ -1158,7 +1154,6 @@ zfsvfs_free(zfsvfs_t *zfsvfs)
 
 	mutex_destroy(&zfsvfs->z_znodes_lock);
 	mutex_destroy(&zfsvfs->z_lock);
-	ASSERT3U(zfsvfs->z_nr_znodes, ==, 0);
 	list_destroy(&zfsvfs->z_all_znodes);
 	ZFS_TEARDOWN_DESTROY(zfsvfs);
 	ZFS_TEARDOWN_INACTIVE_DESTROY(zfsvfs);
@@ -1562,12 +1557,11 @@ zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
 		 * may add the parents of dir-based xattrs to the taskq
 		 * so we want to wait for these.
 		 *
-		 * We can safely read z_nr_znodes without locking because the
-		 * VFS has already blocked operations which add to the
-		 * z_all_znodes list and thus increment z_nr_znodes.
+		 * We can safely check z_all_znodes for being empty because the
+		 * VFS has already blocked operations which add to it.
 		 */
 		int round = 0;
-		while (zfsvfs->z_nr_znodes > 0) {
+		while (!list_is_empty(&zfsvfs->z_all_znodes)) {
 			taskq_wait_outstanding(dsl_pool_zrele_taskq(
 			    dmu_objset_pool(zfsvfs->z_os)), 0);
 			if (++round > 1 && !unmounting)
@@ -2076,6 +2070,26 @@ zfs_vnodes_adjust_back(void)
 #endif
 }
 
+#if __FreeBSD_version >= 1300139
+static struct sx zfs_vnlru_lock;
+static struct vnode *zfs_vnlru_marker;
+#endif
+static arc_prune_t *zfs_prune;
+
+static void
+zfs_prune_task(uint64_t nr_to_scan, void *arg __unused)
+{
+	if (nr_to_scan > INT_MAX)
+		nr_to_scan = INT_MAX;
+#if __FreeBSD_version >= 1300139
+	sx_xlock(&zfs_vnlru_lock);
+	vnlru_free_vfsops(nr_to_scan, &zfs_vfsops, zfs_vnlru_marker);
+	sx_xunlock(&zfs_vnlru_lock);
+#else
+	vnlru_free(nr_to_scan, &zfs_vfsops);
+#endif
+}
+
 void
 zfs_init(void)
 {
@@ -2102,11 +2116,23 @@ zfs_init(void)
 	dmu_objset_register_type(DMU_OST_ZFS, zpl_get_file_info);
 
 	zfsvfs_taskq = taskq_create("zfsvfs", 1, minclsyspri, 0, 0, 0);
+
+#if __FreeBSD_version >= 1300139
+	zfs_vnlru_marker = vnlru_alloc_marker();
+	sx_init(&zfs_vnlru_lock, "zfs vnlru lock");
+#endif
+	zfs_prune = arc_add_prune_callback(zfs_prune_task, NULL);
 }
 
 void
 zfs_fini(void)
 {
+	arc_remove_prune_callback(zfs_prune);
+#if __FreeBSD_version >= 1300139
+	vnlru_free_marker(zfs_vnlru_marker);
+	sx_destroy(&zfs_vnlru_lock);
+#endif
+
 	taskq_destroy(zfsvfs_taskq);
 	zfsctl_fini();
 	zfs_znode_fini();
@@ -2218,92 +2244,6 @@ zfs_set_version(zfsvfs_t *zfsvfs, uint64_t newvers)
 	zfs_set_fuid_feature(zfsvfs);
 
 	return (0);
-}
-
-/*
- * Read a property stored within the master node.
- */
-int
-zfs_get_zplprop(objset_t *os, zfs_prop_t prop, uint64_t *value)
-{
-	uint64_t *cached_copy = NULL;
-
-	/*
-	 * Figure out where in the objset_t the cached copy would live, if it
-	 * is available for the requested property.
-	 */
-	if (os != NULL) {
-		switch (prop) {
-		case ZFS_PROP_VERSION:
-			cached_copy = &os->os_version;
-			break;
-		case ZFS_PROP_NORMALIZE:
-			cached_copy = &os->os_normalization;
-			break;
-		case ZFS_PROP_UTF8ONLY:
-			cached_copy = &os->os_utf8only;
-			break;
-		case ZFS_PROP_CASE:
-			cached_copy = &os->os_casesensitivity;
-			break;
-		default:
-			break;
-		}
-	}
-	if (cached_copy != NULL && *cached_copy != OBJSET_PROP_UNINITIALIZED) {
-		*value = *cached_copy;
-		return (0);
-	}
-
-	/*
-	 * If the property wasn't cached, look up the file system's value for
-	 * the property. For the version property, we look up a slightly
-	 * different string.
-	 */
-	const char *pname;
-	int error = ENOENT;
-	if (prop == ZFS_PROP_VERSION) {
-		pname = ZPL_VERSION_STR;
-	} else {
-		pname = zfs_prop_to_name(prop);
-	}
-
-	if (os != NULL) {
-		ASSERT3U(os->os_phys->os_type, ==, DMU_OST_ZFS);
-		error = zap_lookup(os, MASTER_NODE_OBJ, pname, 8, 1, value);
-	}
-
-	if (error == ENOENT) {
-		/* No value set, use the default value */
-		switch (prop) {
-		case ZFS_PROP_VERSION:
-			*value = ZPL_VERSION;
-			break;
-		case ZFS_PROP_NORMALIZE:
-		case ZFS_PROP_UTF8ONLY:
-			*value = 0;
-			break;
-		case ZFS_PROP_CASE:
-			*value = ZFS_CASE_SENSITIVE;
-			break;
-		case ZFS_PROP_ACLTYPE:
-			*value = ZFS_ACLTYPE_NFSV4;
-			break;
-		default:
-			return (error);
-		}
-		error = 0;
-	}
-
-	/*
-	 * If one of the methods for getting the property value above worked,
-	 * copy it into the objset_t's cache.
-	 */
-	if (error == 0 && cached_copy != NULL) {
-		*cached_copy = *value;
-	}
-
-	return (error);
 }
 
 /*

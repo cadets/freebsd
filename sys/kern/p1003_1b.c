@@ -36,8 +36,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_posix.h"
 
 #include <sys/param.h>
@@ -235,8 +233,8 @@ kern_sched_setscheduler(struct thread *td, struct thread *targettd,
 	targetp = targettd->td_proc;
 	PROC_LOCK_ASSERT(targetp, MA_OWNED);
 
-	/* Don't allow non root user to set a scheduler policy. */
-	error = priv_check(td, PRIV_SCHED_SET);
+	/* Only privileged users are allowed to set a scheduler policy. */
+	error = priv_check(td, PRIV_SCHED_SETPOLICY);
 	if (error)
 		return (error);
 

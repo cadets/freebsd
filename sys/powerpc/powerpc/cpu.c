@@ -57,7 +57,6 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * from $NetBSD: cpu_subr.c,v 1.1 2003/02/03 17:10:09 matt Exp $
- * $FreeBSD$
  */
 
 #include <sys/param.h>
@@ -240,7 +239,7 @@ static void	cpu_6xx_print_cacheinfo(u_int, uint16_t);
 static int	cpu_feature_bit(SYSCTL_HANDLER_ARGS);
 
 static char model[64];
-SYSCTL_STRING(_hw, HW_MODEL, model, CTLFLAG_RD, model, 0, "");
+SYSCTL_STRING(_hw, HW_MODEL, model, CTLFLAG_RD | CTLFLAG_CAPRD, model, 0, "");
 
 static const struct cputab	*cput;
 

@@ -1,6 +1,5 @@
-# $FreeBSD$
 
-SHLIBDIR=	${LIBDIR}/engines
+SHLIBDIR=	${LIBDIR}/engines-3
 
 LCRYPTO_SRC=	${SRCTOP}/crypto/openssl
 
@@ -16,6 +15,8 @@ CFLAGS+=	-DL_ENDIAN
 CFLAGS+=	-DB_ENDIAN
 .endif
 CFLAGS+=	-DNDEBUG
+
+LIBADD=		crypto
 
 .PATH: ${LCRYPTO_SRC}/engines
 

@@ -219,6 +219,8 @@ typedef struct dt_print_aggdata {
 	int dtpa_agghist;		/* print aggregation as histogram */
 	int dtpa_agghisthdr;		/* aggregation histogram hdr printed */
 	int dtpa_aggpack;		/* pack quantized aggregations */
+	char dtpa_keyname[256];		/* key name for oformat */
+	char *dtpa_aggname;		/* aggregate name for oformat */
 } dt_print_aggdata_t;
 
 typedef struct dt_dirpath {
@@ -383,6 +385,7 @@ struct dtrace_hdl {
 	boolean_t dt_is_guest;	/* is a guest? */
 	dt_list_t dt_compile_idents;	/* acceptable program idents */
 	int dt_failmsg_needed;	/* do we need to send a fail message? */
+	int dt_oformat;		/* output format (none, json, xml, html) */
 };
 
 /*
@@ -729,6 +732,8 @@ extern int dt_print_llquantize(dtrace_hdl_t *, FILE *,
     const void *, size_t, uint64_t);
 extern int dt_print_agg(const dtrace_aggdata_t *, void *);
 
+extern int dt_format_agg(const dtrace_aggdata_t *, void *);
+
 extern int dt_handle(dtrace_hdl_t *, dtrace_probedata_t *);
 extern int dt_handle_liberr(dtrace_hdl_t *,
     const dtrace_probedata_t *, const char *);
@@ -737,6 +742,8 @@ extern int dt_handle_cpudrop(dtrace_hdl_t *, processorid_t,
 extern int dt_handle_status(dtrace_hdl_t *,
     dtrace_status_t *, dtrace_status_t *);
 extern int dt_handle_setopt(dtrace_hdl_t *, dtrace_setoptdata_t *);
+
+extern void dt_oformat_drop(dtrace_hdl_t *, processorid_t);
 
 extern int dt_lib_depend_add(dtrace_hdl_t *, dt_list_t *, const char *);
 extern dt_lib_depend_t *dt_lib_depend_lookup(dt_list_t *, const char *);

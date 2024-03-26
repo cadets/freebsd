@@ -44,8 +44,6 @@
 
 #include "feeder_if.h"
 
-SND_DECLARE_FILE("$FreeBSD$");
-
 devclass_t pcm_devclass;
 
 int pcm_veto_load = 1;
@@ -392,16 +390,6 @@ pcm_chnref(struct pcm_channel *c, int ref)
 	c->refcount += ref;
 
 	return (c->refcount);
-}
-
-int
-pcm_inprog(struct snddev_info *d, int delta)
-{
-	PCM_LOCKASSERT(d);
-
-	d->inprog += delta;
-
-	return (d->inprog);
 }
 
 static void
@@ -1129,7 +1117,6 @@ pcm_register(device_t dev, void *devinfo, int numplay, int numrec)
 	d->pvchanformat = 0;
 	d->rvchanrate = 0;
 	d->rvchanformat = 0;
-	d->inprog = 0;
 
 	/*
 	 * Create clone manager, disabled by default. Cloning will be
@@ -1183,12 +1170,6 @@ pcm_unregister(device_t dev)
 	PCM_WAIT(d);
 
 	d->flags |= SD_F_DETACHING;
-
-	if (d->inprog != 0) {
-		device_printf(dev, "unregister: operation in progress\n");
-		PCM_UNLOCK(d);
-		return (EBUSY);
-	}
 
 	PCM_ACQUIRE(d);
 	PCM_UNLOCK(d);

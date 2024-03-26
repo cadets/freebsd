@@ -39,8 +39,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_ddb.h"
 #include "opt_vm.h"
 
@@ -72,10 +70,18 @@ __FBSDID("$FreeBSD$");
 
 _Static_assert(sizeof(long) * NBBY >= VM_PHYSSEG_MAX,
     "Too many physsegs.");
+_Static_assert(sizeof(long long) >= sizeof(vm_paddr_t),
+    "vm_paddr_t too big for ffsll, flsll.");
 
 #ifdef NUMA
 struct mem_affinity __read_mostly *mem_affinity;
 int __read_mostly *mem_locality;
+
+static int numa_disabled;
+static SYSCTL_NODE(_vm, OID_AUTO, numa, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "NUMA options");
+SYSCTL_INT(_vm_numa, OID_AUTO, disabled, CTLFLAG_RDTUN | CTLFLAG_NOFETCH,
+    &numa_disabled, 0, "NUMA-awareness in the allocators is disabled");
 #endif
 
 int __read_mostly vm_ndomains = 1;
@@ -627,15 +633,14 @@ vm_phys_register_domains(int ndomains, struct mem_affinity *affinity,
     int *locality)
 {
 #ifdef NUMA
-	int d, i;
+	int i;
 
 	/*
 	 * For now the only override value that we support is 1, which
 	 * effectively disables NUMA-awareness in the allocators.
 	 */
-	d = 0;
-	TUNABLE_INT_FETCH("vm.numa.disabled", &d);
-	if (d)
+	TUNABLE_INT_FETCH("vm.numa.disabled", &numa_disabled);
+	if (numa_disabled)
 		ndomains = 1;
 
 	if (ndomains > 1) {
@@ -679,8 +684,8 @@ vm_phys_split_pages(vm_page_t m, int oind, struct vm_freelist *fl, int order,
 }
 
 /*
- * Add the physical pages [m, m + npages) at the end of a power-of-two aligned
- * and sized set to the specified free list.
+ * Add the physical pages [m, m + npages) at the beginning of a power-of-two
+ * aligned and sized set to the specified free list.
  *
  * When this function is called by a page allocation function, the caller
  * should request insertion at the head unless the lower-order queues are
@@ -691,17 +696,52 @@ vm_phys_split_pages(vm_page_t m, int oind, struct vm_freelist *fl, int order,
  * The physical page m's buddy must not be free.
  */
 static void
+vm_phys_enq_beg(vm_page_t m, u_int npages, struct vm_freelist *fl, int tail)
+{
+        int order;
+
+	KASSERT(npages == 0 ||
+	    (VM_PAGE_TO_PHYS(m) &
+	    ((PAGE_SIZE << (fls(npages) - 1)) - 1)) == 0,
+	    ("%s: page %p and npages %u are misaligned",
+	    __func__, m, npages));
+        while (npages > 0) {
+		KASSERT(m->order == VM_NFREEORDER,
+		    ("%s: page %p has unexpected order %d",
+		    __func__, m, m->order));
+                order = fls(npages) - 1;
+		KASSERT(order < VM_NFREEORDER,
+		    ("%s: order %d is out of range", __func__, order));
+                vm_freelist_add(fl, m, order, tail);
+		m += 1 << order;
+                npages -= 1 << order;
+        }
+}
+
+/*
+ * Add the physical pages [m, m + npages) at the end of a power-of-two aligned
+ * and sized set to the specified free list.
+ *
+ * When this function is called by a page allocation function, the caller
+ * should request insertion at the head unless the lower-order queues are
+ * known to be empty.  The objective being to reduce the likelihood of long-
+ * term fragmentation by promoting contemporaneous allocation and (hopefully)
+ * deallocation.
+ *
+ * If npages is zero, this function does nothing and ignores the physical page
+ * parameter m.  Otherwise, the physical page m's buddy must not be free.
+ */
+static vm_page_t
 vm_phys_enq_range(vm_page_t m, u_int npages, struct vm_freelist *fl, int tail)
 {
-	u_int n;
 	int order;
 
-	KASSERT(npages > 0, ("vm_phys_enq_range: npages is 0"));
-	KASSERT(((VM_PAGE_TO_PHYS(m) + npages * PAGE_SIZE) &
+	KASSERT(npages == 0 ||
+	    ((VM_PAGE_TO_PHYS(m) + npages * PAGE_SIZE) &
 	    ((PAGE_SIZE << (fls(npages) - 1)) - 1)) == 0,
 	    ("vm_phys_enq_range: page %p and npages %u are misaligned",
 	    m, npages));
-	do {
+	while (npages > 0) {
 		KASSERT(m->order == VM_NFREEORDER,
 		    ("vm_phys_enq_range: page %p has unexpected order %d",
 		    m, m->order));
@@ -709,10 +749,10 @@ vm_phys_enq_range(vm_page_t m, u_int npages, struct vm_freelist *fl, int tail)
 		KASSERT(order < VM_NFREEORDER,
 		    ("vm_phys_enq_range: order %d is out of range", order));
 		vm_freelist_add(fl, m, order, tail);
-		n = 1 << order;
-		m += n;
-		npages -= n;
-	} while (npages > 0);
+		m += 1 << order;
+		npages -= 1 << order;
+	}
+	return (m);
 }
 
 /*
@@ -744,7 +784,7 @@ vm_phys_alloc_npages(int domain, int pool, int npages, vm_page_t ma[])
 {
 	struct vm_freelist *alt, *fl;
 	vm_page_t m;
-	int avail, end, flind, freelist, i, need, oind, pind;
+	int avail, end, flind, freelist, i, oind, pind;
 
 	KASSERT(domain >= 0 && domain < vm_ndomains,
 	    ("vm_phys_alloc_npages: domain %d is out of range", domain));
@@ -762,20 +802,18 @@ vm_phys_alloc_npages(int domain, int pool, int npages, vm_page_t ma[])
 		for (oind = 0; oind < VM_NFREEORDER; oind++) {
 			while ((m = TAILQ_FIRST(&fl[oind].pl)) != NULL) {
 				vm_freelist_rem(fl, m, oind);
-				avail = 1 << oind;
-				need = imin(npages - i, avail);
-				for (end = i + need; i < end;)
+				avail = i + (1 << oind);
+				end = imin(npages, avail);
+				while (i < end)
 					ma[i++] = m++;
-				if (need < avail) {
+				if (i == npages) {
 					/*
-					 * Return excess pages to fl.  Its
-					 * order [0, oind) queues are empty.
+					 * Return excess pages to fl.  Its order
+					 * [0, oind) queues are empty.
 					 */
-					vm_phys_enq_range(m, avail - need, fl,
-					    1);
+					vm_phys_enq_range(m, avail - i, fl, 1);
 					return (npages);
-				} else if (i == npages)
-					return (npages);
+				}
 			}
 		}
 		for (oind = VM_NFREEORDER - 1; oind >= 0; oind--) {
@@ -785,21 +823,20 @@ vm_phys_alloc_npages(int domain, int pool, int npages, vm_page_t ma[])
 				    NULL) {
 					vm_freelist_rem(alt, m, oind);
 					vm_phys_set_pool(pool, m, oind);
-					avail = 1 << oind;
-					need = imin(npages - i, avail);
-					for (end = i + need; i < end;)
+					avail = i + (1 << oind);
+					end = imin(npages, avail);
+					while (i < end)
 						ma[i++] = m++;
-					if (need < avail) {
+					if (i == npages) {
 						/*
 						 * Return excess pages to fl.
 						 * Its order [0, oind) queues
 						 * are empty.
 						 */
-						vm_phys_enq_range(m, avail -
-						    need, fl, 1);
+						vm_phys_enq_range(m, avail - i,
+						    fl, 1);
 						return (npages);
-					} else if (i == npages)
-						return (npages);
+					}
 				}
 			}
 		}
@@ -898,13 +935,9 @@ vm_page_t
 vm_phys_paddr_to_vm_page(vm_paddr_t pa)
 {
 	struct vm_phys_seg *seg;
-	int segind;
 
-	for (segind = 0; segind < vm_phys_nsegs; segind++) {
-		seg = &vm_phys_segs[segind];
-		if (pa >= seg->start && pa < seg->end)
-			return (&seg->first_page[atop(pa - seg->start)]);
-	}
+	if ((seg = vm_phys_paddr_to_seg(pa)) != NULL)
+		return (&seg->first_page[atop(pa - seg->start)]);
 	return (NULL);
 }
 
@@ -1137,24 +1170,6 @@ vm_phys_free_pages(vm_page_t m, int order)
 }
 
 /*
- * Return the largest possible order of a set of pages starting at m.
- */
-static int
-max_order(vm_page_t m)
-{
-
-	/*
-	 * Unsigned "min" is used here so that "order" is assigned
-	 * "VM_NFREEORDER - 1" when "m"'s physical address is zero
-	 * or the low-order bits of its physical address are zero
-	 * because the size of a physical address exceeds the size of
-	 * a long.
-	 */
-	return (min(ffsl(VM_PAGE_TO_PHYS(m) >> PAGE_SHIFT) - 1,
-	    VM_NFREEORDER - 1));
-}
-
-/*
  * Free a contiguous, arbitrarily sized set of physical pages, without
  * merging across set boundaries.
  *
@@ -1166,6 +1181,7 @@ vm_phys_enqueue_contig(vm_page_t m, u_long npages)
 	struct vm_freelist *fl;
 	struct vm_phys_seg *seg;
 	vm_page_t m_end;
+	vm_paddr_t diff, lo;
 	int order;
 
 	/*
@@ -1177,15 +1193,15 @@ vm_phys_enqueue_contig(vm_page_t m, u_long npages)
 	fl = (*seg->free_queues)[m->pool];
 	m_end = m + npages;
 	/* Free blocks of increasing size. */
-	while ((order = max_order(m)) < VM_NFREEORDER - 1 &&
-	    m + (1 << order) <= m_end) {
-		KASSERT(seg == &vm_phys_segs[m->segind],
-		    ("%s: page range [%p,%p) spans multiple segments",
-		    __func__, m_end - npages, m));
-		vm_freelist_add(fl, m, order, 1);
-		m += 1 << order;
+	lo = atop(VM_PAGE_TO_PHYS(m));
+	if (m < m_end &&
+	    (diff = lo ^ (lo + npages - 1)) != 0) {
+		order = min(flsll(diff) - 1, VM_NFREEORDER - 1);
+		m = vm_phys_enq_range(m, roundup2(lo, 1 << order) - lo, fl, 1);
 	}
+
 	/* Free blocks of maximum size. */
+	order = VM_NFREEORDER - 1;
 	while (m + (1 << order) <= m_end) {
 		KASSERT(seg == &vm_phys_segs[m->segind],
 		    ("%s: page range [%p,%p) spans multiple segments",
@@ -1194,14 +1210,7 @@ vm_phys_enqueue_contig(vm_page_t m, u_long npages)
 		m += 1 << order;
 	}
 	/* Free blocks of diminishing size. */
-	while (m < m_end) {
-		KASSERT(seg == &vm_phys_segs[m->segind],
-		    ("%s: page range [%p,%p) spans multiple segments",
-		    __func__, m_end - npages, m));
-		order = flsl(m_end - m) - 1;
-		vm_freelist_add(fl, m, order, 1);
-		m += 1 << order;
-	}
+	vm_phys_enq_beg(m, m_end - m, fl, 1);
 }
 
 /*
@@ -1212,18 +1221,22 @@ vm_phys_enqueue_contig(vm_page_t m, u_long npages)
 void
 vm_phys_free_contig(vm_page_t m, u_long npages)
 {
-	int order_start, order_end;
+	vm_paddr_t lo;
 	vm_page_t m_start, m_end;
+	unsigned max_order, order_start, order_end;
 
 	vm_domain_free_assert_locked(vm_pagequeue_domain(m));
 
+	lo = atop(VM_PAGE_TO_PHYS(m));
+	max_order = min(flsll(lo ^ (lo + npages)) - 1, VM_NFREEORDER - 1);
+
 	m_start = m;
-	order_start = max_order(m_start);
-	if (order_start < VM_NFREEORDER - 1)
+	order_start = ffsll(lo) - 1;
+	if (order_start < max_order)
 		m_start += 1 << order_start;
 	m_end = m + npages;
-	order_end = max_order(m_end);
-	if (order_end < VM_NFREEORDER - 1)
+	order_end = ffsll(lo + npages) - 1;
+	if (order_end < max_order)
 		m_end -= 1 << order_end;
 	/*
 	 * Avoid unnecessary coalescing by freeing the pages at the start and
@@ -1231,72 +1244,51 @@ vm_phys_free_contig(vm_page_t m, u_long npages)
 	 */
 	if (m_start < m_end)
 		vm_phys_enqueue_contig(m_start, m_end - m_start);
-	if (order_start < VM_NFREEORDER - 1)
+	if (order_start < max_order)
 		vm_phys_free_pages(m, order_start);
-	if (order_end < VM_NFREEORDER - 1)
+	if (order_end < max_order)
 		vm_phys_free_pages(m_end, order_end);
 }
 
 /*
- * Scan physical memory between the specified addresses "low" and "high" for a
- * run of contiguous physical pages that satisfy the specified conditions, and
- * return the lowest page in the run.  The specified "alignment" determines
- * the alignment of the lowest physical page in the run.  If the specified
- * "boundary" is non-zero, then the run of physical pages cannot span a
- * physical address that is a multiple of "boundary".
- *
- * "npages" must be greater than zero.  Both "alignment" and "boundary" must
- * be a power of two.
+ * Identify the first address range within segment segind or greater
+ * that matches the domain, lies within the low/high range, and has
+ * enough pages.  Return -1 if there is none.
  */
-vm_page_t
-vm_phys_scan_contig(int domain, u_long npages, vm_paddr_t low, vm_paddr_t high,
-    u_long alignment, vm_paddr_t boundary, int options)
+int
+vm_phys_find_range(vm_page_t bounds[], int segind, int domain,
+    u_long npages, vm_paddr_t low, vm_paddr_t high)
 {
-	vm_paddr_t pa_end;
-	vm_page_t m_end, m_run, m_start;
-	struct vm_phys_seg *seg;
-	int segind;
+	vm_paddr_t pa_end, pa_start;
+	struct vm_phys_seg *end_seg, *seg;
 
-	KASSERT(npages > 0, ("npages is 0"));
-	KASSERT(powerof2(alignment), ("alignment is not a power of 2"));
-	KASSERT(powerof2(boundary), ("boundary is not a power of 2"));
-	if (low >= high)
-		return (NULL);
-	for (segind = 0; segind < vm_phys_nsegs; segind++) {
-		seg = &vm_phys_segs[segind];
+	KASSERT(npages > 0, ("npages is zero"));
+	KASSERT(domain >= 0 && domain < vm_ndomains, ("domain out of range"));
+	end_seg = &vm_phys_segs[vm_phys_nsegs];
+	for (seg = &vm_phys_segs[segind]; seg < end_seg; seg++) {
 		if (seg->domain != domain)
 			continue;
 		if (seg->start >= high)
-			break;
-		if (low >= seg->end)
+			return (-1);
+		pa_start = MAX(low, seg->start);
+		pa_end = MIN(high, seg->end);
+		if (pa_end - pa_start < ptoa(npages))
 			continue;
-		if (low <= seg->start)
-			m_start = seg->first_page;
-		else
-			m_start = &seg->first_page[atop(low - seg->start)];
-		if (high < seg->end)
-			pa_end = high;
-		else
-			pa_end = seg->end;
-		if (pa_end - VM_PAGE_TO_PHYS(m_start) < ptoa(npages))
-			continue;
-		m_end = &seg->first_page[atop(pa_end - seg->start)];
-		m_run = vm_page_scan_contig(npages, m_start, m_end,
-		    alignment, boundary, options);
-		if (m_run != NULL)
-			return (m_run);
+		bounds[0] = &seg->first_page[atop(pa_start - seg->start)];
+		bounds[1] = &seg->first_page[atop(pa_end - seg->start)];
+		return (seg - vm_phys_segs);
 	}
-	return (NULL);
+	return (-1);
 }
 
 /*
  * Search for the given physical page "m" in the free lists.  If the search
- * succeeds, remove "m" from the free lists and return TRUE.  Otherwise, return
- * FALSE, indicating that "m" is not in the free lists.
+ * succeeds, remove "m" from the free lists and return true.  Otherwise, return
+ * false, indicating that "m" is not in the free lists.
  *
  * The free page queues must be locked.
  */
-boolean_t
+bool
 vm_phys_unfree_page(vm_page_t m)
 {
 	struct vm_freelist *fl;
@@ -1319,12 +1311,12 @@ vm_phys_unfree_page(vm_page_t m)
 		if (pa >= seg->start)
 			m_set = &seg->first_page[atop(pa - seg->start)];
 		else
-			return (FALSE);
+			return (false);
 	}
 	if (m_set->order < order)
-		return (FALSE);
+		return (false);
 	if (m_set->order == VM_NFREEORDER)
-		return (FALSE);
+		return (false);
 	KASSERT(m_set->order < VM_NFREEORDER,
 	    ("vm_phys_unfree_page: page %p has unexpected order %d",
 	    m_set, m_set->order));
@@ -1350,112 +1342,79 @@ vm_phys_unfree_page(vm_page_t m)
 		vm_freelist_add(fl, m_tmp, order, 0);
 	}
 	KASSERT(m_set == m, ("vm_phys_unfree_page: fatal inconsistency"));
-	return (TRUE);
+	return (true);
 }
 
 /*
- * Find a run of contiguous physical pages from the specified page list.
+ * Find a run of contiguous physical pages, meeting alignment requirements, from
+ * a list of max-sized page blocks, where we need at least two consecutive
+ * blocks to satisfy the (large) page request.
  */
 static vm_page_t
-vm_phys_find_freelist_contig(struct vm_freelist *fl, int oind, u_long npages,
+vm_phys_find_freelist_contig(struct vm_freelist *fl, u_long npages,
     vm_paddr_t low, vm_paddr_t high, u_long alignment, vm_paddr_t boundary)
 {
 	struct vm_phys_seg *seg;
-	vm_paddr_t frag, lbound, pa, page_size, pa_end, pa_pre, size;
-	vm_page_t m, m_listed, m_ret;
-	int order;
+	vm_page_t m, m_iter, m_ret;
+	vm_paddr_t max_size, size;
+	int max_order;
 
-	KASSERT(npages > 0, ("npages is 0"));
-	KASSERT(powerof2(alignment), ("alignment is not a power of 2"));
-	KASSERT(powerof2(boundary), ("boundary is not a power of 2"));
-	/* Search for a run satisfying the specified conditions. */
-	page_size = PAGE_SIZE;
+	max_order = VM_NFREEORDER - 1;
 	size = npages << PAGE_SHIFT;
-	frag = (npages & ~(~0UL << oind)) << PAGE_SHIFT;
-	TAILQ_FOREACH(m_listed, &fl[oind].pl, listq) {
+	max_size = (vm_paddr_t)1 << (PAGE_SHIFT + max_order);
+	KASSERT(size > max_size, ("size is too small"));
+
+	/*
+	 * In order to avoid examining any free max-sized page block more than
+	 * twice, identify the ones that are first in a physically-contiguous
+	 * sequence of such blocks, and only for those walk the sequence to
+	 * check if there are enough free blocks starting at a properly aligned
+	 * block.  Thus, no block is checked for free-ness more than twice.
+	 */
+	TAILQ_FOREACH(m, &fl[max_order].pl, listq) {
 		/*
-		 * Determine if the address range starting at pa is
-		 * too low.
+		 * Skip m unless it is first in a sequence of free max page
+		 * blocks >= low in its segment.
 		 */
-		pa = VM_PAGE_TO_PHYS(m_listed);
-		if (pa < low)
+		seg = &vm_phys_segs[m->segind];
+		if (VM_PAGE_TO_PHYS(m) < MAX(low, seg->start))
+			continue;
+		if (VM_PAGE_TO_PHYS(m) >= max_size &&
+		    VM_PAGE_TO_PHYS(m) - max_size >= MAX(low, seg->start) &&
+		    max_order == m[-1 << max_order].order)
 			continue;
 
 		/*
-		 * If this is not the first free oind-block in this range, bail
-		 * out. We have seen the first free block already, or will see
-		 * it before failing to find an appropriate range.
+		 * Advance m_ret from m to the first of the sequence, if any,
+		 * that satisfies alignment conditions and might leave enough
+		 * space.
 		 */
-		seg = &vm_phys_segs[m_listed->segind];
-		lbound = low > seg->start ? low : seg->start;
-		pa_pre = pa - (page_size << oind);
-		m = &seg->first_page[atop(pa_pre - seg->start)];
-		if (pa != 0 && pa_pre >= lbound && m->order == oind)
+		m_ret = m;
+		while (!vm_addr_ok(VM_PAGE_TO_PHYS(m_ret),
+		    size, alignment, boundary) &&
+		    VM_PAGE_TO_PHYS(m_ret) + size <= MIN(high, seg->end) &&
+		    max_order == m_ret[1 << max_order].order)
+			m_ret += 1 << max_order;
+
+		/*
+		 * Skip m unless some block m_ret in the sequence is properly
+		 * aligned, and begins a sequence of enough pages less than
+		 * high, and in the same segment.
+		 */
+		if (VM_PAGE_TO_PHYS(m_ret) + size > MIN(high, seg->end))
 			continue;
 
-		if (!vm_addr_align_ok(pa, alignment))
-			/* Advance to satisfy alignment condition. */
-			pa = roundup2(pa, alignment);
-		else if (frag != 0 && lbound + frag <= pa) {
-			/*
-			 * Back up to the first aligned free block in this
-			 * range, without moving below lbound.
-			 */
-			pa_end = pa;
-			for (order = oind - 1; order >= 0; order--) {
-				pa_pre = pa_end - (page_size << order);
-				if (!vm_addr_align_ok(pa_pre, alignment))
-					break;
-				m = &seg->first_page[atop(pa_pre - seg->start)];
-				if (pa_pre >= lbound && m->order == order)
-					pa_end = pa_pre;
-			}
-			/*
-			 * If the extra small blocks are enough to complete the
-			 * fragment, use them.  Otherwise, look to allocate the
-			 * fragment at the other end.
-			 */
-			if (pa_end + frag <= pa)
-				pa = pa_end;
+		/*
+		 * Skip m unless the blocks to allocate starting at m_ret are
+		 * all free.
+		 */
+		for (m_iter = m_ret;
+		    m_iter < m_ret + npages && max_order == m_iter->order;
+		    m_iter += 1 << max_order) {
 		}
-
-		/* Advance as necessary to satisfy boundary conditions. */
-		if (!vm_addr_bound_ok(pa, size, boundary))
-			pa = roundup2(pa + 1, boundary);
-		pa_end = pa + size;
-
-		/*
-		 * Determine if the address range is valid (without overflow in
-		 * pa_end calculation), and fits within the segment.
-		 */
-		if (pa_end < pa || seg->end < pa_end)
+		if (m_iter < m_ret + npages)
 			continue;
-
-		m_ret = &seg->first_page[atop(pa - seg->start)];
-
-		/*
-		 * Determine whether there are enough free oind-blocks here to
-		 * satisfy the allocation request.
-		 */
-		pa = VM_PAGE_TO_PHYS(m_listed);
-		do {
-			pa += page_size << oind;
-			if (pa >= pa_end)
-				return (m_ret);
-			m = &seg->first_page[atop(pa - seg->start)];
-		} while (oind == m->order);
-
-		/*
-		 * Determine if an additional series of free blocks of
-		 * diminishing size can help to satisfy the allocation request.
-		 */
-		while (m->order < oind &&
-		    pa + 2 * (page_size << m->order) > pa_end) {
-			pa += page_size << m->order;
-			if (pa >= pa_end)
-				return (m_ret);
-			m = &seg->first_page[atop(pa - seg->start)];
-		}
+		return (m_ret);
 	}
 	return (NULL);
 }
@@ -1502,11 +1461,10 @@ vm_phys_find_queues_contig(
 	}
 	if (order < VM_NFREEORDER)
 		return (NULL);
-	/* Search for a long-enough sequence of small blocks. */
-	oind = VM_NFREEORDER - 1;
+	/* Search for a long-enough sequence of max-order blocks. */
 	for (pind = 0; pind < VM_NFREEPOOL; pind++) {
 		fl = (*queues)[pind];
-		m_ret = vm_phys_find_freelist_contig(fl, oind, npages,
+		m_ret = vm_phys_find_freelist_contig(fl, npages,
 		    low, high, alignment, boundary);
 		if (m_ret != NULL)
 			return (m_ret);
@@ -1585,10 +1543,20 @@ vm_phys_alloc_contig(int domain, u_long npages, vm_paddr_t low, vm_paddr_t high,
 			vm_phys_set_pool(VM_FREEPOOL_DEFAULT, m, oind);
 	}
 	/* Return excess pages to the free lists. */
-	if (&m_run[npages] < m) {
-		fl = (*queues)[VM_FREEPOOL_DEFAULT];
-		vm_phys_enq_range(&m_run[npages], m - &m_run[npages], fl, 0);
-	}
+	fl = (*queues)[VM_FREEPOOL_DEFAULT];
+	vm_phys_enq_range(&m_run[npages], m - &m_run[npages], fl, 0);
+
+	/* Return page verified to satisfy conditions of request. */
+	pa_start = VM_PAGE_TO_PHYS(m_run);
+	KASSERT(low <= pa_start,
+	    ("memory allocated below minimum requested range"));
+	KASSERT(pa_start + ptoa(npages) <= high,
+	    ("memory allocated above maximum requested range"));
+	seg = &vm_phys_segs[m_run->segind];
+	KASSERT(seg->domain == domain,
+	    ("memory not allocated from specified domain"));
+	KASSERT(vm_addr_ok(pa_start, ptoa(npages), alignment, boundary),
+	    ("memory alignment/boundary constraints not satisfied"));
 	return (m_run);
 }
 

@@ -2,7 +2,6 @@
  * System call prototypes.
  *
  * DO NOT EDIT-- this file is automatically @generated.
- * $FreeBSD$
  */
 
 #ifndef _LINUX_SYSPROTO_H_
@@ -34,12 +33,16 @@ struct thread;
 #define	PADR_(t)	0
 #endif
 
-#define	nosys	linux_nosys
 struct linux_exit_args {
 	char rval_l_[PADL_(int)]; int rval; char rval_r_[PADR_(int)];
 };
 struct linux_fork_args {
 	syscallarg_t dummy;
+};
+struct linux_write_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char buf_l_[PADL_(char *)]; char * buf; char buf_r_[PADR_(char *)];
+	char nbyte_l_[PADL_(l_size_t)]; l_size_t nbyte; char nbyte_r_[PADR_(l_size_t)];
 };
 struct linux_open_args {
 	char path_l_[PADL_(char *)]; char * path; char path_r_[PADR_(char *)];
@@ -64,8 +67,8 @@ struct linux_unlink_args {
 };
 struct linux_execve_args {
 	char path_l_[PADL_(char *)]; char * path; char path_r_[PADR_(char *)];
-	char argp_l_[PADL_(char **)]; char ** argp; char argp_r_[PADR_(char **)];
-	char envp_l_[PADL_(char **)]; char ** envp; char envp_r_[PADR_(char **)];
+	char argp_l_[PADL_(l_uintptr_t *)]; l_uintptr_t * argp; char argp_r_[PADR_(l_uintptr_t *)];
+	char envp_l_[PADL_(l_uintptr_t *)]; l_uintptr_t * envp; char envp_r_[PADR_(l_uintptr_t *)];
 };
 struct linux_chdir_args {
 	char path_l_[PADL_(char *)]; char * path; char path_r_[PADR_(char *)];
@@ -457,6 +460,11 @@ struct linux_msync_args {
 	char len_l_[PADL_(l_size_t)]; l_size_t len; char len_r_[PADR_(l_size_t)];
 	char fl_l_[PADL_(l_int)]; l_int fl; char fl_r_[PADR_(l_int)];
 };
+struct linux_writev_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char iovp_l_[PADL_(struct iovec *)]; struct iovec * iovp; char iovp_r_[PADR_(struct iovec *)];
+	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
+};
 struct linux_getsid_args {
 	char pid_l_[PADL_(l_pid_t)]; l_pid_t pid; char pid_r_[PADR_(l_pid_t)];
 };
@@ -608,7 +616,7 @@ struct linux_sigaltstack_args {
 struct linux_sendfile_args {
 	char out_l_[PADL_(l_int)]; l_int out; char out_r_[PADR_(l_int)];
 	char in_l_[PADL_(l_int)]; l_int in; char in_r_[PADR_(l_int)];
-	char offset_l_[PADL_(l_long *)]; l_long * offset; char offset_r_[PADR_(l_long *)];
+	char offset_l_[PADL_(l_off_t *)]; l_off_t * offset; char offset_r_[PADR_(l_off_t *)];
 	char count_l_[PADL_(l_size_t)]; l_size_t count; char count_r_[PADR_(l_size_t)];
 };
 struct linux_vfork_args {
@@ -706,55 +714,55 @@ struct linux_gettid_args {
 struct linux_setxattr_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
 	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
-	char value_l_[PADL_(const char *)]; const char * value; char value_r_[PADR_(const char *)];
+	char value_l_[PADL_(void *)]; void * value; char value_r_[PADR_(void *)];
 	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 };
 struct linux_lsetxattr_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
 	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
-	char value_l_[PADL_(const char *)]; const char * value; char value_r_[PADR_(const char *)];
+	char value_l_[PADL_(void *)]; void * value; char value_r_[PADR_(void *)];
 	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 };
 struct linux_fsetxattr_args {
 	char fd_l_[PADL_(l_int)]; l_int fd; char fd_r_[PADR_(l_int)];
 	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
-	char value_l_[PADL_(const char *)]; const char * value; char value_r_[PADR_(const char *)];
+	char value_l_[PADL_(void *)]; void * value; char value_r_[PADR_(void *)];
 	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 };
 struct linux_getxattr_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
 	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
-	char value_l_[PADL_(char *)]; char * value; char value_r_[PADR_(char *)];
+	char value_l_[PADL_(void *)]; void * value; char value_r_[PADR_(void *)];
 	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_lgetxattr_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
 	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
-	char value_l_[PADL_(char *)]; char * value; char value_r_[PADR_(char *)];
+	char value_l_[PADL_(void *)]; void * value; char value_r_[PADR_(void *)];
 	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_fgetxattr_args {
 	char fd_l_[PADL_(l_int)]; l_int fd; char fd_r_[PADR_(l_int)];
 	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
-	char value_l_[PADL_(char *)]; char * value; char value_r_[PADR_(char *)];
+	char value_l_[PADL_(void *)]; void * value; char value_r_[PADR_(void *)];
 	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_listxattr_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
-	char list_l_[PADL_(const char *)]; const char * list; char list_r_[PADR_(const char *)];
+	char list_l_[PADL_(char *)]; char * list; char list_r_[PADR_(char *)];
 	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_llistxattr_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
-	char list_l_[PADL_(const char *)]; const char * list; char list_r_[PADR_(const char *)];
+	char list_l_[PADL_(char *)]; char * list; char list_r_[PADR_(char *)];
 	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_flistxattr_args {
 	char fd_l_[PADL_(l_int)]; l_int fd; char fd_r_[PADR_(l_int)];
-	char list_l_[PADL_(const char *)]; const char * list; char list_r_[PADR_(const char *)];
+	char list_l_[PADL_(char *)]; char * list; char list_r_[PADR_(char *)];
 	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_removexattr_args {
@@ -961,10 +969,13 @@ struct linux_keyctl_args {
 	syscallarg_t dummy;
 };
 struct linux_ioprio_set_args {
-	syscallarg_t dummy;
+	char which_l_[PADL_(l_int)]; l_int which; char which_r_[PADR_(l_int)];
+	char who_l_[PADL_(l_int)]; l_int who; char who_r_[PADR_(l_int)];
+	char ioprio_l_[PADL_(l_int)]; l_int ioprio; char ioprio_r_[PADR_(l_int)];
 };
 struct linux_ioprio_get_args {
-	syscallarg_t dummy;
+	char which_l_[PADL_(l_int)]; l_int which; char which_r_[PADR_(l_int)];
+	char who_l_[PADL_(l_int)]; l_int who; char who_r_[PADR_(l_int)];
 };
 struct linux_inotify_init_args {
 	syscallarg_t dummy;
@@ -1688,9 +1699,39 @@ struct linux_epoll_pwait2_64_args {
 struct linux_mount_setattr_args {
 	syscallarg_t dummy;
 };
-#define	nosys	linux_nosys
+struct linux_quotactl_fd_args {
+	syscallarg_t dummy;
+};
+struct linux_landlock_create_ruleset_args {
+	syscallarg_t dummy;
+};
+struct linux_landlock_add_rule_args {
+	syscallarg_t dummy;
+};
+struct linux_landlock_restrict_self_args {
+	syscallarg_t dummy;
+};
+struct linux_memfd_secret_args {
+	syscallarg_t dummy;
+};
+struct linux_process_mrelease_args {
+	syscallarg_t dummy;
+};
+struct linux_futex_waitv_args {
+	syscallarg_t dummy;
+};
+struct linux_set_mempolicy_home_node_args {
+	syscallarg_t dummy;
+};
+struct linux_cachestat_args {
+	syscallarg_t dummy;
+};
+struct linux_fchmodat2_args {
+	syscallarg_t dummy;
+};
 int	linux_exit(struct thread *, struct linux_exit_args *);
 int	linux_fork(struct thread *, struct linux_fork_args *);
+int	linux_write(struct thread *, struct linux_write_args *);
 int	linux_open(struct thread *, struct linux_open_args *);
 int	linux_waitpid(struct thread *, struct linux_waitpid_args *);
 int	linux_creat(struct thread *, struct linux_creat_args *);
@@ -1795,6 +1836,7 @@ int	linux_llseek(struct thread *, struct linux_llseek_args *);
 int	linux_getdents(struct thread *, struct linux_getdents_args *);
 int	linux_select(struct thread *, struct linux_select_args *);
 int	linux_msync(struct thread *, struct linux_msync_args *);
+int	linux_writev(struct thread *, struct linux_writev_args *);
 int	linux_getsid(struct thread *, struct linux_getsid_args *);
 int	linux_fdatasync(struct thread *, struct linux_fdatasync_args *);
 int	linux_sysctl(struct thread *, struct linux_sysctl_args *);
@@ -2053,8 +2095,19 @@ int	linux_faccessat2(struct thread *, struct linux_faccessat2_args *);
 int	linux_process_madvise(struct thread *, struct linux_process_madvise_args *);
 int	linux_epoll_pwait2_64(struct thread *, struct linux_epoll_pwait2_64_args *);
 int	linux_mount_setattr(struct thread *, struct linux_mount_setattr_args *);
+int	linux_quotactl_fd(struct thread *, struct linux_quotactl_fd_args *);
+int	linux_landlock_create_ruleset(struct thread *, struct linux_landlock_create_ruleset_args *);
+int	linux_landlock_add_rule(struct thread *, struct linux_landlock_add_rule_args *);
+int	linux_landlock_restrict_self(struct thread *, struct linux_landlock_restrict_self_args *);
+int	linux_memfd_secret(struct thread *, struct linux_memfd_secret_args *);
+int	linux_process_mrelease(struct thread *, struct linux_process_mrelease_args *);
+int	linux_futex_waitv(struct thread *, struct linux_futex_waitv_args *);
+int	linux_set_mempolicy_home_node(struct thread *, struct linux_set_mempolicy_home_node_args *);
+int	linux_cachestat(struct thread *, struct linux_cachestat_args *);
+int	linux_fchmodat2(struct thread *, struct linux_fchmodat2_args *);
 #define	LINUX_SYS_AUE_linux_exit	AUE_EXIT
 #define	LINUX_SYS_AUE_linux_fork	AUE_FORK
+#define	LINUX_SYS_AUE_linux_write	AUE_NULL
 #define	LINUX_SYS_AUE_linux_open	AUE_OPEN_RWTC
 #define	LINUX_SYS_AUE_linux_waitpid	AUE_WAIT4
 #define	LINUX_SYS_AUE_linux_creat	AUE_CREAT
@@ -2159,6 +2212,7 @@ int	linux_mount_setattr(struct thread *, struct linux_mount_setattr_args *);
 #define	LINUX_SYS_AUE_linux_getdents	AUE_GETDIRENTRIES
 #define	LINUX_SYS_AUE_linux_select	AUE_SELECT
 #define	LINUX_SYS_AUE_linux_msync	AUE_MSYNC
+#define	LINUX_SYS_AUE_linux_writev	AUE_WRITEV
 #define	LINUX_SYS_AUE_linux_getsid	AUE_GETSID
 #define	LINUX_SYS_AUE_linux_fdatasync	AUE_NULL
 #define	LINUX_SYS_AUE_linux_sysctl	AUE_SYSCTL
@@ -2270,8 +2324,8 @@ int	linux_mount_setattr(struct thread *, struct linux_mount_setattr_args *);
 #define	LINUX_SYS_AUE_linux_add_key	AUE_NULL
 #define	LINUX_SYS_AUE_linux_request_key	AUE_NULL
 #define	LINUX_SYS_AUE_linux_keyctl	AUE_NULL
-#define	LINUX_SYS_AUE_linux_ioprio_set	AUE_NULL
-#define	LINUX_SYS_AUE_linux_ioprio_get	AUE_NULL
+#define	LINUX_SYS_AUE_linux_ioprio_set	AUE_SETPRIORITY
+#define	LINUX_SYS_AUE_linux_ioprio_get	AUE_GETPRIORITY
 #define	LINUX_SYS_AUE_linux_inotify_init	AUE_NULL
 #define	LINUX_SYS_AUE_linux_inotify_add_watch	AUE_NULL
 #define	LINUX_SYS_AUE_linux_inotify_rm_watch	AUE_NULL
@@ -2417,6 +2471,16 @@ int	linux_mount_setattr(struct thread *, struct linux_mount_setattr_args *);
 #define	LINUX_SYS_AUE_linux_process_madvise	AUE_NULL
 #define	LINUX_SYS_AUE_linux_epoll_pwait2_64	AUE_NULL
 #define	LINUX_SYS_AUE_linux_mount_setattr	AUE_NULL
+#define	LINUX_SYS_AUE_linux_quotactl_fd	AUE_NULL
+#define	LINUX_SYS_AUE_linux_landlock_create_ruleset	AUE_NULL
+#define	LINUX_SYS_AUE_linux_landlock_add_rule	AUE_NULL
+#define	LINUX_SYS_AUE_linux_landlock_restrict_self	AUE_NULL
+#define	LINUX_SYS_AUE_linux_memfd_secret	AUE_NULL
+#define	LINUX_SYS_AUE_linux_process_mrelease	AUE_NULL
+#define	LINUX_SYS_AUE_linux_futex_waitv	AUE_NULL
+#define	LINUX_SYS_AUE_linux_set_mempolicy_home_node	AUE_NULL
+#define	LINUX_SYS_AUE_linux_cachestat	AUE_NULL
+#define	LINUX_SYS_AUE_linux_fchmodat2	AUE_NULL
 
 #undef PAD_
 #undef PADL_

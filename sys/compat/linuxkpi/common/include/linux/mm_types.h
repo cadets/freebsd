@@ -22,8 +22,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _LINUXKPI_LINUX_MM_TYPES_H_
@@ -31,6 +29,7 @@
 
 #include <linux/types.h>
 #include <linux/page.h>
+#include <linux/rbtree.h>
 #include <linux/rwsem.h>
 
 #include <asm/atomic.h>

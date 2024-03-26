@@ -1,4 +1,3 @@
-.\"	$FreeBSD$
 .\"	$OpenBSD: bc,v 1.9 2004/07/09 10:23:05 jmc Exp $
 .\"
 .\" Copyright (C) Caldera International Inc.  2001-2002.
@@ -32,8 +31,6 @@
 .\" STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
 .\" IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 .\" POSSIBILITY OF SUCH DAMAGE.
-.\"
-.\"	@(#)bc	6.2 (Berkeley) 4/17/91
 .\"
 .if n \{\
 .nr PO 5n

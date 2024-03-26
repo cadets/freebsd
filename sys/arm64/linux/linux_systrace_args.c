@@ -2,7 +2,6 @@
  * System call argument to DTrace register array converstion.
  *
  * DO NOT EDIT-- this file is automatically @generated.
- * $FreeBSD$
  * This file is part of the DTrace syscall provider.
  */
 
@@ -12,13 +11,12 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	int64_t *iarg = (int64_t *)uarg;
 	int a = 0;
 	switch (sysnum) {
-#define	nosys	linux_nosys
 	/* linux_setxattr */
 	case 5: {
 		struct linux_setxattr_args *p = params;
 		uarg[a++] = (intptr_t)p->path; /* const char * */
 		uarg[a++] = (intptr_t)p->name; /* const char * */
-		uarg[a++] = (intptr_t)p->value; /* const char * */
+		uarg[a++] = (intptr_t)p->value; /* void * */
 		iarg[a++] = p->size; /* l_size_t */
 		iarg[a++] = p->flags; /* l_int */
 		*n_args = 5;
@@ -29,7 +27,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		struct linux_lsetxattr_args *p = params;
 		uarg[a++] = (intptr_t)p->path; /* const char * */
 		uarg[a++] = (intptr_t)p->name; /* const char * */
-		uarg[a++] = (intptr_t)p->value; /* const char * */
+		uarg[a++] = (intptr_t)p->value; /* void * */
 		iarg[a++] = p->size; /* l_size_t */
 		iarg[a++] = p->flags; /* l_int */
 		*n_args = 5;
@@ -40,7 +38,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		struct linux_fsetxattr_args *p = params;
 		iarg[a++] = p->fd; /* l_int */
 		uarg[a++] = (intptr_t)p->name; /* const char * */
-		uarg[a++] = (intptr_t)p->value; /* const char * */
+		uarg[a++] = (intptr_t)p->value; /* void * */
 		iarg[a++] = p->size; /* l_size_t */
 		iarg[a++] = p->flags; /* l_int */
 		*n_args = 5;
@@ -51,7 +49,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		struct linux_getxattr_args *p = params;
 		uarg[a++] = (intptr_t)p->path; /* const char * */
 		uarg[a++] = (intptr_t)p->name; /* const char * */
-		uarg[a++] = (intptr_t)p->value; /* char * */
+		uarg[a++] = (intptr_t)p->value; /* void * */
 		iarg[a++] = p->size; /* l_size_t */
 		*n_args = 4;
 		break;
@@ -61,7 +59,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		struct linux_lgetxattr_args *p = params;
 		uarg[a++] = (intptr_t)p->path; /* const char * */
 		uarg[a++] = (intptr_t)p->name; /* const char * */
-		uarg[a++] = (intptr_t)p->value; /* char * */
+		uarg[a++] = (intptr_t)p->value; /* void * */
 		iarg[a++] = p->size; /* l_size_t */
 		*n_args = 4;
 		break;
@@ -71,7 +69,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		struct linux_fgetxattr_args *p = params;
 		iarg[a++] = p->fd; /* l_int */
 		uarg[a++] = (intptr_t)p->name; /* const char * */
-		uarg[a++] = (intptr_t)p->value; /* char * */
+		uarg[a++] = (intptr_t)p->value; /* void * */
 		iarg[a++] = p->size; /* l_size_t */
 		*n_args = 4;
 		break;
@@ -80,7 +78,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	case 11: {
 		struct linux_listxattr_args *p = params;
 		uarg[a++] = (intptr_t)p->path; /* const char * */
-		uarg[a++] = (intptr_t)p->list; /* const char * */
+		uarg[a++] = (intptr_t)p->list; /* char * */
 		iarg[a++] = p->size; /* l_size_t */
 		*n_args = 3;
 		break;
@@ -89,7 +87,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	case 12: {
 		struct linux_llistxattr_args *p = params;
 		uarg[a++] = (intptr_t)p->path; /* const char * */
-		uarg[a++] = (intptr_t)p->list; /* const char * */
+		uarg[a++] = (intptr_t)p->list; /* char * */
 		iarg[a++] = p->size; /* l_size_t */
 		*n_args = 3;
 		break;
@@ -98,7 +96,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	case 13: {
 		struct linux_flistxattr_args *p = params;
 		iarg[a++] = p->fd; /* l_int */
-		uarg[a++] = (intptr_t)p->list; /* const char * */
+		uarg[a++] = (intptr_t)p->list; /* char * */
 		iarg[a++] = p->size; /* l_size_t */
 		*n_args = 3;
 		break;
@@ -230,12 +228,19 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	}
 	/* linux_ioprio_set */
 	case 30: {
-		*n_args = 0;
+		struct linux_ioprio_set_args *p = params;
+		iarg[a++] = p->which; /* l_int */
+		iarg[a++] = p->who; /* l_int */
+		iarg[a++] = p->ioprio; /* l_int */
+		*n_args = 3;
 		break;
 	}
 	/* linux_ioprio_get */
 	case 31: {
-		*n_args = 0;
+		struct linux_ioprio_get_args *p = params;
+		iarg[a++] = p->which; /* l_int */
+		iarg[a++] = p->who; /* l_int */
+		*n_args = 2;
 		break;
 	}
 	/* flock */
@@ -486,9 +491,9 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 3;
 		break;
 	}
-	/* write */
+	/* linux_write */
 	case 64: {
-		struct write_args *p = params;
+		struct linux_write_args *p = params;
 		iarg[a++] = p->fd; /* int */
 		uarg[a++] = (intptr_t)p->buf; /* char * */
 		iarg[a++] = p->nbyte; /* l_size_t */
@@ -504,9 +509,9 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 3;
 		break;
 	}
-	/* writev */
+	/* linux_writev */
 	case 66: {
-		struct writev_args *p = params;
+		struct linux_writev_args *p = params;
 		iarg[a++] = p->fd; /* int */
 		uarg[a++] = (intptr_t)p->iovp; /* struct iovec * */
 		uarg[a++] = p->iovcnt; /* u_int */
@@ -1763,8 +1768,8 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	case 221: {
 		struct linux_execve_args *p = params;
 		uarg[a++] = (intptr_t)p->path; /* char * */
-		uarg[a++] = (intptr_t)p->argp; /* char ** */
-		uarg[a++] = (intptr_t)p->envp; /* char ** */
+		uarg[a++] = (intptr_t)p->argp; /* l_uintptr_t * */
+		uarg[a++] = (intptr_t)p->envp; /* l_uintptr_t * */
 		*n_args = 3;
 		break;
 	}
@@ -2367,6 +2372,56 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 0;
 		break;
 	}
+	/* linux_quotactl_fd */
+	case 443: {
+		*n_args = 0;
+		break;
+	}
+	/* linux_landlock_create_ruleset */
+	case 444: {
+		*n_args = 0;
+		break;
+	}
+	/* linux_landlock_add_rule */
+	case 445: {
+		*n_args = 0;
+		break;
+	}
+	/* linux_landlock_restrict_self */
+	case 446: {
+		*n_args = 0;
+		break;
+	}
+	/* linux_memfd_secret */
+	case 447: {
+		*n_args = 0;
+		break;
+	}
+	/* linux_process_mrelease */
+	case 448: {
+		*n_args = 0;
+		break;
+	}
+	/* linux_futex_waitv */
+	case 449: {
+		*n_args = 0;
+		break;
+	}
+	/* linux_set_mempolicy_home_node */
+	case 450: {
+		*n_args = 0;
+		break;
+	}
+	/* linux_cachestat */
+	case 451: {
+		*n_args = 0;
+		break;
+	}
+	/* linux_fchmodat2 */
+	case 452: {
+		*n_args = 0;
+		break;
+	}
 	default:
 		*n_args = 0;
 		break;
@@ -2377,7 +2432,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 {
 	const char *p = NULL;
 	switch (sysnum) {
-#define	nosys	linux_nosys
 	/* linux_setxattr */
 	case 5:
 		switch (ndx) {
@@ -2388,7 +2442,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "userland const char *";
 			break;
 		case 2:
-			p = "userland const char *";
+			p = "userland void *";
 			break;
 		case 3:
 			p = "l_size_t";
@@ -2410,7 +2464,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "userland const char *";
 			break;
 		case 2:
-			p = "userland const char *";
+			p = "userland void *";
 			break;
 		case 3:
 			p = "l_size_t";
@@ -2432,7 +2486,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "userland const char *";
 			break;
 		case 2:
-			p = "userland const char *";
+			p = "userland void *";
 			break;
 		case 3:
 			p = "l_size_t";
@@ -2454,7 +2508,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "userland const char *";
 			break;
 		case 2:
-			p = "userland char *";
+			p = "userland void *";
 			break;
 		case 3:
 			p = "l_size_t";
@@ -2473,7 +2527,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "userland const char *";
 			break;
 		case 2:
-			p = "userland char *";
+			p = "userland void *";
 			break;
 		case 3:
 			p = "l_size_t";
@@ -2492,7 +2546,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "userland const char *";
 			break;
 		case 2:
-			p = "userland char *";
+			p = "userland void *";
 			break;
 		case 3:
 			p = "l_size_t";
@@ -2508,7 +2562,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "userland const char *";
 			break;
 		case 1:
-			p = "userland const char *";
+			p = "userland char *";
 			break;
 		case 2:
 			p = "l_size_t";
@@ -2524,7 +2578,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "userland const char *";
 			break;
 		case 1:
-			p = "userland const char *";
+			p = "userland char *";
 			break;
 		case 2:
 			p = "l_size_t";
@@ -2540,7 +2594,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "l_int";
 			break;
 		case 1:
-			p = "userland const char *";
+			p = "userland char *";
 			break;
 		case 2:
 			p = "l_size_t";
@@ -2747,9 +2801,32 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* linux_ioprio_set */
 	case 30:
+		switch (ndx) {
+		case 0:
+			p = "l_int";
+			break;
+		case 1:
+			p = "l_int";
+			break;
+		case 2:
+			p = "l_int";
+			break;
+		default:
+			break;
+		};
 		break;
 	/* linux_ioprio_get */
 	case 31:
+		switch (ndx) {
+		case 0:
+			p = "l_int";
+			break;
+		case 1:
+			p = "l_int";
+			break;
+		default:
+			break;
+		};
 		break;
 	/* flock */
 	case 32:
@@ -3174,7 +3251,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* write */
+	/* linux_write */
 	case 64:
 		switch (ndx) {
 		case 0:
@@ -3206,7 +3283,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* writev */
+	/* linux_writev */
 	case 66:
 		switch (ndx) {
 		case 0:
@@ -5285,10 +5362,10 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "userland char *";
 			break;
 		case 1:
-			p = "userland char **";
+			p = "userland l_uintptr_t *";
 			break;
 		case 2:
-			p = "userland char **";
+			p = "userland l_uintptr_t *";
 			break;
 		default:
 			break;
@@ -6227,6 +6304,36 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	/* linux_mount_setattr */
 	case 442:
 		break;
+	/* linux_quotactl_fd */
+	case 443:
+		break;
+	/* linux_landlock_create_ruleset */
+	case 444:
+		break;
+	/* linux_landlock_add_rule */
+	case 445:
+		break;
+	/* linux_landlock_restrict_self */
+	case 446:
+		break;
+	/* linux_memfd_secret */
+	case 447:
+		break;
+	/* linux_process_mrelease */
+	case 448:
+		break;
+	/* linux_futex_waitv */
+	case 449:
+		break;
+	/* linux_set_mempolicy_home_node */
+	case 450:
+		break;
+	/* linux_cachestat */
+	case 451:
+		break;
+	/* linux_fchmodat2 */
+	case 452:
+		break;
 	default:
 		break;
 	};
@@ -6238,7 +6345,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 {
 	const char *p = NULL;
 	switch (sysnum) {
-#define	nosys	linux_nosys
 	/* linux_setxattr */
 	case 5:
 		if (ndx == 0 || ndx == 1)
@@ -6357,8 +6463,14 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* linux_ioprio_set */
 	case 30:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
 	/* linux_ioprio_get */
 	case 31:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
 	/* flock */
 	case 32:
 		if (ndx == 0 || ndx == 1)
@@ -6498,7 +6610,7 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* write */
+	/* linux_write */
 	case 64:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
@@ -6508,7 +6620,7 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* writev */
+	/* linux_writev */
 	case 66:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
@@ -7506,6 +7618,26 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* linux_mount_setattr */
 	case 442:
+	/* linux_quotactl_fd */
+	case 443:
+	/* linux_landlock_create_ruleset */
+	case 444:
+	/* linux_landlock_add_rule */
+	case 445:
+	/* linux_landlock_restrict_self */
+	case 446:
+	/* linux_memfd_secret */
+	case 447:
+	/* linux_process_mrelease */
+	case 448:
+	/* linux_futex_waitv */
+	case 449:
+	/* linux_set_mempolicy_home_node */
+	case 450:
+	/* linux_cachestat */
+	case 451:
+	/* linux_fchmodat2 */
+	case 452:
 	default:
 		break;
 	};

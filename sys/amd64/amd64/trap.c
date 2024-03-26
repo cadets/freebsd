@@ -35,13 +35,9 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	from: @(#)trap.c	7.4 (Berkeley) 5/13/91
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * AMD64 Trap and System call handling
  */
@@ -628,7 +624,7 @@ trap(struct trapframe *frame)
 	ksi.ksi_addr = (void *)addr;
 	if (uprintf_signal) {
 		uprintf("pid %d comm %s: signal %d err %#lx code %d type %d "
-		    "addr %#lx rsp %#lx rip %#lx rax %#lx"
+		    "addr %#lx rsp %#lx rip %#lx rax %#lx "
 		    "<%02x %02x %02x %02x %02x %02x %02x %02x>\n",
 		    p->p_pid, p->p_comm, signo, frame->tf_err, ucode, type,
 		    addr, frame->tf_rsp, frame->tf_rip, frame->tf_rax,
@@ -930,15 +926,15 @@ trap_fatal(struct trapframe *frame, vm_offset_t eva)
 	printf("current process		= %d (%s)\n",
 	    curproc->p_pid, curthread->td_name);
 
-	printf("rdi: %16lx rsi: %16lx rdx: %16lx\n", frame->tf_rdi,
+	printf("rdi: %016lx rsi: %016lx rdx: %016lx\n", frame->tf_rdi,
 	    frame->tf_rsi, frame->tf_rdx);
-	printf("rcx: %16lx  r8: %16lx  r9: %16lx\n", frame->tf_rcx,
+	printf("rcx: %016lx  r8: %016lx  r9: %016lx\n", frame->tf_rcx,
 	    frame->tf_r8, frame->tf_r9);
-	printf("rax: %16lx rbx: %16lx rbp: %16lx\n", frame->tf_rax,
+	printf("rax: %016lx rbx: %016lx rbp: %016lx\n", frame->tf_rax,
 	    frame->tf_rbx, frame->tf_rbp);
-	printf("r10: %16lx r11: %16lx r12: %16lx\n", frame->tf_r10,
+	printf("r10: %016lx r11: %016lx r12: %016lx\n", frame->tf_r10,
 	    frame->tf_r11, frame->tf_r12);
-	printf("r13: %16lx r14: %16lx r15: %16lx\n", frame->tf_r13,
+	printf("r13: %016lx r14: %016lx r15: %016lx\n", frame->tf_r13,
 	    frame->tf_r14, frame->tf_r15);
 
 #ifdef KDB
@@ -1034,10 +1030,10 @@ cpu_fetch_syscall_args_fallback(struct thread *td, struct syscall_args *sa)
 		regcnt--;
 	}
 
- 	if (sa->code >= p->p_sysent->sv_size)
- 		sa->callp = &p->p_sysent->sv_table[0];
-  	else
- 		sa->callp = &p->p_sysent->sv_table[sa->code];
+	if (sa->code >= p->p_sysent->sv_size)
+		sa->callp = &nosys_sysent;
+	else
+		sa->callp = &p->p_sysent->sv_table[sa->code];
 
 	KASSERT(sa->callp->sy_narg <= nitems(sa->args),
 	    ("Too many syscall arguments!"));
@@ -1047,7 +1043,7 @@ cpu_fetch_syscall_args_fallback(struct thread *td, struct syscall_args *sa)
 	if (sa->callp->sy_narg > regcnt) {
 		params = (caddr_t)frame->tf_rsp + sizeof(register_t);
 		error = copyin(params, &sa->args[regcnt],
-	    	    (sa->callp->sy_narg - regcnt) * sizeof(sa->args[0]));
+		    (sa->callp->sy_narg - regcnt) * sizeof(sa->args[0]));
 		if (__predict_false(error != 0))
 			return (error);
 	}
@@ -1190,12 +1186,9 @@ amd64_syscall(struct thread *td, int traced)
 
 	kmsan_mark(td->td_frame, sizeof(*td->td_frame), KMSAN_STATE_INITED);
 
-#ifdef DIAGNOSTIC
-	if (!TRAPF_USERMODE(td->td_frame)) {
-		panic("syscall");
-		/* NOT REACHED */
-	}
-#endif
+	KASSERT(TRAPF_USERMODE(td->td_frame),
+	    ("%s: not from user mode", __func__));
+
 	syscallenter(td);
 
 	/*

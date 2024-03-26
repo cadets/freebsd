@@ -25,13 +25,9 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_bhyve_snapshot.h"
 
 #include <sys/param.h>
@@ -196,15 +192,18 @@ SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, invpcid, CTLFLAG_RD, &cap_invpcid,
     0, "Guests are allowed to use INVPCID");
 
 static int tpr_shadowing;
-SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, tpr_shadowing, CTLFLAG_RD,
+SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, tpr_shadowing,
+    CTLFLAG_RDTUN | CTLFLAG_NOFETCH,
     &tpr_shadowing, 0, "TPR shadowing support");
 
 static int virtual_interrupt_delivery;
-SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, virtual_interrupt_delivery, CTLFLAG_RD,
+SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, virtual_interrupt_delivery,
+    CTLFLAG_RDTUN | CTLFLAG_NOFETCH,
     &virtual_interrupt_delivery, 0, "APICv virtual interrupt delivery support");
 
 static int posted_interrupts;
-SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, posted_interrupts, CTLFLAG_RD,
+SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, posted_interrupts,
+    CTLFLAG_RDTUN | CTLFLAG_NOFETCH,
     &posted_interrupts, 0, "APICv posted interrupt support");
 
 static int pirvec = -1;
@@ -217,10 +216,10 @@ SYSCTL_UINT(_hw_vmm_vmx, OID_AUTO, vpid_alloc_failed, CTLFLAG_RD,
 	    &vpid_alloc_failed, 0, NULL);
 
 int guest_l1d_flush;
-SYSCTL_INT(_hw_vmm_vmx, OID_AUTO, l1d_flush, CTLFLAG_RD,
+SYSCTL_INT(_hw_vmm_vmx, OID_AUTO, l1d_flush, CTLFLAG_RDTUN | CTLFLAG_NOFETCH,
     &guest_l1d_flush, 0, NULL);
 int guest_l1d_flush_sw;
-SYSCTL_INT(_hw_vmm_vmx, OID_AUTO, l1d_flush_sw, CTLFLAG_RD,
+SYSCTL_INT(_hw_vmm_vmx, OID_AUTO, l1d_flush_sw, CTLFLAG_RDTUN | CTLFLAG_NOFETCH,
     &guest_l1d_flush_sw, 0, NULL);
 
 static struct msr_entry msr_load_list[1] __aligned(16);
@@ -839,7 +838,11 @@ vmx_modinit(int ipinum)
 	    &tmp);
 	if (error == 0) {
 		tpr_shadowing = 1;
+#ifndef BURN_BRIDGES
 		TUNABLE_INT_FETCH("hw.vmm.vmx.use_tpr_shadowing",
+		    &tpr_shadowing);
+#endif
+		TUNABLE_INT_FETCH("hw.vmm.vmx.cap.tpr_shadowing",
 		    &tpr_shadowing);
 	}
 
@@ -861,7 +864,11 @@ vmx_modinit(int ipinum)
 	    procbased2_vid_bits, 0, &tmp);
 	if (error == 0 && tpr_shadowing) {
 		virtual_interrupt_delivery = 1;
+#ifndef BURN_BRIDGES
 		TUNABLE_INT_FETCH("hw.vmm.vmx.use_apic_vid",
+		    &virtual_interrupt_delivery);
+#endif
+		TUNABLE_INT_FETCH("hw.vmm.vmx.cap.virtual_interrupt_delivery",
 		    &virtual_interrupt_delivery);
 	}
 
@@ -888,7 +895,11 @@ vmx_modinit(int ipinum)
 				}
 			} else {
 				posted_interrupts = 1;
+#ifndef BURN_BRIDGES
 				TUNABLE_INT_FETCH("hw.vmm.vmx.use_apic_pir",
+				    &posted_interrupts);
+#endif
+				TUNABLE_INT_FETCH("hw.vmm.vmx.cap.posted_interrupts",
 				    &posted_interrupts);
 			}
 		}
@@ -906,7 +917,10 @@ vmx_modinit(int ipinum)
 
 	guest_l1d_flush = (cpu_ia32_arch_caps &
 	    IA32_ARCH_CAP_SKIP_L1DFL_VMENTRY) == 0;
+#ifndef BURN_BRIDGES
 	TUNABLE_INT_FETCH("hw.vmm.l1d_flush", &guest_l1d_flush);
+#endif
+	TUNABLE_INT_FETCH("hw.vmm.vmx.l1d_flush", &guest_l1d_flush);
 
 	/*
 	 * L1D cache flush is enabled.  Use IA32_FLUSH_CMD MSR when
@@ -918,7 +932,11 @@ vmx_modinit(int ipinum)
 	if (guest_l1d_flush) {
 		if ((cpu_stdext_feature3 & CPUID_STDEXT3_L1D_FLUSH) == 0) {
 			guest_l1d_flush_sw = 1;
+#ifndef BURN_BRIDGES
 			TUNABLE_INT_FETCH("hw.vmm.l1d_flush_sw",
+			    &guest_l1d_flush_sw);
+#endif
+			TUNABLE_INT_FETCH("hw.vmm.vmx.l1d_flush_sw",
 			    &guest_l1d_flush_sw);
 		}
 		if (guest_l1d_flush_sw) {
@@ -3399,8 +3417,16 @@ vmx_getreg(void *vcpui, int reg, uint64_t *retval)
 		panic("vmx_getreg: %s%d is running", vm_name(vmx->vm),
 		    vcpu->vcpuid);
 
-	if (reg == VM_REG_GUEST_INTR_SHADOW)
+	switch (reg) {
+	case VM_REG_GUEST_INTR_SHADOW:
 		return (vmx_get_intr_shadow(vcpu, running, retval));
+	case VM_REG_GUEST_KGS_BASE:
+		*retval = vcpu->guest_msrs[IDX_MSR_KGSBASE];
+		return (0);
+	case VM_REG_GUEST_TPR:
+		*retval = vlapic_get_cr8(vm_lapic(vcpu->vcpu));
+		return (0);
+	}
 
 	if (vmxctx_getreg(&vcpu->ctx, reg, retval) == 0)
 		return (0);
@@ -4194,6 +4220,9 @@ vmx_vcpu_snapshot(void *vcpui, struct vm_snapshot_meta *meta)
 
 	SNAPSHOT_BUF_OR_LEAVE(vcpu->pir_desc,
 	    sizeof(*vcpu->pir_desc), meta, err, done);
+
+	SNAPSHOT_BUF_OR_LEAVE(&vcpu->mtrr,
+	    sizeof(vcpu->mtrr), meta, err, done);
 
 	vmxctx = &vcpu->ctx;
 	SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_rdi, meta, err, done);

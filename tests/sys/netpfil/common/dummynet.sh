@@ -1,4 +1,3 @@
-# $FreeBSD$
 #
 # SPDX-License-Identifier: BSD-2-Clause
 #
@@ -55,7 +54,7 @@ interface_removal_body()
 		"ipfw"	\
 			"ipfw add 1000 pipe 1 ip from any to any" \
 		"pf"	\
-			"pass dnpipe 1"
+			"pass on ${epair}b dnpipe 1"
 
 	# single ping succeeds just fine
 	atf_check -s exit:0 -o ignore ping -c 1 192.0.2.2
@@ -102,7 +101,7 @@ pipe_body()
 		"ipfw"	\
 			"ipfw add 1000 pipe 1 ip from any to any" \
 		"pf"	\
-			"pass dnpipe 1"
+			"pass on ${epair}b dnpipe 1"
 
 	# single ping succeeds just fine
 	atf_check -s exit:0 -o ignore ping -c 1 192.0.2.2
@@ -146,7 +145,7 @@ pipe_v6_body()
 		"ipfw"	\
 			"ipfw add 1000 pipe 1 ip6 from any to any" \
 		"pf"	\
-			"pass dnpipe 1"
+			"pass on ${epair}b dnpipe 1"
 
 	# Single ping succeeds
 	atf_check -s exit:0 -o ignore ping6 -c 1 2001:db8:42::2
@@ -199,6 +198,59 @@ codel_body()
 }
 
 codel_cleanup()
+{
+	firewall_cleanup $1
+}
+
+wf2q_heap_head()
+{
+	atf_set descr 'Test WF2Q+, attempting to provoke use-after-free'
+	atf_set require.user root
+}
+
+wf2q_heap_body()
+{
+	fw=$1
+	firewall_init $fw
+	dummynet_init $fw
+
+       j=dummynet_wf2q_heap_${fw}_
+
+       epair=$(vnet_mkepair)
+       epair_other=$(vnet_mkepair)
+       vnet_mkjail ${j}a ${epair}a
+       vnet_mkjail ${j}b ${epair}b ${epair_other}b
+
+       jexec ${j}a ifconfig ${epair}a up mtu 9000
+       va=$(jexec ${j}a ifconfig vlan create vlan 42 vlandev ${epair}a)
+       jexec ${j}a ifconfig ${va} 192.0.2.1/24 up #mtu 8000
+
+       jexec ${j}b ifconfig ${epair}b up mtu 9000
+       vb=$(jexec ${j}b ifconfig vlan create vlan 42 vlandev ${epair}b)
+       jexec ${j}b ifconfig ${vb} 192.0.2.2/24 up #mtu 8000
+       jexec ${j}b ifconfig ${epair_other}b up
+
+       # Sanity check
+       atf_check -s exit:0 -o ignore \
+           jexec ${j}b ping -c 1 192.0.2.1
+
+       jexec ${j}b dnctl pipe 1 config bw 10Mb queue 100 delay 500 droptail
+       jexec ${j}b dnctl sched 1 config pipe 1 type wf2q+
+       jexec ${j}b dnctl queue 1 config pipe 1 droptail
+
+       firewall_config ${j}b ${fw} \
+               "pf"    \
+                       "pass dnqueue 1"
+
+       jexec ${j}a ping -f 192.0.2.2 &
+       sleep 1
+
+       jexec ${j}b ifconfig ${vb} destroy
+
+       sleep 2
+}
+
+wf2q_heap_cleanup()
 {
 	firewall_cleanup $1
 }
@@ -335,6 +387,7 @@ queue_v6_body()
 	jexec alcatraz ifconfig ${epair}b inet6 2001:db8:42::2 no_dad up
 	jexec alcatraz /usr/sbin/inetd -p inetd-alcatraz.pid \
 	    $(atf_get_srcdir)/../pf/echo_inetd.conf
+	jexec alcatraz sysctl net.inet6.icmp6.errppslimit=0
 
 	# Sanity check
 	atf_check -s exit:0 -o ignore ping6 -i .1 -c 3 -s 1200 2001:db8:42::2
@@ -465,6 +518,102 @@ nat_cleanup()
 	firewall_cleanup $1
 }
 
+pls_basic_head()
+{
+	atf_set descr 'Basic dummynet packet loss rate test'
+	atf_set require.user root
+}
+
+pls_basic_body()
+{
+	fw=$1
+	firewall_init $fw
+	dummynet_init $fw
+
+	epair=$(vnet_mkepair)
+	vnet_mkjail alcatraz ${epair}b
+
+	ifconfig ${epair}a 192.0.2.1/24 up
+	jexec alcatraz ifconfig ${epair}b 192.0.2.2/24 up
+
+	firewall_config alcatraz ${fw} \
+		"ipfw"	\
+			"ipfw add 65432 ip from any to any" \
+		"pf"	\
+			"pass on ${epair}b"
+
+	# Sanity check
+	atf_check -s exit:0 -o match:'100 packets transmitted, 100 packets received' ping -i .1 -c 100 192.0.2.2
+
+	jexec alcatraz dnctl pipe 1 config plr 0.1
+
+	firewall_config alcatraz ${fw} \
+		"ipfw"	\
+			"ipfw add 1000 pipe 1 ip from 192.0.2.1 to 192.0.2.2" \
+		"pf"	\
+			"pass on ${epair}b dnpipe 1"
+
+	# check if the expected number of pings
+	# are dropped (84 - 96 responses).
+	# repeat up to 6 times if the initial
+	# checks fail
+	atf_check -s exit:0 -o match:'100 packets transmitted, (8[4-9]|9[0-6]) packets received' -r 6:10 ping -i 0.010 -c 100 192.0.2.2
+}
+
+pls_basic_cleanup()
+{
+	firewall_cleanup $1
+}
+
+pls_gilbert_head()
+{
+	atf_set descr 'dummynet Gilbert-Elliott packet loss model test'
+	atf_set require.user root
+}
+
+pls_gilbert_body()
+{
+	fw=$1
+	firewall_init $fw
+	dummynet_init $fw
+
+	epair=$(vnet_mkepair)
+	vnet_mkjail alcatraz ${epair}b
+
+	ifconfig ${epair}a 192.0.2.1/24 up
+	jexec alcatraz ifconfig ${epair}b 192.0.2.2/24 up
+
+	firewall_config alcatraz ${fw} \
+		"ipfw"	\
+			"ipfw add 65432 ip from any to any" \
+		"pf"	\
+			"pass on ${epair}b"
+
+	# Sanity check
+	atf_check -s exit:0 -o match:'100 packets transmitted, 100 packets received' ping -i .1 -c 100 192.0.2.2
+
+	jexec alcatraz dnctl pipe 1 config plr 0.01,0.1,0.8,0.2
+
+	firewall_config alcatraz ${fw} \
+		"ipfw"	\
+			"ipfw add 1000 pipe 1 ip from 192.0.2.1 to 192.0.2.2" \
+		"pf"	\
+			"pass on ${epair}b dnpipe 1"
+
+	# check if the expected number of pings
+	# are dropped (70 - 85 responses).
+	# repeat up to 6 times if the initial
+	# checks fail
+	atf_check -s exit:0 -o match:'100 packets transmitted, (7[0-9]|8[0-5]) packets received' -r 6:10 ping -i 0.010 -c 100 192.0.2.2
+}
+
+pls_gilbert_cleanup()
+{
+	firewall_cleanup $1
+}
+
+
+
 setup_tests		\
 	interface_removal	\
 		ipfw	\
@@ -478,6 +627,8 @@ setup_tests		\
 	codel		\
 		ipfw	\
 		pf	\
+	wf2q_heap	\
+		pf	\
 	queue		\
 		ipfw	\
 		pf	\
@@ -485,4 +636,10 @@ setup_tests		\
 		ipfw	\
 		pf	\
 	nat		\
+		pf	\
+	pls_basic	\
+		ipfw	\
+		pf	\
+	pls_gilbert	\
+		ipfw	\
 		pf

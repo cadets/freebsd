@@ -31,9 +31,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/ktr.h>
@@ -192,8 +189,21 @@ proc_read_regset(struct thread *td, int note, struct iovec *iov)
 	if (regset == NULL)
 		return (EINVAL);
 
+	if (regset->get == NULL)
+		return (EINVAL);
+
+	size = regset->size;
+	/*
+	 * The regset is dynamically sized, e.g. the size could change
+	 * depending on the hardware, or may have a per-thread size.
+	 */
+	if (size == 0) {
+		if (!regset->get(regset, td, NULL, &size))
+			return (EINVAL);
+	}
+
 	if (iov->iov_base == NULL) {
-		iov->iov_len = regset->size;
+		iov->iov_len = size;
 		if (iov->iov_len == 0)
 			return (EINVAL);
 
@@ -201,14 +211,10 @@ proc_read_regset(struct thread *td, int note, struct iovec *iov)
 	}
 
 	/* The length is wrong, return an error */
-	if (iov->iov_len != regset->size)
-		return (EINVAL);
-
-	if (regset->get == NULL)
+	if (iov->iov_len != size)
 		return (EINVAL);
 
 	error = 0;
-	size = regset->size;
 	p = td->td_proc;
 
 	/* Drop the proc lock while allocating the temp buffer */
@@ -220,7 +226,7 @@ proc_read_regset(struct thread *td, int note, struct iovec *iov)
 	if (!regset->get(regset, td, buf, &size)) {
 		error = EINVAL;
 	} else {
-		KASSERT(size == regset->size,
+		KASSERT(size == regset->size || regset->size == 0,
 		    ("%s: Getter function changed the size", __func__));
 
 		iov->iov_len = size;
@@ -247,14 +253,23 @@ proc_write_regset(struct thread *td, int note, struct iovec *iov)
 	if (regset == NULL)
 		return (EINVAL);
 
+	size = regset->size;
+	/*
+	 * The regset is dynamically sized, e.g. the size could change
+	 * depending on the hardware, or may have a per-thread size.
+	 */
+	if (size == 0) {
+		if (!regset->get(regset, td, NULL, &size))
+			return (EINVAL);
+	}
+
 	/* The length is wrong, return an error */
-	if (iov->iov_len != regset->size)
+	if (iov->iov_len != size)
 		return (EINVAL);
 
 	if (regset->set == NULL)
 		return (EINVAL);
 
-	size = regset->size;
 	p = td->td_proc;
 
 	/* Drop the proc lock while allocating the temp buffer */
@@ -1288,7 +1303,7 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 					    SIGSTOP);
 				}
 				td3->td_dbgflags &= ~(TDB_XSIG | TDB_FSTP |
-				    TDB_SUSPEND);
+				    TDB_SUSPEND | TDB_BORN);
 			}
 
 			if ((p->p_flag2 & P2_PTRACE_FSTP) != 0) {

@@ -1,5 +1,4 @@
 /*	$NetBSD: pmap_svc.c,v 1.2 2000/10/20 11:49:40 fvdl Exp $	*/
-/*	$FreeBSD$ */
 
 /*-
  * SPDX-License-Identifier: BSD-3-Clause
@@ -33,14 +32,6 @@
 /*
  * Copyright (c) 1984 - 1991 by Sun Microsystems, Inc.
  */
-
-/* #ident	"@(#)pmap_svc.c	1.14	93/07/05 SMI" */
-
-#if 0
-#ifndef lint
-static	char sccsid[] = "@(#)pmap_svc.c 1.23 89/04/05 Copyr 1984 Sun Micro";
-#endif
-#endif
 
 /*
  * pmap_svc.c

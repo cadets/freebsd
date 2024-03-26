@@ -35,9 +35,6 @@
 
 #include <machine/asm.h>
 #include <machine/armreg.h>
-
-__FBSDID("$FreeBSD$");
-
 .macro clear_step_flag pcbflags, tmp
 	tbz	\pcbflags, #PCB_SINGLE_STEP_SHIFT, 999f
 	mrs	\tmp, mdscr_el1
@@ -273,9 +270,7 @@ ENTRY(savectx)
 	/* Store the VFP registers */
 #ifdef VFP
 	mov	x28, lr
-	mov	x1, x0			/* move pcb to the correct register */
-	mov	x0, xzr			/* td = NULL */
-	bl	vfp_save_state
+	bl	vfp_save_state_savectx
 	mov	lr, x28
 #endif
 

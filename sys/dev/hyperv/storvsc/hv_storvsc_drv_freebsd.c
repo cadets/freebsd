@@ -34,8 +34,6 @@
  * converted into VSCSI protocol messages which are delivered to the parent
  * partition StorVSP driver over the Hyper-V VMBUS.
  */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/proc.h>

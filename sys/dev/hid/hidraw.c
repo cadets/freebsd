@@ -36,8 +36,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_hid.h"
 
 #include <sys/param.h>
@@ -379,7 +377,7 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 	sc->sc_head = sc->sc_tail = 0;
 	sc->sc_fflags = flag;
 
-	hidbus_intr_start(sc->sc_dev);
+	hid_intr_start(sc->sc_dev);
 
 	return (0);
 }
@@ -392,7 +390,7 @@ hidraw_dtor(void *data)
 	DPRINTF("sc=%p\n", sc);
 
 	/* Disable interrupts. */
-	hidbus_intr_stop(sc->sc_dev);
+	hid_intr_stop(sc->sc_dev);
 
 	sc->sc_tail = sc->sc_head = 0;
 	sc->sc_async = 0;
@@ -566,9 +564,10 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 #endif
 	void *buf;
 	struct hidraw_softc *sc;
+	struct hidraw_device_info *hdi;
 	struct hidraw_gen_descriptor *hgd;
 	struct hidraw_report_descriptor *hrd;
-	struct hidraw_devinfo *hdi;
+	struct hidraw_devinfo *hd;
 	const char *devname;
 	uint32_t size;
 	int id, len;
@@ -675,13 +674,16 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			sc->sc_state.quiet = true;
 		mtx_unlock(&sc->sc_mtx);
 		if (error != 0)
-			return(error);
+			return (error);
 
 		buf = HIDRAW_LOCAL_ALLOC(local_buf, hgd->hgd_maxlen);
-		copyin(hgd->hgd_data, buf, hgd->hgd_maxlen);
-		bus_topo_lock();
-		error = hid_set_report_descr(sc->sc_dev, buf, hgd->hgd_maxlen);
-		bus_topo_unlock();
+		error = copyin(hgd->hgd_data, buf, hgd->hgd_maxlen);
+		if (error == 0) {
+			bus_topo_lock();
+			error = hid_set_report_descr(sc->sc_dev, buf,
+			    hgd->hgd_maxlen);
+			bus_topo_unlock();
+		}
 		HIDRAW_LOCAL_FREE(local_buf, buf);
 
 		/* Realloc hidraw input queue */
@@ -738,8 +740,11 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		default:
 			return (EINVAL);
 		}
-		if (id != 0)
-			copyin(hgd->hgd_data, &id, 1);
+		if (id != 0) {
+			error = copyin(hgd->hgd_data, &id, 1);
+			if (error != 0)
+				return (error);
+		}
 		size = MIN(hgd->hgd_maxlen, size);
 		buf = HIDRAW_LOCAL_ALLOC(local_buf, size);
 		error = hid_get_report(sc->sc_dev, buf, size, NULL,
@@ -776,17 +781,36 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		}
 		size = MIN(hgd->hgd_maxlen, size);
 		buf = HIDRAW_LOCAL_ALLOC(local_buf, size);
-		copyin(hgd->hgd_data, buf, size);
-		if (id != 0)
-			id = *(uint8_t *)buf;
-		error = hid_set_report(sc->sc_dev, buf, size,
-		    hgd->hgd_report_type, id);
+		error = copyin(hgd->hgd_data, buf, size);
+		if (error == 0) {
+			if (id != 0)
+				id = *(uint8_t *)buf;
+			error = hid_set_report(sc->sc_dev, buf, size,
+			    hgd->hgd_report_type, id);
+		}
 		HIDRAW_LOCAL_FREE(local_buf, buf);
 		return (error);
 
 	case HIDRAW_GET_REPORT_ID:
 		*(int *)addr = 0;	/* XXX: we only support reportid 0? */
 		return (0);
+
+	case HIDRAW_GET_DEVICEINFO:
+		hdi = (struct hidraw_device_info *)addr;
+		bzero(hdi, sizeof(struct hidraw_device_info));
+		hdi->hdi_product = sc->sc_hw->idProduct;
+		hdi->hdi_vendor = sc->sc_hw->idVendor;
+		hdi->hdi_version = sc->sc_hw->idVersion;
+		hdi->hdi_bustype = sc->sc_hw->idBus;
+		strlcpy(hdi->hdi_name, sc->sc_hw->name,
+		    sizeof(hdi->hdi_name));
+		strlcpy(hdi->hdi_phys, device_get_nameunit(sc->sc_dev),
+		    sizeof(hdi->hdi_phys));
+		strlcpy(hdi->hdi_uniq, sc->sc_hw->serial,
+		    sizeof(hdi->hdi_uniq));
+		snprintf(hdi->hdi_release, sizeof(hdi->hdi_release), "%x.%02x",
+		    sc->sc_hw->idVersion >> 8, sc->sc_hw->idVersion & 0xff);
+		return(0);
 
 	case HIDIOCGRDESCSIZE:
 		*(int *)addr = sc->sc_hw->rdescsize;
@@ -813,10 +837,10 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (error);
 
 	case HIDIOCGRAWINFO:
-		hdi = (struct hidraw_devinfo *)addr;
-		hdi->bustype = sc->sc_hw->idBus;
-		hdi->vendor = sc->sc_hw->idVendor;
-		hdi->product = sc->sc_hw->idProduct;
+		hd = (struct hidraw_devinfo *)addr;
+		hd->bustype = sc->sc_hw->idBus;
+		hd->vendor = sc->sc_hw->idVendor;
+		hd->product = sc->sc_hw->idProduct;
 		return (0);
 	}
 

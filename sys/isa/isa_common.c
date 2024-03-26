@@ -60,8 +60,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_isa.h"
 
 #include <sys/param.h>
@@ -275,12 +273,7 @@ find_first_bit(uint32_t mask)
 static int
 find_next_bit(uint32_t mask, int bit)
 {
-	bit++;
-	while (bit < 32 && !(mask & (1 << bit)))
-		bit++;
-	if (bit != 32)
-		return (bit);
-	return (-1);
+	return (find_first_bit(mask & (-2 << bit)));
 }
 
 /*
@@ -577,7 +570,7 @@ isa_probe_children(device_t dev)
 		    strcmp(kern_ident, "GENERIC") == 0 &&
 		    device_is_attached(child))
 			device_printf(child,
-			    "non-PNP ISA device will be removed from GENERIC in FreeBSD 14.\n");
+			    "non-PNP ISA device will be removed from GENERIC in FreeBSD 15.\n");
 	}
 
 	/*
@@ -916,8 +909,6 @@ isa_driver_added(device_t dev, driver_t *driver)
 		STAILQ_FOREACH(rle, &idev->id_resources, link) {
 			if (rle->res)
 				resource_list_release(rl, dev, child,
-						      rle->type,
-						      rle->rid,
 						      rle->res);
 		}
 

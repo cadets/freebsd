@@ -30,11 +30,12 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	from: @(#)vmparam.h     5.9 (Berkeley) 5/12/91
  *	from: FreeBSD: src/sys/i386/include/vmparam.h,v 1.33 2000/03/30
- * $FreeBSD$
  */
+
+#ifdef __arm__
+#include <arm/vmparam.h>
+#else /* !__arm__ */
 
 #ifndef	_MACHINE_VMPARAM_H_
 #define	_MACHINE_VMPARAM_H_
@@ -82,21 +83,33 @@
 #define	VM_FREEPOOL_DIRECT	1
 
 /*
- * Create one free page lists: VM_FREELIST_DEFAULT is for all physical
- * pages.
+ * Create two free page lists: VM_FREELIST_DMA32 is for physical pages that have
+ * physical addresses below 4G, and VM_FREELIST_DEFAULT is for all other
+ * physical pages.
  */
-#define	VM_NFREELIST		1
+#define	VM_NFREELIST		2
 #define	VM_FREELIST_DEFAULT	0
+#define	VM_FREELIST_DMA32	1
 
 /*
- * An allocation size of 16MB is supported in order to optimize the
- * use of the direct map by UMA.  Specifically, a cache line contains
- * at most four TTEs, collectively mapping 16MB of physical memory.
- * By reducing the number of distinct 16MB "pages" that are used by UMA,
- * the physical memory allocator reduces the likelihood of both 4MB
- * page TLB misses and cache misses caused by 4MB page TLB misses.
+ * When PAGE_SIZE is 4KB, an allocation size of 16MB is supported in order
+ * to optimize the use of the direct map by UMA.  Specifically, a 64-byte
+ * cache line contains at most 8 L2 BLOCK entries, collectively mapping 16MB
+ * of physical memory.  By reducing the number of distinct 16MB "pages" that
+ * are used by UMA, the physical memory allocator reduces the likelihood of
+ * both 2MB page TLB misses and cache misses during the page table walk when
+ * a 2MB page TLB miss does occur.
+ *
+ * When PAGE_SIZE is 16KB, an allocation size of 32MB is supported.  This
+ * size is used by level 0 reservations and L2 BLOCK mappings.
  */
+#if PAGE_SIZE == PAGE_SIZE_4K
+#define	VM_NFREEORDER		13
+#elif PAGE_SIZE == PAGE_SIZE_16K
 #define	VM_NFREEORDER		12
+#else
+#error Unsupported page size
+#endif
 
 /*
  * Enable superpage reservations: 1 level.
@@ -106,10 +119,17 @@
 #endif
 
 /*
- * Level 0 reservations consist of 512 pages.
+ * Level 0 reservations consist of 512 pages when PAGE_SIZE is 4KB, and
+ * 2048 pages when PAGE_SIZE is 16KB.
  */
 #ifndef	VM_LEVEL_0_ORDER
+#if PAGE_SIZE == PAGE_SIZE_4K
 #define	VM_LEVEL_0_ORDER	9
+#elif PAGE_SIZE == PAGE_SIZE_16K
+#define	VM_LEVEL_0_ORDER	11
+#else
+#error Unsupported page size
+#endif
 #endif
 
 /**
@@ -126,6 +146,12 @@
  *
  *                  0xfffffeffffffffff  End of DMAP
  *                  0xffffa00000000000  Start of DMAP
+ *
+ *                  0xffff027fffffffff  End of KMSAN origin map
+ *                  0xffff020000000000  Start of KMSAN origin map
+ *
+ *                  0xffff017fffffffff  End of KMSAN shadow map
+ *                  0xffff010000000000  Start of KMSAN shadow map
  *
  *                  0xffff009fffffffff  End of KASAN shadow map
  *                  0xffff008000000000  Start of KASAN shadow map
@@ -162,6 +188,14 @@
 /* 128 GiB KASAN shadow map */
 #define	KASAN_MIN_ADDRESS	(0xffff008000000000UL)
 #define	KASAN_MAX_ADDRESS	(0xffff00a000000000UL)
+
+/* 512GiB KMSAN shadow map */
+#define	KMSAN_SHAD_MIN_ADDRESS	(0xffff010000000000UL)
+#define	KMSAN_SHAD_MAX_ADDRESS	(0xffff018000000000UL)
+
+/* 512GiB KMSAN origin map */
+#define	KMSAN_ORIG_MIN_ADDRESS	(0xffff020000000000UL)
+#define	KMSAN_ORIG_MAX_ADDRESS	(0xffff028000000000UL)
 
 /* The address bits that hold a pointer authentication code */
 #define	PAC_ADDR_MASK		(0xff7f000000000000UL)
@@ -274,3 +308,5 @@ extern vm_offset_t vm_max_kernel_address;
 #define MINIDUMP_PAGE_TRACKING	1
 
 #endif /* !_MACHINE_VMPARAM_H_ */
+
+#endif /* !__arm__ */

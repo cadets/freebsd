@@ -29,9 +29,6 @@
  * TrustedBSD: Utility functions for extended attributes.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/extattr.h>
 

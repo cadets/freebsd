@@ -27,9 +27,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)ip_var.h	8.2 (Berkeley) 1/9/95
- * $FreeBSD$
  */
 
 #ifndef _NETINET_IP_VAR_H_
@@ -255,6 +252,10 @@ VNET_DECLARE(struct pfil_head *, inet_pfil_head);
 #define	V_inet_pfil_head	VNET(inet_pfil_head)
 #define	PFIL_INET_NAME		"inet"
 
+VNET_DECLARE(struct pfil_head *, inet_local_pfil_head);
+#define	V_inet_local_pfil_head	VNET(inet_local_pfil_head)
+#define	PFIL_INET_LOCAL_NAME	"inet-local"
+
 void	in_delayed_cksum(struct mbuf *m);
 
 /* Hooks for ipfw, dummynet, divert etc. Most are declared in raw_ip.c */
@@ -323,6 +324,21 @@ extern void	(*ip_divert_ptr)(struct mbuf *m, bool incoming);
 extern int	(*ng_ipfw_input_p)(struct mbuf **, struct ip_fw_args *, bool);
 extern int	(*ip_dn_ctl_ptr)(struct sockopt *);
 extern int	(*ip_dn_io_ptr)(struct mbuf **, struct ip_fw_args *);
+
+/* pf specific mtag for divert(4) support */
+__enum_uint8_decl(pf_mtag_dir) {
+	PF_DIVERT_MTAG_DIR_IN = 1,
+	PF_DIVERT_MTAG_DIR_OUT = 2
+};
+struct pf_divert_mtag {
+	__enum_uint8(pf_mtag_dir) idir;		/* initial pkt direction */
+	union {
+		__enum_uint8(pf_mtag_dir) ndir;	/* new dir after re-enter */
+		uint16_t port;			/* initial divert(4) port */
+	};
+};
+#define MTAG_PF_DIVERT	1262273569
+
 #endif /* _KERNEL */
 
 #endif /* !_NETINET_IP_VAR_H_ */

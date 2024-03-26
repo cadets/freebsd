@@ -32,9 +32,6 @@
  */
 
 #include <sys/param.h>
-
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #ifdef _KERNEL
 #include <sys/systm.h>
@@ -140,7 +137,7 @@ ctl_scsi_sense_sbuf(struct ctl_scsiio *ctsio,
 
 		ctl_scsi_command_string(ctsio, inq_data, sb);
 
-		sbuf_printf(sb, "\n");
+		sbuf_putc(sb, '\n');
 	}
 
 	scsi_sense_only_sbuf(&ctsio->sense_data, ctsio->sense_len, sb,

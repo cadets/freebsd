@@ -29,8 +29,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_capsicum.h"
 #include "opt_sctp.h"
 #include "opt_ktrace.h"
@@ -292,7 +290,8 @@ sys_sctp_generic_sendmsg(struct thread *td, struct sctp_generic_sendmsg_args *ua
 		td->td_retval[0] = len - auio.uio_resid;
 #ifdef KTRACE
 	if (ktruio != NULL) {
-		ktruio->uio_resid = td->td_retval[0];
+		if (error == 0)
+			ktruio->uio_resid = td->td_retval[0];
 		ktrgenio(uap->sd, UIO_WRITE, ktruio, error);
 	}
 #endif /* KTRACE */
@@ -406,7 +405,8 @@ sys_sctp_generic_sendmsg_iov(struct thread *td, struct sctp_generic_sendmsg_iov_
 		td->td_retval[0] = len - auio.uio_resid;
 #ifdef KTRACE
 	if (ktruio != NULL) {
-		ktruio->uio_resid = td->td_retval[0];
+		if (error == 0)
+			ktruio->uio_resid = td->td_retval[0];
 		ktrgenio(uap->sd, UIO_WRITE, ktruio, error);
 	}
 #endif /* KTRACE */

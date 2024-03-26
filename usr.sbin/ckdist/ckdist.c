@@ -27,11 +27,6 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char rcsid[] =
-  "$FreeBSD$";
-#endif /* not lint */
-
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -86,7 +81,7 @@ static const char *stripath(const char *path);
 static int distfile(const char *path);
 static int disttype(const char *name);
 static int fail(const char *path, const char *msg);
-static void usage(void);
+static void usage(void) __dead2;
 
 int
 main(int argc, char *argv[])

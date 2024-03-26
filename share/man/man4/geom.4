@@ -32,9 +32,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\" $FreeBSD$
-.\"
-.Dd March 27, 2023
+.Dd October 6, 2023
 .Dt GEOM 4
 .Os
 .Sh NAME
@@ -62,7 +60,6 @@
 .Cd options GEOM_PART_GPT
 .Cd options GEOM_PART_LDM
 .Cd options GEOM_PART_MBR
-.Cd options GEOM_PART_VTOC8
 .Cd options GEOM_RAID
 .Cd options GEOM_RAID3
 .Cd options GEOM_SHSEC
@@ -229,6 +226,12 @@ Examine the rank number of the provider's geom.
 .It
 Examine the method name of the provider's geom.
 .El
+.Pp
+Tasting is controlled by the
+.Va kern.geom.notaste
+sysctl.
+To disable tasting, set the sysctl to 1, to
+re-enable tasting, set the sysctl to 0.
 .It Em ORPHANIZATION
 is the process by which a provider is removed while
 it potentially is still being used.
@@ -494,8 +497,6 @@ Use
 .Cd GEOM_MULTIPATH ,
 .It
 .Cd GEOM_PART_MBR ,
-.It
-.Cd GEOM_PART_VTOC8 ,
 and
 .It
 .Cd GEOM_LABEL

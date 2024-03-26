@@ -28,7 +28,6 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-/*$FreeBSD$*/
 
 #include "ice_common.h"
 #include "ice_fwlog.h"
@@ -503,3 +502,4 @@ ice_fwlog_event_dump(struct ice_hw *hw, struct ice_aq_desc *desc, void *buf)
 
 	ice_info_fwlog(hw, 32, 1, (u8 *)buf, LE16_TO_CPU(desc->datalen));
 }
+

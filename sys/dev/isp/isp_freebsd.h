@@ -1,4 +1,3 @@
-/* $FreeBSD$ */
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
@@ -245,7 +244,7 @@ struct isposinfo {
 	/*
 	 * Firmware pointer
 	 */
-	const struct firmware *	fw;
+	const struct firmware *	ispfw;
 
 	/*
 	 * DMA related stuff

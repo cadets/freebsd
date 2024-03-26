@@ -1,4 +1,3 @@
-# $FreeBSD$
 # Utility functions
 ##
 # SPDX-License-Identifier: BSD-2-Clause
@@ -86,6 +85,15 @@ pflog_init()
 {
 	if ! kldstat -q -m pflog; then
 		atf_skip "This test requires pflog"
+	fi
+}
+
+pflow_init()
+{
+	pft_init
+
+	if ! kldstat -q -m pflow; then
+		atf_skip "This test requires pflow"
 	fi
 }
 

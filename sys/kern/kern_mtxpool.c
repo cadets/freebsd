@@ -45,9 +45,6 @@
  *	- possible L1 cache mastersip contention between cpus.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/proc.h>
 #include <sys/kernel.h>

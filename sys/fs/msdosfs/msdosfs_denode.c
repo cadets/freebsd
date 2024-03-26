@@ -1,4 +1,3 @@
-/* $FreeBSD$ */
 /*	$NetBSD: msdosfs_denode.c,v 1.28 1998/02/10 14:10:00 mrg Exp $	*/
 
 /*-
@@ -134,10 +133,13 @@ deget(struct msdosfsmount *pmp, u_long dirclust, u_long diroffset,
 	 * entry that represented the file happens to be reused while the
 	 * deleted file is still open.
 	 */
-	inode = (uint64_t)pmp->pm_bpcluster * dirclust + diroffset;
+	inode = DETOI(pmp, dirclust, diroffset);
 
 	error = vfs_hash_get(mntp, inode, lkflags, curthread, &nvp,
 	    de_vncmpf, &inode);
+#ifdef MSDOSFS_DEBUG
+	printf("vfs_hash_get(inode %lu) error %d\n", inode, error);
+#endif
 	if (error)
 		return (error);
 	if (nvp != NULL) {
@@ -192,6 +194,9 @@ badoff:
 	}
 	error = vfs_hash_insert(nvp, inode, lkflags, curthread, &xvp,
 	    de_vncmpf, &inode);
+#ifdef MSDOSFS_DEBUG
+	printf("vfs_hash_insert(inode %lu) error %d\n", inode, error);
+#endif
 	if (error) {
 		*depp = NULL;
 		return (error);
@@ -498,6 +503,7 @@ deextend(struct denode *dep, u_long length, struct ucred *cred)
 	struct msdosfsmount *pmp = dep->de_pmp;
 	struct vnode *vp = DETOV(dep);
 	struct buf *bp;
+	off_t eof_clusteroff;
 	u_long count;
 	int error;
 
@@ -536,13 +542,19 @@ deextend(struct denode *dep, u_long length, struct ucred *cred)
 	 * B_CACHE | B_DELWRI but with invalid pages, and cannot be
 	 * neither written out nor validated.
 	 *
-	 * Fix it by proactively clearing extended pages.
+	 * Fix it by proactively clearing extended pages.  Need to do
+	 * both vfs_bio_clrbuf() to mark pages valid, and to zero
+	 * actual buffer content which might exist in the tail of the
+	 * already valid cluster.
 	 */
 	error = bread(vp, de_cluster(pmp, dep->de_FileSize), pmp->pm_bpcluster,
 	    NOCRED, &bp);
 	if (error != 0)
 		goto rewind;
 	vfs_bio_clrbuf(bp);
+	eof_clusteroff = de_cn2off(pmp, de_cluster(pmp, dep->de_FileSize));
+	vfs_bio_bzero_buf(bp, dep->de_FileSize - eof_clusteroff,
+	    pmp->pm_bpcluster - dep->de_FileSize + eof_clusteroff);
 	if (!DOINGASYNC(vp))
 		(void)bwrite(bp);
 	else if (vm_page_count_severe() || buf_dirty_count_severe())
@@ -583,8 +595,11 @@ reinsert(struct denode *dep)
 		return;
 #endif
 	vp = DETOV(dep);
-	dep->de_inode = (uint64_t)dep->de_pmp->pm_bpcluster * dep->de_dirclust +
-	    dep->de_diroffset;
+	dep->de_inode = DETOI(dep->de_pmp, dep->de_dirclust, dep->de_diroffset);
+#ifdef MSDOSFS_DEBUG
+	printf("vfs_hash_rehash(inode %lu, refcnt %lu, vp %p)\n",
+	    dep->de_inode, dep->de_refcnt, vp);
+#endif
 	vfs_hash_rehash(vp, dep->de_inode);
 }
 
@@ -602,6 +617,10 @@ msdosfs_reclaim(struct vop_reclaim_args *ap)
 	/*
 	 * Remove the denode from its hash chain.
 	 */
+#ifdef MSDOSFS_DEBUG
+	printf("vfs_hash_remove(inode %lu, refcnt %lu, vp %p)\n",
+	    dep->de_inode, dep->de_refcnt, vp);
+#endif
 	vfs_hash_remove(vp);
 	/*
 	 * Purge old data structures associated with the denode.

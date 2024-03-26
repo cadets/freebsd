@@ -1,4 +1,4 @@
-# $NetBSD: cond-cmp-unary.mk,v 1.3 2022/09/08 05:43:20 rillig Exp $
+# $NetBSD: cond-cmp-unary.mk,v 1.6 2023/11/19 21:47:52 rillig Exp $
 #
 # Tests for unary comparisons in .if conditions, that is, comparisons with
 # a single operand.  If the operand is a number, it is compared to zero,
@@ -24,33 +24,34 @@
 .  error
 .endif
 
-# The empty string may come from a variable expression.
+# The empty string may come from an expression.
 #
-# XXX: As of 2020-11-11, this empty string is interpreted "as a number" in
-# EvalNotEmpty, which is plain wrong.  The bug is in TryParseNumber.
+# XXX: As of 2023-06-01, this empty string is interpreted "as a number" in
+# EvalTruthy, which is plain wrong.  The bug is in TryParseNumber.
 .if ${:U}
 .  error
 .endif
 
-# A variable expression that is not surrounded by quotes is interpreted
+# An expression that is not surrounded by quotes is interpreted
 # as a number if possible, otherwise as a string.
 .if ${:U0}
 .  error
 .endif
 
-# A non-zero number from a variable expression evaluates to true.
+# A non-zero number from an expression evaluates to true.
 .if !${:U12345}
 .  error
 .endif
 
 # A string of whitespace should evaluate to false.
 #
-# XXX: As of 2020-11-11, the implementation in EvalNotEmpty does not skip
+# XXX: As of 2023-06-01, the implementation in EvalTruthy does not skip
 # whitespace before testing for the end.  This was probably an oversight in
 # a commit from 1992-04-15 saying "A variable is empty when it just contains
 # spaces".
 .if ${:U   }
-.  info This is only reached because of a bug in EvalNotEmpty.
+# expect+1: This is only reached because of a bug in EvalTruthy.
+.  info This is only reached because of a bug in EvalTruthy.
 .else
 .  error
 .endif

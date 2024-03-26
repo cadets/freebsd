@@ -25,8 +25,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _AMD64_LINUX_H_
@@ -189,34 +187,6 @@ typedef struct {
 #define	LINUX_MS_NODEV		0x0004
 #define	LINUX_MS_NOEXEC		0x0008
 #define	LINUX_MS_REMOUNT	0x0020
-
-/*
- * SystemV IPC defines
- */
-#define	LINUX_IPC_RMID		0
-#define	LINUX_IPC_SET		1
-#define	LINUX_IPC_STAT		2
-#define	LINUX_IPC_INFO		3
-
-#define	LINUX_SHM_LOCK		11
-#define	LINUX_SHM_UNLOCK	12
-#define	LINUX_SHM_STAT		13
-#define	LINUX_SHM_INFO		14
-
-#define	LINUX_SHM_RDONLY	0x1000
-#define	LINUX_SHM_RND		0x2000
-#define	LINUX_SHM_REMAP		0x4000
-
-/* semctl commands */
-#define	LINUX_GETPID		11
-#define	LINUX_GETVAL		12
-#define	LINUX_GETALL		13
-#define	LINUX_GETNCNT		14
-#define	LINUX_GETZCNT		15
-#define	LINUX_SETVAL		16
-#define	LINUX_SETALL		17
-#define	LINUX_SEM_STAT		18
-#define	LINUX_SEM_INFO		19
 
 union l_semun {
 	l_int		val;

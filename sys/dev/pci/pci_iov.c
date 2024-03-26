@@ -25,8 +25,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_bus.h"
 
 #include <sys/param.h>
@@ -437,7 +435,7 @@ out:
  * affects all PFs on the device.
  */
 static int
-pci_iov_set_ari(device_t bus)
+pci_iov_set_ari(device_t bus, bool *ari_enabled)
 {
 	device_t lowest;
 	device_t *devlist;
@@ -445,8 +443,10 @@ pci_iov_set_ari(device_t bus)
 	uint16_t iov_ctl;
 
 	/* If ARI is disabled on the downstream port there is nothing to do. */
-	if (!PCIB_ARI_ENABLED(device_get_parent(bus)))
+	if (!PCIB_ARI_ENABLED(device_get_parent(bus))) {
+		*ari_enabled = false;
 		return (0);
+	}
 
 	error = device_get_children(bus, &devlist, &devcount);
 
@@ -482,6 +482,7 @@ pci_iov_set_ari(device_t bus)
 		device_printf(lowest, "failed to enable ARI\n");
 		return (ENXIO);
 	}
+	*ari_enabled = true;
 	return (0);
 }
 
@@ -685,6 +686,7 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	uint16_t iov_ctl;
 	uint16_t num_vfs, total_vfs;
 	int iov_inited;
+	bool ari_enabled;
 
 	mtx_lock(&Giant);
 	dinfo = cdev->si_drv1;
@@ -715,7 +717,7 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	if (error != 0)
 		goto out;
 
-	error = pci_iov_set_ari(bus);
+	error = pci_iov_set_ari(bus, &ari_enabled);
 	if (error != 0)
 		goto out;
 
@@ -734,6 +736,11 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 
 	/* We don't yet support allocating extra bus numbers for VFs. */
 	if (pci_get_bus(dev) != PCI_RID2BUS(last_rid)) {
+		error = ENOSPC;
+		goto out;
+	}
+
+	if (!ari_enabled && PCI_RID2SLOT(last_rid) != 0) {
 		error = ENOSPC;
 		goto out;
 	}
@@ -771,9 +778,7 @@ out:
 
 	for (i = 0; i <= PCIR_MAX_BAR_0; i++) {
 		if (iov->iov_bar[i].res != NULL) {
-			pci_release_resource(bus, dev, SYS_RES_MEMORY,
-			    iov->iov_pos + PCIR_SRIOV_BAR(i),
-			    iov->iov_bar[i].res);
+			pci_release_resource(bus, dev, iov->iov_bar[i].res);
 			pci_delete_resource(bus, dev, SYS_RES_MEMORY,
 			    iov->iov_pos + PCIR_SRIOV_BAR(i));
 			iov->iov_bar[i].res = NULL;
@@ -883,9 +888,7 @@ pci_iov_delete_iov_children(struct pci_devinfo *dinfo)
 
 	for (i = 0; i <= PCIR_MAX_BAR_0; i++) {
 		if (iov->iov_bar[i].res != NULL) {
-			pci_release_resource(bus, dev, SYS_RES_MEMORY,
-			    iov->iov_pos + PCIR_SRIOV_BAR(i),
-			    iov->iov_bar[i].res);
+			pci_release_resource(bus, dev, iov->iov_bar[i].res);
 			pci_delete_resource(bus, dev, SYS_RES_MEMORY,
 			    iov->iov_pos + PCIR_SRIOV_BAR(i));
 			iov->iov_bar[i].res = NULL;
@@ -1042,6 +1045,7 @@ pci_vf_alloc_mem_resource(device_t dev, device_t child, int *rid,
 	}
 
 	rman_set_rid(res, *rid);
+	rman_set_type(res, SYS_RES_MEMORY);
 
 	if (flags & RF_ACTIVE) {
 		error = bus_activate_resource(child, SYS_RES_MEMORY, *rid, res);
@@ -1058,21 +1062,21 @@ pci_vf_alloc_mem_resource(device_t dev, device_t child, int *rid,
 }
 
 int
-pci_vf_release_mem_resource(device_t dev, device_t child, int rid,
-    struct resource *r)
+pci_vf_release_mem_resource(device_t dev, device_t child, struct resource *r)
 {
 	struct pci_devinfo *dinfo;
 	struct resource_list_entry *rle;
-	int error;
+	int error, rid;
 
 	dinfo = device_get_ivars(child);
 
 	if (rman_get_flags(r) & RF_ACTIVE) {
-		error = bus_deactivate_resource(child, SYS_RES_MEMORY, rid, r);
+		error = bus_deactivate_resource(child, r);
 		if (error != 0)
 			return (error);
 	}
 
+	rid = rman_get_rid(r);
 	rle = resource_list_find(&dinfo->resources, SYS_RES_MEMORY, rid);
 	if (rle != NULL) {
 		rle->res = NULL;

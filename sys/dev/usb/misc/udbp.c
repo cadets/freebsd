@@ -31,8 +31,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /* Driver for arbitrary double bulk pipe devices.
  * The driver assumes that there will be the same driver on the other side.
  *
@@ -789,7 +787,7 @@ ng_udbp_connect(hook_p hook)
 {
 	struct udbp_softc *sc = NG_NODE_PRIVATE(NG_HOOK_NODE(hook));
 
-	/* probably not at splnet, force outward queueing */
+	/* force outward queueing */
 	NG_HOOK_FORCE_QUEUE(NG_HOOK_PEER(hook));
 
 	mtx_lock(&sc->sc_mtx);

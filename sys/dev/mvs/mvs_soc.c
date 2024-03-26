@@ -26,9 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/module.h>
 #include <sys/systm.h>
@@ -208,7 +205,7 @@ static int
 mvs_ctlr_setup(device_t dev)
 {
 	struct mvs_controller *ctlr = device_get_softc(dev);
-	int ccc = ctlr->ccc, cccc = ctlr->cccc, ccim = 0;
+	int ccc = ctlr->ccc, cccc = ctlr->cccc;
 
 	/* Mask chip interrupts */
 	ATA_OUTL(ctlr->r_mem, CHIP_SOC_MIM, 0x00000000);
@@ -225,8 +222,6 @@ mvs_ctlr_setup(device_t dev)
 	ccc *= 150;
 	ATA_OUTL(ctlr->r_mem, HC_ICT, cccc);
 	ATA_OUTL(ctlr->r_mem, HC_ITT, ccc);
-	if (ccc)
-		ccim |= IC_HC0_COAL_DONE;
 	/* Enable chip interrupts */
 	ctlr->gmim = ((ccc ? IC_HC0_COAL_DONE :
 	    (IC_DONE_HC0 & CHIP_SOC_HC0_MASK(ctlr->channels))) |
@@ -371,11 +366,10 @@ mvs_alloc_resource(device_t dev, device_t child, int type, int *rid,
 }
 
 static int
-mvs_release_resource(device_t dev, device_t child, int type, int rid,
-			 struct resource *r)
+mvs_release_resource(device_t dev, device_t child, struct resource *r)
 {
 
-	switch (type) {
+	switch (rman_get_type(r)) {
 	case SYS_RES_MEMORY:
 		rman_release_resource(r);
 		return (0);

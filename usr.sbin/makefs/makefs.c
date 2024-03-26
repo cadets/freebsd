@@ -37,9 +37,6 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <assert.h>
@@ -167,7 +164,7 @@ main(int argc, char *argv[])
 			break;
 
 		case 'D':
-			dupsok = 1;
+			dupsok++;
 			break;
 
 		case 'd':

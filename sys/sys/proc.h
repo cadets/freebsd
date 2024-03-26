@@ -32,9 +32,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)proc.h	8.15 (Berkeley) 5/19/95
- * $FreeBSD$
  */
 
 #ifndef _SYS_PROC_H_
@@ -113,6 +110,8 @@ struct pgrp {
 	pid_t		pg_id;		/* (c) Process group id. */
 	struct mtx	pg_mtx;		/* Mutex to protect members */
 	int		pg_flags;	/* (m) PGRP_ flags */
+	struct sx	pg_killsx;	/* Mutual exclusion between group member
+					 * fork() and killpg() */
 };
 
 #define	PGRP_ORPHANED	0x00000001	/* Group is orphaned */
@@ -271,11 +270,12 @@ struct thread {
 	const char	*td_wmesg;	/* (t) Reason for sleep. */
 	volatile u_char td_owepreempt;  /* (k*) Preempt on last critical_exit */
 	u_char		td_tsqueue;	/* (t) Turnstile queue blocked on. */
-	u_char		td_stopsched;	/* (k) Scheduler stopped. */
+	u_char		_td_pad0[2];	/* Available. */
 	int		td_locks;	/* (k) Debug: count of non-spin locks */
 	int		td_rw_rlocks;	/* (k) Count of rwlock read locks. */
 	int		td_sx_slocks;	/* (k) Count of sx shared locks. */
 	int		td_lk_slocks;	/* (k) Count of lockmgr shared locks. */
+	struct lock_object *td_wantedlock; /* (k) Lock we are contending on */
 	struct turnstile *td_blocked;	/* (t) Lock thread is blocked on. */
 	const char	*td_lockname;	/* (t) Name of lock blocked on. */
 	LIST_HEAD(, turnstile) td_contested;	/* (q) Contested locks. */
@@ -313,8 +313,8 @@ struct thread {
 	struct osd	td_osd;		/* (k) Object specific data. */
 	struct vm_map_entry *td_map_def_user; /* (k) Deferred entries. */
 	pid_t		td_dbg_forked;	/* (c) Child pid for debugger. */
-	struct vnode	*td_vp_reserved;/* (k) Preallocated vnode. */
 	u_int		td_no_sleeping;	/* (k) Sleeping disabled count. */
+	struct vnode	*td_vp_reserved;/* (k) Preallocated vnode. */
 	void		*td_su;		/* (k) FFS SU private */
 	sbintime_t	td_sleeptimo;	/* (t) Sleep timeout. */
 	int		td_rtcgen;	/* (s) rtc_generation of abs. sleep */
@@ -429,8 +429,8 @@ do {									\
 
 #define	TD_LOCKS_INC(td)	((td)->td_locks++)
 #define	TD_LOCKS_DEC(td) do {						\
-	KASSERT(SCHEDULER_STOPPED_TD(td) || (td)->td_locks > 0,		\
-	    ("thread %p owns no locks", (td)));				\
+	KASSERT(SCHEDULER_STOPPED() || (td)->td_locks > 0,		\
+	    ("Thread %p owns no locks", (td)));				\
 	(td)->td_locks--;						\
 } while (0)
 #else
@@ -881,6 +881,13 @@ struct proc {
 #define	P2_WEXIT		0x00040000	/* exit just started, no
 						   external thread_single() is
 						   permitted */
+#define	P2_REAPKILLED		0x00080000
+#define	P2_MEMBAR_PRIVE		0x00100000	/* membar private expedited
+						   registered */
+#define	P2_MEMBAR_PRIVE_SYNCORE	0x00200000	/* membar private expedited
+						   sync core registered */
+#define	P2_MEMBAR_GLOBE		0x00400000	/* membar global expedited
+						   registered */
 
 /* Flags protected by proctree_lock, kept in p_treeflags. */
 #define	P_TREE_ORPHANED		0x00000001	/* Reparented, on orphan list */
@@ -948,7 +955,7 @@ MALLOC_DECLARE(M_SUBPROC);
  * in a pid_t, as it is used to represent "no process group".
  */
 #define	PID_MAX		99999
-#define	NO_PID		100000
+#define	NO_PID		(PID_MAX + 1)
 #define	THREAD0_TID	NO_PID
 extern pid_t pid_max;
 
@@ -1066,6 +1073,16 @@ extern pid_t pid_max;
 
 #define	THREAD_CAN_SLEEP()		((curthread)->td_no_sleeping == 0)
 
+#define	THREAD_CONTENDS_ON_LOCK(lo)		do {			\
+	MPASS(curthread->td_wantedlock == NULL);			\
+	curthread->td_wantedlock = lo;					\
+} while (0)
+
+#define	THREAD_CONTENTION_DONE(lo)		do {			\
+	MPASS(curthread->td_wantedlock == lo);				\
+	curthread->td_wantedlock = NULL;				\
+} while (0)
+
 #define	PIDHASH(pid)	(&pidhashtbl[(pid) & pidhash])
 #define	PIDHASHLOCK(pid) (&pidhashtbl_lock[((pid) & pidhashlock)])
 extern LIST_HEAD(pidhashhead, proc) *pidhashtbl;
@@ -1155,11 +1172,9 @@ void	ast_sched(struct thread *td, int tda);
 void	ast_unsched_locked(struct thread *td, int tda);
 
 struct	thread *choosethread(void);
+int	cr_bsd_visible(struct ucred *u1, struct ucred *u2);
 int	cr_cansee(struct ucred *u1, struct ucred *u2);
 int	cr_canseesocket(struct ucred *cred, struct socket *so);
-int	cr_canseeothergids(struct ucred *u1, struct ucred *u2);
-int	cr_canseeotheruids(struct ucred *u1, struct ucred *u2);
-int	cr_canseejailproc(struct ucred *u1, struct ucred *u2);
 int	cr_cansignal(struct ucred *cred, struct proc *proc, int signum);
 int	enterpgrp(struct proc *p, pid_t pgid, struct pgrp *pgrp,
 	    struct session *sess);
@@ -1227,6 +1242,7 @@ void	cpu_idle(int);
 int	cpu_idle_wakeup(int);
 extern	void (*cpu_idle_hook)(sbintime_t);	/* Hook to machdep CPU idler. */
 void	cpu_switch(struct thread *, struct thread *, struct mtx *);
+void	cpu_sync_core(void);
 void	cpu_throw(struct thread *, struct thread *) __dead2;
 bool	curproc_sigkilled(void);
 void	userret(struct thread *, struct trapframe *);
@@ -1241,7 +1257,7 @@ void	cpu_fork_kthread_handler(struct thread *, void (*)(void *), void *);
 int	cpu_procctl(struct thread *td, int idtype, id_t id, int com,
 	    void *data);
 void	cpu_set_syscall_retval(struct thread *, int);
-void	cpu_set_upcall(struct thread *, void (*)(void *), void *,
+int	cpu_set_upcall(struct thread *, void (*)(void *), void *,
 	    stack_t *);
 int	cpu_set_user_tls(struct thread *, void *tls_base);
 void	cpu_thread_alloc(struct thread *);

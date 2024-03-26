@@ -29,10 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__SCCSID("@(#)sleep.c	8.1 (Berkeley) 6/4/93");
-__FBSDID("$FreeBSD$");
-
 #include "namespace.h"
 #include <errno.h>
 #include <limits.h>
@@ -60,7 +56,7 @@ __sleep(unsigned int seconds)
 	time_to_sleep.tv_sec = seconds;
 	time_to_sleep.tv_nsec = 0;
 	if (((int (*)(const struct timespec *, struct timespec *))
-	    __libc_interposing[INTERPOS_nanosleep])(
+	    (*__libc_interposing_slot(INTERPOS_nanosleep)))(
 	    &time_to_sleep, &time_remaining) != -1)
 		return (0);
 	if (errno != EINTR)

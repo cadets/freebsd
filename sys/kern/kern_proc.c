@@ -27,13 +27,9 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)kern_proc.c	8.7 (Berkeley) 2/14/95
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_ddb.h"
 #include "opt_ktrace.h"
 #include "opt_kstack_pages.h"
@@ -163,7 +159,8 @@ EVENTHANDLER_LIST_DEFINE(process_fork);
 EVENTHANDLER_LIST_DEFINE(process_exec);
 
 int kstack_pages = KSTACK_PAGES;
-SYSCTL_INT(_kern, OID_AUTO, kstack_pages, CTLFLAG_RD, &kstack_pages, 0,
+SYSCTL_INT(_kern, OID_AUTO, kstack_pages, CTLFLAG_RDTUN | CTLFLAG_NOFETCH,
+    &kstack_pages, 0,
     "Kernel stack size in pages");
 static int vmmap_skip_res_cnt = 0;
 SYSCTL_INT(_kern, OID_AUTO, proc_vmmap_skip_resident_count, CTLFLAG_RW,
@@ -278,6 +275,7 @@ proc_init(void *mem, int size, int flags)
 	EVENTHANDLER_DIRECT_INVOKE(process_init, p);
 	p->p_stats = pstats_alloc();
 	p->p_pgrp = NULL;
+	TAILQ_INIT(&p->p_kqtim_stop);
 	return (0);
 }
 
@@ -310,6 +308,7 @@ pgrp_init(void *mem, int size, int flags)
 
 	pg = mem;
 	mtx_init(&pg->pg_mtx, "process group", NULL, MTX_DEF | MTX_DUPOK);
+	sx_init(&pg->pg_killsx, "killpg racer");
 	return (0);
 }
 
@@ -573,6 +572,7 @@ errout:
 int
 enterpgrp(struct proc *p, pid_t pgid, struct pgrp *pgrp, struct session *sess)
 {
+	struct pgrp *old_pgrp;
 
 	sx_assert(&proctree_lock, SX_XLOCKED);
 
@@ -583,6 +583,15 @@ enterpgrp(struct proc *p, pid_t pgid, struct pgrp *pgrp, struct session *sess)
 	    ("enterpgrp: pgrp with pgid exists"));
 	KASSERT(!SESS_LEADER(p),
 	    ("enterpgrp: session leader attempted setpgrp"));
+
+	old_pgrp = p->p_pgrp;
+	if (!sx_try_xlock(&old_pgrp->pg_killsx)) {
+		sx_xunlock(&proctree_lock);
+		sx_xlock(&old_pgrp->pg_killsx);
+		sx_xunlock(&old_pgrp->pg_killsx);
+		return (ERESTART);
+	}
+	MPASS(old_pgrp == p->p_pgrp);
 
 	if (sess != NULL) {
 		/*
@@ -625,6 +634,7 @@ enterpgrp(struct proc *p, pid_t pgid, struct pgrp *pgrp, struct session *sess)
 
 	doenterpgrp(p, pgrp);
 
+	sx_xunlock(&old_pgrp->pg_killsx);
 	return (0);
 }
 
@@ -634,6 +644,7 @@ enterpgrp(struct proc *p, pid_t pgid, struct pgrp *pgrp, struct session *sess)
 int
 enterthispgrp(struct proc *p, struct pgrp *pgrp)
 {
+	struct pgrp *old_pgrp;
 
 	sx_assert(&proctree_lock, SX_XLOCKED);
 	PROC_LOCK_ASSERT(p, MA_NOTOWNED);
@@ -646,8 +657,26 @@ enterthispgrp(struct proc *p, struct pgrp *pgrp)
 	KASSERT(pgrp != p->p_pgrp,
 	    ("%s: p %p belongs to pgrp %p", __func__, p, pgrp));
 
+	old_pgrp = p->p_pgrp;
+	if (!sx_try_xlock(&old_pgrp->pg_killsx)) {
+		sx_xunlock(&proctree_lock);
+		sx_xlock(&old_pgrp->pg_killsx);
+		sx_xunlock(&old_pgrp->pg_killsx);
+		return (ERESTART);
+	}
+	MPASS(old_pgrp == p->p_pgrp);
+	if (!sx_try_xlock(&pgrp->pg_killsx)) {
+		sx_xunlock(&old_pgrp->pg_killsx);
+		sx_xunlock(&proctree_lock);
+		sx_xlock(&pgrp->pg_killsx);
+		sx_xunlock(&pgrp->pg_killsx);
+		return (ERESTART);
+	}
+
 	doenterpgrp(p, pgrp);
 
+	sx_xunlock(&pgrp->pg_killsx);
+	sx_xunlock(&old_pgrp->pg_killsx);
 	return (0);
 }
 
@@ -3266,7 +3295,6 @@ sysctl_kern_proc_vm_layout(SYSCTL_HANDLER_ARGS)
 		kvm32.kvm_shp_addr = (uint32_t)kvm.kvm_shp_addr;
 		kvm32.kvm_shp_size = (uint32_t)kvm.kvm_shp_size;
 		kvm32.kvm_map_flags = kvm.kvm_map_flags;
-		vmspace_free(vmspace);
 		error = SYSCTL_OUT(req, &kvm32, sizeof(kvm32));
 		goto out;
 	}

@@ -22,8 +22,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include "assym.inc"
@@ -47,6 +45,11 @@
 #define	L3_PAGE_COUNT	32
 #endif
 
+/*
+ * The size of our bootstrap stack.
+ */
+#define	BOOT_STACK_SIZE	(KSTACK_PAGES * PAGE_SIZE)
+
 	.globl	kernbase
 	.set	kernbase, KERNBASE
 
@@ -59,8 +62,8 @@
  */
 
 ENTRY(_start)
-	/* Drop to EL1 */
-	bl	drop_to_el1
+	/* Enter the kernel exception level */
+	bl	enter_kernel_el
 
 	/*
 	 * Disable the MMU. We may have entered the kernel with it on and
@@ -79,11 +82,10 @@ ENTRY(_start)
 	msr	contextidr_el1, xzr
 
 	/* Get the virt -> phys offset */
-	bl	get_virt_delta
+	bl	get_load_phys_addr
 
 	/*
 	 * At this point:
-	 * x29 = PA - VA
 	 * x28 = Our physical load address
 	 */
 
@@ -109,11 +111,12 @@ ENTRY(_start)
 	br	x15
 
 virtdone:
+	BTI_J
+
 	/* Set up the stack */
 	adrp	x25, initstack_end
 	add	x25, x25, :lo12:initstack_end
-	mov	sp, x25
-	sub	sp, sp, #PCB_SIZE
+	sub	sp, x25, #PCB_SIZE
 
 	/* Zero the BSS */
 	ldr	x15, .Lbss
@@ -136,11 +139,7 @@ virtdone:
 	sub	sp, sp, #BOOTPARAMS_SIZE
 	mov	x0, sp
 
-	/* Degate the delda so it is VA -> PA */
-	neg	x29, x29
-
 	str	x1,  [x0, #BP_MODULEP]
-	str	x29, [x0, #BP_KERN_DELTA]
 	adrp	x25, initstack
 	add	x25, x25, :lo12:initstack
 	str	x25, [x0, #BP_KERN_STACK]
@@ -153,7 +152,9 @@ virtdone:
 	mov	x19, x0
 
 	/* Bootstrap an early shadow map for the boot stack. */
-	bl	pmap_san_bootstrap
+	ldr	x0, [x0, #BP_KERN_STACK]
+	ldr	x1, =BOOT_STACK_SIZE
+	bl	kasan_init_early
 
 	/* Restore bootparams */
 	mov	x0, x19
@@ -200,8 +201,8 @@ ENTRY(mpentry)
 	/* Disable interrupts */
 	msr	daifset, #DAIF_INTR
 
-	/* Drop to EL1 */
-	bl	drop_to_el1
+	/* Enter the kernel exception level */
+	bl	enter_kernel_el
 
 	/* Set the context id */
 	msr	contextidr_el1, xzr
@@ -210,8 +211,8 @@ ENTRY(mpentry)
 	adrp	x24, pagetable_l0_ttbr1
 	add	x24, x24, :lo12:pagetable_l0_ttbr1
 	/* Load the identity page table */
-	adrp	x27, pagetable_l0_ttbr0_boostrap
-	add	x27, x27, :lo12:pagetable_l0_ttbr0_boostrap
+	adrp	x27, pagetable_l0_ttbr0_bootstrap
+	add	x27, x27, :lo12:pagetable_l0_ttbr0_bootstrap
 
 	/* Enable the mmu */
 	bl	start_mmu
@@ -225,9 +226,11 @@ ENTRY(mpentry)
 	br	x15
 
 mp_virtdone:
+	BTI_J
+
 	/* Start using the AP boot stack */
-	ldr	x4, =bootstack
-	ldr	x4, [x4]
+	adrp	x4, bootstack
+	ldr	x4, [x4, :lo12:bootstack]
 	mov	sp, x4
 
 #if defined(PERTHREAD_SSP)
@@ -246,6 +249,14 @@ mp_virtdone:
 	dsb	sy
 	isb
 
+	/*
+	 * Initialize the per-CPU pointer before calling into C code, for the
+	 * benefit of kernel sanitizers.
+	 */
+	adrp	x18, bootpcpu
+	ldr	x18, [x18, :lo12:bootpcpu]
+	msr	tpidr_el1, x18
+
 	b	init_secondary
 END(mpentry)
 #endif
@@ -254,10 +265,10 @@ END(mpentry)
  * If we are started in EL2, configure the required hypervisor
  * registers and drop to EL1.
  */
-LENTRY(drop_to_el1)
+LENTRY(enter_kernel_el)
 	mrs	x23, CurrentEL
-	lsr	x23, x23, #2
-	cmp	x23, #0x2
+	and	x23, x23, #(CURRENTEL_EL_MASK)
+	cmp	x23, #(CURRENTEL_EL_EL2)
 	b.eq	1f
 	ret
 1:
@@ -347,30 +358,20 @@ LENTRY(drop_to_el1)
 	.align 3
 .Lsctlr_res1:
 	.quad SCTLR_RES1
-LEND(drop_to_el1)
+LEND(enter_kernel_el)
 
 /*
- * Get the delta between the physical address we were loaded to and the
- * virtual address we expect to run from. This is used when building the
- * initial page table.
+ * Get the physical address the kernel was loaded at.
  */
-LENTRY(get_virt_delta)
-	/* Load the physical address of virt_map */
-	adrp	x29, virt_map
-	add	x29, x29, :lo12:virt_map
-	/* Load the virtual address of virt_map stored in virt_map */
-	ldr	x28, [x29]
-	/* Find PA - VA as PA' = VA' - VA + PA = VA' + (PA - VA) = VA' + x29 */
-	sub	x29, x29, x28
-	/* Find the load address for the kernel */
-	mov	x28, #(KERNBASE)
-	add	x28, x28, x29
+LENTRY(get_load_phys_addr)
+	/* Load the offset of get_load_phys_addr from KERNBASE */
+	ldr	x28, =(get_load_phys_addr - KERNBASE)
+	/* Load the physical address of get_load_phys_addr */
+	adr	x29, get_load_phys_addr
+	/* Find the physical address of KERNBASE, i.e. our load address */
+	sub	x28, x29, x28
 	ret
-
-	.align 3
-virt_map:
-	.quad	virt_map
-LEND(get_virt_delta)
+LEND(get_load_phys_addr)
 
 /*
  * This builds the page tables containing the identity map, and the kernel
@@ -682,6 +683,9 @@ LENTRY(build_l2_block_pagetable)
 	orr	x12, x7, #L2_BLOCK
 	orr	x12, x12, #(ATTR_DEFAULT)
 	orr	x12, x12, #(ATTR_S1_UXN)
+#ifdef __ARM_FEATURE_BTI_DEFAULT
+	orr	x12, x12, #(ATTR_S1_GP)
+#endif
 
 	/* Only use the output address bits */
 	lsr	x9, x9, #L2_SHIFT
@@ -751,6 +755,9 @@ LENTRY(build_l3_page_pagetable)
 	orr	x12, x7, #L3_PAGE
 	orr	x12, x12, #(ATTR_DEFAULT)
 	orr	x12, x12, #(ATTR_S1_UXN)
+#ifdef __ARM_FEATURE_BTI_DEFAULT
+	orr	x12, x12, #(ATTR_S1_GP)
+#endif
 
 	/* Only use the output address bits */
 	lsr	x9, x9, #L3_SHIFT
@@ -866,7 +873,7 @@ sctlr_set:
 	.quad (SCTLR_LSMAOE | SCTLR_nTLSMD | SCTLR_UCI | SCTLR_SPAN | \
 	    SCTLR_nTWE | SCTLR_nTWI | SCTLR_UCT | SCTLR_DZE | \
 	    SCTLR_I | SCTLR_SED | SCTLR_SA0 | SCTLR_SA | SCTLR_C | \
-	    SCTLR_M | SCTLR_CP15BEN)
+	    SCTLR_M | SCTLR_CP15BEN | SCTLR_BT1 | SCTLR_BT0)
 sctlr_clear:
 	/* Bits to clear */
 	.quad (SCTLR_EE | SCTLR_E0E | SCTLR_IESB | SCTLR_WXN | SCTLR_UMA | \
@@ -880,7 +887,7 @@ END(abort)
 .bss
 	.align	PAGE_SHIFT
 initstack:
-	.space	(PAGE_SIZE * KSTACK_PAGES)
+	.space	BOOT_STACK_SIZE
 initstack_end:
 
 	.section .init_pagetable, "aw", %nobits
@@ -909,7 +916,7 @@ pagetable_l2_ttbr0_bootstrap:
 	.space	PAGE_SIZE
 pagetable_l1_ttbr0_bootstrap:
 	.space	PAGE_SIZE
-pagetable_l0_ttbr0_boostrap:
+pagetable_l0_ttbr0_bootstrap:
 	.space	PAGE_SIZE
 pagetable_l0_ttbr0:
 	.space	PAGE_SIZE

@@ -1,7 +1,5 @@
 /*	$NetBSD: mdreloc.c,v 1.23 2003/07/26 15:04:38 mrg Exp $	*/
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -91,7 +89,6 @@ _rtld_relocate_nonplt_self(Elf_Dyn *dynp, Elf_Addr relocbase)
 	const Elf_Rel *rel = NULL, *rellim;
 	Elf_Addr relsz = 0;
 	Elf_Addr *where;
-	uint32_t size;
 
 	for (; dynp->d_tag != DT_NULL; dynp++) {
 		switch (dynp->d_tag) {
@@ -104,7 +101,6 @@ _rtld_relocate_nonplt_self(Elf_Dyn *dynp, Elf_Addr relocbase)
 		}
 	}
 	rellim = (const Elf_Rel *)((const char *)rel + relsz);
-	size = (rellim - 1)->r_offset - rel->r_offset;
 	for (; rel < rellim; rel++) {
 		where = (Elf_Addr *)(relocbase + rel->r_offset);
 		
@@ -279,14 +275,17 @@ reloc_nonplt_object(Obj_Entry *obj, const Elf_Rel *rel, SymCache *cache,
 			if (def == NULL)
 				return -1;
 
-			if (!defobj->tls_done && !allocate_tls_offset(obj))
+			if (!defobj->tls_static && !allocate_tls_offset(obj))
 				return -1;
 
 			tmp = (Elf_Addr)def->st_value + defobj->tlsoffset;
-			if (__predict_true(RELOC_ALIGNED_P(where)))
+			if (__predict_true(RELOC_ALIGNED_P(where))) {
+				tmp += *where;
 				*where = tmp;
-			else
+			} else {
+				tmp += load_ptr(where);
 				store_ptr(where, tmp);
+			}
 			dbg("TLS_TPOFF32 %s in %s --> %p",
 			    obj->strtab + obj->symtab[symnum].st_name,
 			    obj->path, (void *)tmp);
@@ -457,7 +456,8 @@ allocate_initial_tls(Obj_Entry *objs)
 	* use.
 	*/
 
-	tls_static_space = tls_last_offset + tls_last_size + RTLD_STATIC_TLS_EXTRA;
+	tls_static_space = tls_last_offset + tls_last_size +
+	    ld_static_tls_extra;
 
 	_tcb_set(allocate_tls(objs, NULL, TLS_TCB_SIZE, TLS_TCB_ALIGN));
 }

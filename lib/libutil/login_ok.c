@@ -21,9 +21,6 @@
  * Support allow/deny lists in login class capabilities
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/resource.h>

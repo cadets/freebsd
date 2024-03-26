@@ -44,9 +44,6 @@
  * Author: Ken Merry <ken@FreeBSD.org>
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/ctype.h>
@@ -125,72 +122,6 @@ const static struct scsi_da_rw_recovery_page rw_er_page_changeable = {
 	/*write_retry_count*/0,
 	/*reserved2*/0,
 	/*recovery_time_limit*/{0, 0},
-};
-
-const static struct scsi_format_page format_page_default = {
-	/*page_code*/SMS_FORMAT_DEVICE_PAGE,
-	/*page_length*/sizeof(struct scsi_format_page) - 2,
-	/*tracks_per_zone*/ {0, 0},
-	/*alt_sectors_per_zone*/ {0, 0},
-	/*alt_tracks_per_zone*/ {0, 0},
-	/*alt_tracks_per_lun*/ {0, 0},
-	/*sectors_per_track*/ {(CTL_DEFAULT_SECTORS_PER_TRACK >> 8) & 0xff,
-			        CTL_DEFAULT_SECTORS_PER_TRACK & 0xff},
-	/*bytes_per_sector*/ {0, 0},
-	/*interleave*/ {0, 0},
-	/*track_skew*/ {0, 0},
-	/*cylinder_skew*/ {0, 0},
-	/*flags*/ SFP_HSEC,
-	/*reserved*/ {0, 0, 0}
-};
-
-const static struct scsi_format_page format_page_changeable = {
-	/*page_code*/SMS_FORMAT_DEVICE_PAGE,
-	/*page_length*/sizeof(struct scsi_format_page) - 2,
-	/*tracks_per_zone*/ {0, 0},
-	/*alt_sectors_per_zone*/ {0, 0},
-	/*alt_tracks_per_zone*/ {0, 0},
-	/*alt_tracks_per_lun*/ {0, 0},
-	/*sectors_per_track*/ {0, 0},
-	/*bytes_per_sector*/ {0, 0},
-	/*interleave*/ {0, 0},
-	/*track_skew*/ {0, 0},
-	/*cylinder_skew*/ {0, 0},
-	/*flags*/ 0,
-	/*reserved*/ {0, 0, 0}
-};
-
-const static struct scsi_rigid_disk_page rigid_disk_page_default = {
-	/*page_code*/SMS_RIGID_DISK_PAGE,
-	/*page_length*/sizeof(struct scsi_rigid_disk_page) - 2,
-	/*cylinders*/ {0, 0, 0},
-	/*heads*/ CTL_DEFAULT_HEADS,
-	/*start_write_precomp*/ {0, 0, 0},
-	/*start_reduced_current*/ {0, 0, 0},
-	/*step_rate*/ {0, 0},
-	/*landing_zone_cylinder*/ {0, 0, 0},
-	/*rpl*/ SRDP_RPL_DISABLED,
-	/*rotational_offset*/ 0,
-	/*reserved1*/ 0,
-	/*rotation_rate*/ {(CTL_DEFAULT_ROTATION_RATE >> 8) & 0xff,
-			   CTL_DEFAULT_ROTATION_RATE & 0xff},
-	/*reserved2*/ {0, 0}
-};
-
-const static struct scsi_rigid_disk_page rigid_disk_page_changeable = {
-	/*page_code*/SMS_RIGID_DISK_PAGE,
-	/*page_length*/sizeof(struct scsi_rigid_disk_page) - 2,
-	/*cylinders*/ {0, 0, 0},
-	/*heads*/ 0,
-	/*start_write_precomp*/ {0, 0, 0},
-	/*start_reduced_current*/ {0, 0, 0},
-	/*step_rate*/ {0, 0},
-	/*landing_zone_cylinder*/ {0, 0, 0},
-	/*rpl*/ 0,
-	/*rotational_offset*/ 0,
-	/*reserved1*/ 0,
-	/*rotation_rate*/ {0, 0},
-	/*reserved2*/ {0, 0}
 };
 
 const static struct scsi_da_verify_recovery_page verify_er_page_default = {
@@ -2537,13 +2468,13 @@ ctl_sbuf_printf_esc(struct sbuf *sb, char *str, int size)
 	for (; *str && str < end; str++) {
 		switch (*str) {
 		case '&':
-			retval = sbuf_printf(sb, "&amp;");
+			retval = sbuf_cat(sb, "&amp;");
 			break;
 		case '>':
-			retval = sbuf_printf(sb, "&gt;");
+			retval = sbuf_cat(sb, "&gt;");
 			break;
 		case '<':
-			retval = sbuf_printf(sb, "&lt;");
+			retval = sbuf_cat(sb, "&lt;");
 			break;
 		default:
 			retval = sbuf_putc(sb, *str);
@@ -2568,13 +2499,13 @@ ctl_id_sbuf(struct ctl_devid *id, struct sbuf *sb)
 	desc = (struct scsi_vpd_id_descriptor *)id->data;
 	switch (desc->id_type & SVPD_ID_TYPE_MASK) {
 	case SVPD_ID_TYPE_T10:
-		sbuf_printf(sb, "t10.");
+		sbuf_cat(sb, "t10.");
 		break;
 	case SVPD_ID_TYPE_EUI64:
-		sbuf_printf(sb, "eui.");
+		sbuf_cat(sb, "eui.");
 		break;
 	case SVPD_ID_TYPE_NAA:
-		sbuf_printf(sb, "naa.");
+		sbuf_cat(sb, "naa.");
 		break;
 	case SVPD_ID_TYPE_SCSI_NAME:
 		break;
@@ -2589,7 +2520,7 @@ ctl_id_sbuf(struct ctl_devid *id, struct sbuf *sb)
 		    (char *)desc->identifier);
 		break;
 	case SVPD_ID_CODESET_UTF8:
-		sbuf_printf(sb, "%s", (char *)desc->identifier);
+		sbuf_cat(sb, (char *)desc->identifier);
 		break;
 	}
 }
@@ -3091,7 +3022,7 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			break;
 		}
 
-		sbuf_printf(sb, "<ctllunlist>\n");
+		sbuf_cat(sb, "<ctllunlist>\n");
 
 		mtx_lock(&softc->ctl_lock);
 		STAILQ_FOREACH(lun, &softc->lun_list, links) {
@@ -3121,7 +3052,7 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 				break;
 
 			if (lun->backend == NULL) {
-				retval = sbuf_printf(sb, "</lun>\n");
+				retval = sbuf_cat(sb, "</lun>\n");
 				if (retval != 0)
 					break;
 				continue;
@@ -3140,7 +3071,7 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			if (retval != 0)
 				break;
 
-			retval = sbuf_printf(sb, "\t<serial_number>");
+			retval = sbuf_cat(sb, "\t<serial_number>");
 
 			if (retval != 0)
 				break;
@@ -3152,12 +3083,12 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			if (retval != 0)
 				break;
 
-			retval = sbuf_printf(sb, "</serial_number>\n");
+			retval = sbuf_cat(sb, "</serial_number>\n");
 		
 			if (retval != 0)
 				break;
 
-			retval = sbuf_printf(sb, "\t<device_id>");
+			retval = sbuf_cat(sb, "\t<device_id>");
 
 			if (retval != 0)
 				break;
@@ -3169,7 +3100,7 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			if (retval != 0)
 				break;
 
-			retval = sbuf_printf(sb, "</device_id>\n");
+			retval = sbuf_cat(sb, "</device_id>\n");
 
 			if (retval != 0)
 				break;
@@ -3189,13 +3120,13 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 					value = dnvlist_get_string(
 					    lun->be_lun->options, name, NULL);
 					if (value != NULL)
-						sbuf_printf(sb, "%s", value);
+						sbuf_cat(sb, value);
 				}
 
 				sbuf_printf(sb, "</%s>\n", name);
 			}
 
-			retval = sbuf_printf(sb, "</lun>\n");
+			retval = sbuf_cat(sb, "</lun>\n");
 
 			if (retval != 0)
 				break;
@@ -3206,7 +3137,7 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		mtx_unlock(&softc->ctl_lock);
 
 		if ((retval != 0)
-		 || ((retval = sbuf_printf(sb, "</ctllunlist>\n")) != 0)) {
+		 || ((retval = sbuf_cat(sb, "</ctllunlist>\n")) != 0)) {
 			retval = 0;
 			sbuf_delete(sb);
 			list->status = CTL_LUN_LIST_NEED_MORE_SPACE;
@@ -3356,7 +3287,7 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			break;
 		}
 
-		sbuf_printf(sb, "<ctlportlist>\n");
+		sbuf_cat(sb, "<ctlportlist>\n");
 
 		mtx_lock(&softc->ctl_lock);
 		STAILQ_FOREACH(port, &softc->port_list, links) {
@@ -3401,15 +3332,15 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 				break;
 
 			if (port->target_devid != NULL) {
-				sbuf_printf(sb, "\t<target>");
+				sbuf_cat(sb, "\t<target>");
 				ctl_id_sbuf(port->target_devid, sb);
-				sbuf_printf(sb, "</target>\n");
+				sbuf_cat(sb, "</target>\n");
 			}
 
 			if (port->port_devid != NULL) {
-				sbuf_printf(sb, "\t<port>");
+				sbuf_cat(sb, "\t<port>");
 				ctl_id_sbuf(port->port_devid, sb);
-				sbuf_printf(sb, "</port>\n");
+				sbuf_cat(sb, "</port>\n");
 			}
 
 			if (port->port_info != NULL) {
@@ -3434,7 +3365,7 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			}
 
 			if (port->lun_map != NULL) {
-				sbuf_printf(sb, "\t<lun_map>on</lun_map>\n");
+				sbuf_cat(sb, "\t<lun_map>on</lun_map>\n");
 				for (j = 0; j < port->lun_map_size; j++) {
 					plun = ctl_lun_map_from_port(port, j);
 					if (plun == UINT32_MAX)
@@ -3465,14 +3396,14 @@ ctl_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			if (retval != 0)
 				break;
 
-			retval = sbuf_printf(sb, "</targ_port>\n");
+			retval = sbuf_cat(sb, "</targ_port>\n");
 			if (retval != 0)
 				break;
 		}
 		mtx_unlock(&softc->ctl_lock);
 
 		if ((retval != 0)
-		 || ((retval = sbuf_printf(sb, "</ctlportlist>\n")) != 0)) {
+		 || ((retval = sbuf_cat(sb, "</ctlportlist>\n")) != 0)) {
 			retval = 0;
 			sbuf_delete(sb);
 			list->status = CTL_LUN_LIST_NEED_MORE_SPACE;
@@ -4125,134 +4056,6 @@ ctl_init_page_index(struct ctl_lun *lun)
 			       sizeof(rw_er_page_default));
 			page_index->page_data =
 				(uint8_t *)lun->mode_pages.rw_er_page;
-			break;
-		}
-		case SMS_FORMAT_DEVICE_PAGE: {
-			struct scsi_format_page *format_page;
-
-			KASSERT(page_index->subpage == SMS_SUBPAGE_PAGE_0,
-			    ("subpage %#x for page %#x is incorrect!",
-			    page_index->subpage, page_code));
-
-			/*
-			 * Sectors per track are set above.  Bytes per
-			 * sector need to be set here on a per-LUN basis.
-			 */
-			memcpy(&lun->mode_pages.format_page[CTL_PAGE_CURRENT],
-			       &format_page_default,
-			       sizeof(format_page_default));
-			memcpy(&lun->mode_pages.format_page[
-			       CTL_PAGE_CHANGEABLE], &format_page_changeable,
-			       sizeof(format_page_changeable));
-			memcpy(&lun->mode_pages.format_page[CTL_PAGE_DEFAULT],
-			       &format_page_default,
-			       sizeof(format_page_default));
-			memcpy(&lun->mode_pages.format_page[CTL_PAGE_SAVED],
-			       &format_page_default,
-			       sizeof(format_page_default));
-
-			format_page = &lun->mode_pages.format_page[
-				CTL_PAGE_CURRENT];
-			scsi_ulto2b(lun->be_lun->blocksize,
-				    format_page->bytes_per_sector);
-
-			format_page = &lun->mode_pages.format_page[
-				CTL_PAGE_DEFAULT];
-			scsi_ulto2b(lun->be_lun->blocksize,
-				    format_page->bytes_per_sector);
-
-			format_page = &lun->mode_pages.format_page[
-				CTL_PAGE_SAVED];
-			scsi_ulto2b(lun->be_lun->blocksize,
-				    format_page->bytes_per_sector);
-
-			page_index->page_data =
-				(uint8_t *)lun->mode_pages.format_page;
-			break;
-		}
-		case SMS_RIGID_DISK_PAGE: {
-			struct scsi_rigid_disk_page *rigid_disk_page;
-			uint32_t sectors_per_cylinder;
-			uint64_t cylinders;
-#ifndef	__XSCALE__
-			int shift;
-#endif /* !__XSCALE__ */
-
-			KASSERT(page_index->subpage == SMS_SUBPAGE_PAGE_0,
-			    ("subpage %#x for page %#x is incorrect!",
-			    page_index->subpage, page_code));
-
-			/*
-			 * Rotation rate and sectors per track are set
-			 * above.  We calculate the cylinders here based on
-			 * capacity.  Due to the number of heads and
-			 * sectors per track we're using, smaller arrays
-			 * may turn out to have 0 cylinders.  Linux and
-			 * FreeBSD don't pay attention to these mode pages
-			 * to figure out capacity, but Solaris does.  It
-			 * seems to deal with 0 cylinders just fine, and
-			 * works out a fake geometry based on the capacity.
-			 */
-			memcpy(&lun->mode_pages.rigid_disk_page[
-			       CTL_PAGE_DEFAULT], &rigid_disk_page_default,
-			       sizeof(rigid_disk_page_default));
-			memcpy(&lun->mode_pages.rigid_disk_page[
-			       CTL_PAGE_CHANGEABLE],&rigid_disk_page_changeable,
-			       sizeof(rigid_disk_page_changeable));
-
-			sectors_per_cylinder = CTL_DEFAULT_SECTORS_PER_TRACK *
-				CTL_DEFAULT_HEADS;
-
-			/*
-			 * The divide method here will be more accurate,
-			 * probably, but results in floating point being
-			 * used in the kernel on i386 (__udivdi3()).  On the
-			 * XScale, though, __udivdi3() is implemented in
-			 * software.
-			 *
-			 * The shift method for cylinder calculation is
-			 * accurate if sectors_per_cylinder is a power of
-			 * 2.  Otherwise it might be slightly off -- you
-			 * might have a bit of a truncation problem.
-			 */
-#ifdef	__XSCALE__
-			cylinders = (lun->be_lun->maxlba + 1) /
-				sectors_per_cylinder;
-#else
-			for (shift = 31; shift > 0; shift--) {
-				if (sectors_per_cylinder & (1 << shift))
-					break;
-			}
-			cylinders = (lun->be_lun->maxlba + 1) >> shift;
-#endif
-
-			/*
-			 * We've basically got 3 bytes, or 24 bits for the
-			 * cylinder size in the mode page.  If we're over,
-			 * just round down to 2^24.
-			 */
-			if (cylinders > 0xffffff)
-				cylinders = 0xffffff;
-
-			rigid_disk_page = &lun->mode_pages.rigid_disk_page[
-				CTL_PAGE_DEFAULT];
-			scsi_ulto3b(cylinders, rigid_disk_page->cylinders);
-
-			if ((value = dnvlist_get_string(lun->be_lun->options,
-			    "rpm", NULL)) != NULL) {
-				scsi_ulto2b(strtol(value, NULL, 0),
-				     rigid_disk_page->rotation_rate);
-			}
-
-			memcpy(&lun->mode_pages.rigid_disk_page[CTL_PAGE_CURRENT],
-			       &lun->mode_pages.rigid_disk_page[CTL_PAGE_DEFAULT],
-			       sizeof(rigid_disk_page_default));
-			memcpy(&lun->mode_pages.rigid_disk_page[CTL_PAGE_SAVED],
-			       &lun->mode_pages.rigid_disk_page[CTL_PAGE_DEFAULT],
-			       sizeof(rigid_disk_page_default));
-
-			page_index->page_data =
-				(uint8_t *)lun->mode_pages.rigid_disk_page;
 			break;
 		}
 		case SMS_VERIFY_ERROR_RECOVERY_PAGE: {
@@ -8272,7 +8075,7 @@ ctl_persistent_reserve_out(struct ctl_scsiio *ctsio)
 	struct ctl_softc *softc = CTL_SOFTC(ctsio);
 	struct ctl_lun *lun = CTL_LUN(ctsio);
 	int retval;
-	u_int32_t param_len;
+	uint32_t param_len;
 	struct scsi_per_res_out *cdb;
 	struct scsi_per_res_out_parms* param;
 	uint32_t residx;
@@ -13037,25 +12840,7 @@ ctl_process_done(union ctl_io *io)
 		ctl_scsi_path_string(io, path_str, sizeof(path_str));
 		sbuf_new(&sb, str, sizeof(str), SBUF_FIXEDLEN);
 
-		sbuf_cat(&sb, path_str);
-		switch (io->io_hdr.io_type) {
-		case CTL_IO_SCSI:
-			ctl_scsi_command_string(&io->scsiio, NULL, &sb);
-			sbuf_printf(&sb, "\n");
-			sbuf_cat(&sb, path_str);
-			sbuf_printf(&sb, "Tag: 0x%jx/%d, Prio: %d\n",
-				    io->scsiio.tag_num, io->scsiio.tag_type,
-				    io->scsiio.priority);
-			break;
-		case CTL_IO_TASK:
-			sbuf_printf(&sb, "Task Action: %d Tag: 0x%jx/%d\n",
-				    io->taskio.task_action,
-				    io->taskio.tag_num, io->taskio.tag_type);
-			break;
-		default:
-			panic("%s: Invalid CTL I/O type %d\n",
-			    __func__, io->io_hdr.io_type);
-		}
+		ctl_io_sbuf(io, &sb);
 		sbuf_cat(&sb, path_str);
 		sbuf_printf(&sb, "ctl_process_done: %jd seconds\n",
 			    (intmax_t)time_uptime - io->io_hdr.start_time);

@@ -39,9 +39,6 @@
  * time.  For that at least possibly interfering sysctls are hidden by default.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>

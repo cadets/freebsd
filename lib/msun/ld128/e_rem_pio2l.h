@@ -1,4 +1,3 @@
-/* From: @(#)e_rem_pio2.c 1.4 95/01/18 */
 /*
  * ====================================================
  * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
@@ -12,9 +11,6 @@
  *
  * Optimized by Bruce D. Evans.
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 /* ld128 version of __ieee754_rem_pio2l(x,y)
  * 

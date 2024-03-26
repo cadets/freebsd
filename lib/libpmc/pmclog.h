@@ -28,8 +28,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef	_PMCLOG_H_
@@ -132,7 +130,8 @@ struct pmclog_ev_proccreate {
 struct pmclog_ev_procexec {
 	pid_t		pl_pid;
 	pmc_id_t	pl_pmcid;
-	uintfptr_t	pl_entryaddr;
+	uintptr_t	pl_baseaddr;
+	uintptr_t	pl_dynaddr;
 	char		pl_pathname[PATH_MAX];
 };
 

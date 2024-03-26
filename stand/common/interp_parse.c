@@ -14,9 +14,6 @@
  * The meat of the simple parser.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <stand.h>
 #include <string.h>
 #include "bootstrap.h"

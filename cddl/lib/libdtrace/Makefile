@@ -1,4 +1,7 @@
-# $FreeBSD$
+
+SHLIBDIR?=	/lib
+
+.include <src.opts.mk>
 
 .include <src.opts.mk>
 
@@ -190,7 +193,11 @@ LDFLAGS+=	-flto
 
 YFLAGS+=-d
 
-LIBADD=	ctf elf proc pthread rtld_db crypto
+LIBADD=	ctf elf proc pthread rtld_db crypto xo
+.if ${MK_DTRACE_ASAN} != "no"
+CFLAGS+=	-fsanitize=address -fsanitize=undefined
+LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+.endif
 
 CLEANFILES=	dt_errtags.c dt_names.c
 

@@ -53,9 +53,6 @@
  *   http://caia.swin.edu.au/urp/newtcp/
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/khelp.h>
@@ -83,7 +80,7 @@ __FBSDID("$FreeBSD$");
 /* Largest possible number returned by random(). */
 #define	RANDOM_MAX	INT_MAX
 
-static void	hd_ack_received(struct cc_var *ccv, uint16_t ack_type);
+static void	hd_ack_received(struct cc_var *ccv, ccsignal_t ack_type);
 static int	hd_mod_init(void);
 static size_t	hd_data_sz(void);
 
@@ -141,7 +138,7 @@ should_backoff(int qdly, int maxqdly)
  * as NewReno in all other circumstances.
  */
 static void
-hd_ack_received(struct cc_var *ccv, uint16_t ack_type)
+hd_ack_received(struct cc_var *ccv, ccsignal_t ack_type)
 {
 	struct ertt *e_t;
 	int qdly;

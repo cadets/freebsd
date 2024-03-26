@@ -24,8 +24,6 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 --
--- $FreeBSD$
---
 
 
 -- We generally assume that this script will be run by flua, however we've
@@ -42,13 +40,14 @@ local generated_tag = "@" .. "generated"
 -- Default configuration; any of these may get replaced by a configuration file
 -- optionally specified.
 local config = {
-	os_id_keyword = "FreeBSD",
+	os_id_keyword = "FreeBSD",		-- obsolete, ignored on input, not generated
 	abi_func_prefix = "",
+	libsysmap = "/dev/null",
 	sysnames = "syscalls.c",
 	sysproto = "../sys/sysproto.h",
 	sysproto_h = "_SYS_SYSPROTO_H_",
 	syshdr = "../sys/syscall.h",
-	sysmk = "../sys/syscall.mk",
+	sysmk = "/dev/null",
 	syssw = "init_sysent.c",
 	syscallprefix = "SYS_",
 	switchname = "sysent",
@@ -87,6 +86,7 @@ local output_files = {
 	"sysnames",
 	"syshdr",
 	"sysmk",
+	"libsysmap",
 	"syssw",
 	"systrace",
 	"sysproto",
@@ -229,6 +229,7 @@ local compat_option_sets = {
 		{ stdcompat = "FREEBSD11" },
 		{ stdcompat = "FREEBSD12" },
 		{ stdcompat = "FREEBSD13" },
+		{ stdcompat = "FREEBSD14" },
 	},
 }
 
@@ -486,6 +487,7 @@ local process_syscall_def
 -- These patterns are processed in order on any line that isn't empty.
 local pattern_table = {
 	{
+		-- To be removed soon
 		pattern = "%s*$" .. config.os_id_keyword,
 		process = function(_, _)
 			-- Ignore... ID tag
@@ -866,18 +868,15 @@ local function handle_noncompat(sysnum, thr_flag, flags, sysflags, rettype,
 
 	local protoflags = get_mask({"NOPROTO", "NODEF"})
 	if flags & protoflags == 0 then
+		local sys_prefix = "sys_"
 		if funcname == "nosys" or funcname == "lkmnosys" or
 		    funcname == "sysarch" or funcname:find("^freebsd") or
 		    funcname:find("^linux") then
-			write_line("sysdcl", string.format(
-			    "%s\t%s(struct thread *, struct %s *)",
-			    rettype, funcname, argalias))
-		else
-			write_line("sysdcl", string.format(
-			    "%s\tsys_%s(struct thread *, struct %s *)",
-			    rettype, funcname, argalias))
+			sys_prefix = ""
 		end
-		write_line("sysdcl", ";\n")
+		write_line("sysdcl", string.format(
+		    "%s\t%s%s(struct thread *, struct %s *);\n",
+		    rettype, sys_prefix, funcname, argalias))
 		write_line("sysaue", string.format("#define\t%sAUE_%s\t%s\n",
 		    config.syscallprefix, funcalias, auditev))
 	end
@@ -924,6 +923,16 @@ local function handle_noncompat(sysnum, thr_flag, flags, sysflags, rettype,
 		write_line("syshdr", string.format("#define\t%s%s\t%d\n",
 		    config.syscallprefix, funcalias, sysnum))
 		write_line("sysmk", string.format(" \\\n\t%s.o",
+		    funcalias))
+		-- yield has never been exposed as a syscall
+		if funcalias == "yield" then
+			return
+		end
+		if funcalias ~= "exit" and funcalias ~= "vfork" then
+			write_line("libsysmap", string.format("\t_%s;\n",
+			    funcalias))
+		end
+		write_line("libsysmap", string.format("\t__sys_%s;\n",
 		    funcalias))
 	end
 end
@@ -1409,16 +1418,14 @@ write_line("syssw", string.format([[/*
  * System call switch table.
  *
  * DO NOT EDIT-- this file is automatically %s.
- * $%s$
  */
 
-]], generated_tag, config.os_id_keyword))
+]], generated_tag))
 
 write_line("sysarg", string.format([[/*
  * System call prototypes.
  *
  * DO NOT EDIT-- this file is automatically %s.
- * $%s$
  */
 
 #ifndef %s
@@ -1450,8 +1457,7 @@ struct thread;
 #define	PADR_(t)	0
 #endif
 
-]], generated_tag, config.os_id_keyword, config.sysproto_h,
-    config.sysproto_h))
+]], generated_tag, config.sysproto_h, config.sysproto_h))
 if abi_changes("pair_64bit") then
 	write_line("sysarg", string.format([[
 #if !defined(PAD64_REQUIRED) && !defined(__amd64__)
@@ -1474,31 +1480,34 @@ write_line("sysnames", string.format([[/*
  * System call names.
  *
  * DO NOT EDIT-- this file is automatically %s.
- * $%s$
  */
 
 const char *%s[] = {
-]], generated_tag, config.os_id_keyword, config.namesname))
+]], generated_tag, config.namesname))
 
 write_line("syshdr", string.format([[/*
  * System call numbers.
  *
  * DO NOT EDIT-- this file is automatically %s.
- * $%s$
  */
 
-]], generated_tag, config.os_id_keyword))
+]], generated_tag))
 
 write_line("sysmk", string.format([[# FreeBSD system call object files.
 # DO NOT EDIT-- this file is automatically %s.
-# $%s$
-MIASM = ]], generated_tag, config.os_id_keyword))
+MIASM = ]], generated_tag))
+
+write_line("libsysmap", string.format([[/*
+ * FreeBSD system call symbols.
+ *  DO NOT EDIT-- this file is automatically %s.
+ */
+FBSDprivate_1.0 {
+]], generated_tag))
 
 write_line("systrace", string.format([[/*
  * System call argument to DTrace register array converstion.
  *
  * DO NOT EDIT-- this file is automatically %s.
- * $%s$
  * This file is part of the DTrace syscall provider.
  */
 
@@ -1508,7 +1517,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	int64_t *iarg = (int64_t *)uarg;
 	int a = 0;
 	switch (sysnum) {
-]], generated_tag, config.os_id_keyword))
+]], generated_tag))
 
 write_line("systracetmp", [[static void
 systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
@@ -1558,6 +1567,7 @@ write_line("sysprotoend", string.format([[
 ]], config.sysproto_h))
 
 write_line("sysmk", "\n")
+write_line("libsysmap", "};\n")
 write_line("sysent", "};\n")
 write_line("sysnames", "};\n")
 -- maxsyscall is the highest seen; MAXSYSCALL should be one higher

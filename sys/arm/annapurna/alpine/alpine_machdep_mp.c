@@ -26,8 +26,6 @@
  *
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
@@ -42,7 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/smp.h>
 #include <machine/fdt.h>
 #include <machine/intr.h>
-#include <machine/cpu-v6.h>
+#include <machine/cpu.h>
 #include <machine/platformvar.h>
 
 #include <dev/fdt/fdt_common.h>

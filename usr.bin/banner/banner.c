@@ -29,21 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1980, 1993, 1994\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif
-
-#if 0
-#ifndef lint
-static char sccsid[] = "@(#)banner.c	8.4 (Berkeley) 4/29/95";
-#endif
-#endif
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * banner - prints large signs
  * banner [-w#] [-d] [-t] message ...
@@ -1026,7 +1011,7 @@ static char	print[DWIDTH];
 static int	debug, i, j, linen, max, nchars, pc, term, trace, x, y;
 static int	width = DWIDTH;	/* -w option: scrunch letters to 80 columns */
 
-static void usage(void);
+static void usage(void) __dead2;
 
 int
 main(int argc, char *argv[])

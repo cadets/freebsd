@@ -53,8 +53,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /**
  * @file
  * @brief This file contains the method implementations required to
@@ -91,7 +89,7 @@ SATI_STATUS sati_test_unit_ready_translate_command(
     * SAT dictates:
     * - the device should be in a state to receive commands
     * - a stopped device should cause sense data.
-    * - a format unit in progresss should cause sense data.
+    * - a format unit in progress should cause sense data.
     * - a self-test in progress should cause sense data.
     * - a device fault occurred on previous request should cause sense data.
     * - handling the removable media feature set isn't supported according to

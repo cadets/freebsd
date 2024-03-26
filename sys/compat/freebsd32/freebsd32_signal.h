@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _COMPAT_FREEBSD32_SIGNAL_H_
@@ -63,6 +61,6 @@ struct sigevent32 {
 
 struct sigevent;
 int convert_sigevent32(struct sigevent32 *sig32, struct sigevent *sig);
-void siginfo_to_siginfo32(const siginfo_t *src, struct siginfo32 *dst);
+void siginfo_to_siginfo32(const siginfo_t *src, struct __siginfo32 *dst);
 
 #endif /* !_COMPAT_FREEBSD32_SIGNAL_H_ */

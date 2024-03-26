@@ -23,8 +23,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 extern "C" {
@@ -304,6 +302,7 @@ TEST_F(Fspacectl, erofs)
 	build_iovec(&iov, &iovlen, "fspath", (void*)statbuf.f_mntonname, -1);
 	build_iovec(&iov, &iovlen, "from", __DECONST(void *, "/dev/fuse"), -1);
 	ASSERT_EQ(0, nmount(iov, iovlen, newflags)) << strerror(errno);
+	free_iovec(&iov, &iovlen);
 
 	EXPECT_EQ(-1, fspacectl(fd, SPACECTL_DEALLOC, &rqsr, 0, NULL));
 	EXPECT_EQ(EROFS, errno);
@@ -417,14 +416,14 @@ TEST_F(Fspacectl_7_18, ok)
 	const char FULLPATH[] = "mountpoint/some_file.txt";
 	const char RELPATH[] = "some_file.txt";
 	struct spacectl_range rqsr, rmsr;
-	void *buf;
+	char *buf;
 	uint64_t ino = 42;
 	uint64_t fsize = 2000;
 	uint64_t offset = 500;
 	uint64_t length = 1000;
 	int fd;
 
-	buf = malloc(length);
+	buf = new char[length];
 
 	expect_lookup(RELPATH, ino, S_IFREG | 0644, fsize, 1);
 	expect_open(ino, 0, 1);
@@ -439,7 +438,7 @@ TEST_F(Fspacectl_7_18, ok)
 	EXPECT_EQ((off_t)(offset + length), rmsr.r_offset);
 
 	leak(fd);
-	free(buf);
+	delete[] buf;
 }
 
 /*
@@ -493,8 +492,8 @@ TEST_P(FspacectlCache, clears_cache)
 	leak(fd);
 }
 
-INSTANTIATE_TEST_CASE_P(FspacectlCache, FspacectlCache,
-	Values(Uncached, Writethrough, Writeback),
+INSTANTIATE_TEST_SUITE_P(FspacectlCache, FspacectlCache,
+	Values(Uncached, Writethrough, Writeback)
 );
 
 /*
@@ -635,6 +634,7 @@ TEST_F(PosixFallocate, erofs)
 	build_iovec(&iov, &iovlen, "fspath", (void*)statbuf.f_mntonname, -1);
 	build_iovec(&iov, &iovlen, "from", __DECONST(void *, "/dev/fuse"), -1);
 	ASSERT_EQ(0, nmount(iov, iovlen, newflags)) << strerror(errno);
+	free_iovec(&iov, &iovlen);
 
 	EXPECT_EQ(EROFS, posix_fallocate(fd, offset, length));
 

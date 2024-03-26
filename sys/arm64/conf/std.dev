@@ -53,6 +53,7 @@ device		vt_simplefb
 
 # Pseudo devices.
 device		crypto			# core crypto support
+device		armv8_rng		# Armv8.5 rndr RNG
 device		loop			# Network loopback
 device		ether			# Ethernet support
 device		vlan			# 802.1Q VLAN support
@@ -86,6 +87,9 @@ device		miibus			# MII bus support
 # Be aware of the administrative consequences of enabling this!
 # Note that 'bpf' is required for DHCP.
 device		bpf		# Berkeley packet filter
+
+# Netmap provides direct access to TX/RX rings on supported NICs
+device		netmap			# netmap(4) support
 
 # USB support
 options 	USB_DEBUG		# enable debug msgs

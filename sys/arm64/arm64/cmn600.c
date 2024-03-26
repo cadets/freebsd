@@ -23,15 +23,11 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /* Arm CoreLink CMN-600 Coherent Mesh Network Driver */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_acpi.h"
 
 #include <sys/param.h>
@@ -357,7 +353,7 @@ cmn600_create_node(struct cmn600_softc *sc, off_t node_offset,
 	child_offset = FLD(val, POR_CFGM_CHILD_INFO_CHILD_PTR_OFFSET);
 
 	if (parent == NULL) {
-		/* Find XP node with Id 8. It have to be last in a row. */
+		/* Find XP node with Id 8. It has to be last in a row. */
 		for (i = 0; i < node->nd_child_count; i++) {
 			val = node->nd_read8(node, child_offset + (i * 8));
 			val &= POR_CFGM_CHILD_POINTER_BASE_MASK;

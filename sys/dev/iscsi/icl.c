@@ -34,9 +34,6 @@
  * and receive iSCSI PDUs.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/condvar.h>
 #include <sys/conf.h>

@@ -1371,8 +1371,8 @@ do_corrective_recv(struct receive_writer_arg *rwa, struct drr_write *drrw,
 	dnode_t *dn;
 	abd_t *abd = rrd->abd;
 	zio_cksum_t bp_cksum = bp->blk_cksum;
-	zio_flag_t flags = ZIO_FLAG_SPECULATIVE |
-	    ZIO_FLAG_DONT_CACHE | ZIO_FLAG_DONT_RETRY | ZIO_FLAG_CANFAIL;
+	zio_flag_t flags = ZIO_FLAG_SPECULATIVE | ZIO_FLAG_DONT_RETRY |
+	    ZIO_FLAG_CANFAIL;
 
 	if (rwa->raw)
 		flags |= ZIO_FLAG_RAW;
@@ -1795,17 +1795,19 @@ receive_handle_existing_object(const struct receive_writer_arg *rwa,
 	}
 
 	/*
-	 * The dmu does not currently support decreasing nlevels
-	 * or changing the number of dnode slots on an object. For
-	 * non-raw sends, this does not matter and the new object
-	 * can just use the previous one's nlevels. For raw sends,
-	 * however, the structure of the received dnode (including
-	 * nlevels and dnode slots) must match that of the send
-	 * side. Therefore, instead of using dmu_object_reclaim(),
-	 * we must free the object completely and call
-	 * dmu_object_claim_dnsize() instead.
+	 * The dmu does not currently support decreasing nlevels or changing
+	 * indirect block size if there is already one, same as changing the
+	 * number of of dnode slots on an object.  For non-raw sends this
+	 * does not matter and the new object can just use the previous one's
+	 * parameters.  For raw sends, however, the structure of the received
+	 * dnode (including indirects and dnode slots) must match that of the
+	 * send side.  Therefore, instead of using dmu_object_reclaim(), we
+	 * must free the object completely and call dmu_object_claim_dnsize()
+	 * instead.
 	 */
-	if ((rwa->raw && drro->drr_nlevels < doi->doi_indirection) ||
+	if ((rwa->raw && ((doi->doi_indirection > 1 &&
+	    indblksz != doi->doi_metadata_block_size) ||
+	    drro->drr_nlevels < doi->doi_indirection)) ||
 	    dn_slots != doi->doi_dnodesize >> DNODE_SHIFT) {
 		err = dmu_free_long_object(rwa->os, drro->drr_object);
 		if (err != 0)
@@ -2530,7 +2532,7 @@ receive_spill(struct receive_writer_arg *rwa, struct drr_spill *drrs,
 	 * size of the provided arc_buf_t.
 	 */
 	if (db_spill->db_size != drrs->drr_length) {
-		dmu_buf_will_fill(db_spill, tx);
+		dmu_buf_will_fill(db_spill, tx, B_FALSE);
 		VERIFY0(dbuf_spill_set_blksz(db_spill,
 		    drrs->drr_length, tx));
 	}

@@ -1,5 +1,4 @@
 /*	$NetBSD: fpu_arith.h,v 1.4 2005/12/24 20:07:28 perry Exp $ */
-/* $FreeBSD$ */
 
 /*-
  * SPDX-License-Identifier: BSD-3-Clause
@@ -39,8 +38,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)fpu_arith.h	8.1 (Berkeley) 6/11/93
  */
 
 /*

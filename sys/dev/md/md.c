@@ -8,8 +8,6 @@
  * this stuff is worth it, you can buy me a beer in return.   Poul-Henning Kamp
  * ----------------------------------------------------------------------------
  *
- * $FreeBSD$
- *
  */
 
 /*-
@@ -55,8 +53,6 @@
  * SUCH DAMAGE.
  *
  * from: Utah Hdr: vn.c 1.13 94/04/02
- *
- *	from: @(#)vn.c	8.6 (Berkeley) 4/1/94
  * From: src/sys/dev/vn/vn.c,v 1.122 2000/12/16 16:06:03
  */
 
@@ -147,8 +143,16 @@ struct md_ioctl32 {
 	int		md_fwsectors;
 	uint32_t	md_label;
 	int		md_pad[MDNPAD];
-} __attribute__((__packed__));
+}
+#ifdef __amd64__
+__attribute__((__packed__))
+#endif
+;
+#ifndef __amd64__
+CTASSERT((sizeof(struct md_ioctl32)) == 440);
+#else
 CTASSERT((sizeof(struct md_ioctl32)) == 436);
+#endif
 
 #define	MDIOCATTACH_32	_IOC_NEWTYPE(MDIOCATTACH, struct md_ioctl32)
 #define	MDIOCDETACH_32	_IOC_NEWTYPE(MDIOCDETACH, struct md_ioctl32)

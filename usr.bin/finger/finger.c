@@ -42,21 +42,6 @@
  *	login time is < 6 days.
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1989, 1993\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#if 0
-#ifndef lint
-static char sccsid[] = "@(#)finger.c	8.5 (Berkeley) 5/4/95";
-#endif
-#endif
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Finger prints out information about users.  It is not portable since
  * certain fields (e.g. the full user name, office, and phone numbers) are
@@ -98,7 +83,7 @@ int invoker_root = 0;
 
 static void loginlist(void);
 static int option(int, char **);
-static void usage(void);
+static void usage(void) __dead2;
 static void userlist(int, char **);
 
 static int

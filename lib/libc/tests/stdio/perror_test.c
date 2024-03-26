@@ -29,9 +29,6 @@
  * ISO/IEC 9899:1999.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <err.h>
 #include <errno.h>
 #include <limits.h>

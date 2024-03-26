@@ -26,8 +26,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /*
@@ -37,7 +35,6 @@
 #ifndef _RACCT_H_
 #define	_RACCT_H_
 
-#include <sys/cdefs.h>
 #include <sys/types.h>
 #include <sys/queue.h>
 #include <sys/stdint.h>

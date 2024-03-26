@@ -57,9 +57,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)fsck.h	8.4 (Berkeley) 5/9/95
- * $FreeBSD$
  */
 
 #ifndef _FSCK_H_
@@ -68,6 +65,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <libufs.h>
 
 #include <sys/queue.h>
 
@@ -112,7 +110,7 @@ struct inostat {
 #define	FSTATE	0x2		/* inode is file */
 #define	FZLINK	0x3		/* inode is file with a link count of zero */
 #define	DSTATE	0x4		/* inode is directory */
-#define	DZLINK	0x5		/* inode is directory with a zero link count  */
+#define	DZLINK	0x5		/* inode is directory with a zero link count */
 #define	DFOUND	0x6		/* directory found during descent */
 /*     		0x7		   UNUSED - see S_IS_DVALID() definition */
 #define	DCLEAR	0x8		/* directory is to be cleared */
@@ -297,8 +295,8 @@ struct dups {
 	struct dups *next;
 	ufs2_daddr_t dup;
 };
-extern struct dups *duplist;		/* head of dup list */
-extern struct dups *muldup;		/* end of unique duplicate dup block numbers */
+extern struct dups *duplist;	/* head of dup list */
+extern struct dups *muldup;	/* end of unique duplicate dup block numbers */
 
 /*
  * Inode cache data structures.
@@ -377,7 +375,6 @@ extern long secsize;		/* actual disk sector size */
 extern char skipclean;		/* skip clean file systems if preening */
 extern int snapcnt;		/* number of active snapshots */
 extern struct inode snaplist[FSMAXSNAP + 1]; /* list of active snapshots */
-extern char snapname[BUFSIZ];	/* when doing snapshots, the name of the file */
 extern int sujrecovery;		/* 1 => doing check using the journal */
 extern int surrender;		/* Give up if reads fail */
 extern char usedsoftdep;	/* just fix soft dependency inconsistencies */
@@ -426,6 +423,20 @@ Malloc(size_t size)
 			break;
 	return (retval);
 }
+/*
+ * Allocate a block of memory to be used as an I/O buffer.
+ * Ensure that the buffer is aligned to the I/O subsystem requirements.
+ */
+static inline void*
+Balloc(size_t size)
+{
+	void *retval;
+
+	while ((retval = aligned_alloc(LIBUFS_BUFALIGN, size)) == NULL)
+		if (flushentry() == 0)
+			break;
+	return (retval);
+}
 
 /*
  * Wrapper for calloc() that flushes the cylinder group cache to try 
@@ -470,6 +481,7 @@ void		check_blkcnt(struct inode *ip);
 int		check_cgmagic(int cg, struct bufarea *cgbp);
 void		rebuild_cg(int cg, struct bufarea *cgbp);
 void		check_dirdepth(struct inoinfo *inp);
+int		chkfilesize(mode_t mode, u_int64_t filesize);
 int		chkrange(ufs2_daddr_t blk, int cnt);
 void		ckfini(int markclean);
 int		ckinode(union dinode *dp, struct inodesc *);

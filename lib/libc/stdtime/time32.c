@@ -11,9 +11,6 @@
  * base of the source tree.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <timeconv.h>
 

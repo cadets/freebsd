@@ -17,7 +17,6 @@
  * information: Portions Copyright [yyyy] [name of copyright owner]
  *
  * CDDL HEADER END
- * $FreeBSD$
  */
 
 /*
@@ -28,7 +27,6 @@
 #ifndef FILE_COMMON_H
 #define	FILE_COMMON_H
 
-#pragma ident	"@(#)file_common.h	1.3	07/05/25 SMI"
 
 /*
  * header file for file_* utilities. These utilities

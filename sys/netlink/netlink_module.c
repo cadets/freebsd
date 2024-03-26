@@ -26,10 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#include "opt_netlink.h"
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/malloc.h>
@@ -185,7 +181,6 @@ const static struct nl_function_wrapper nl_module = {
 	.nlmsg_abort = _nlmsg_abort,
 	.nlmsg_get_unicast_writer = _nlmsg_get_unicast_writer,
 	.nlmsg_get_group_writer = _nlmsg_get_group_writer,
-	.nlmsg_get_chain_writer = _nlmsg_get_chain_writer,
 	.nlmsg_end_dump = _nlmsg_end_dump,
 	.nl_modify_ifp_generic = _nl_modify_ifp_generic,
 	.nl_store_ifp_cookie = _nl_store_ifp_cookie,

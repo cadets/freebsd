@@ -29,9 +29,6 @@
  * acl_from_mode_np: Create an ACL from a mode_t.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/acl.h>

@@ -26,11 +26,9 @@
  */
 
 #include "opt_acpi.h"
+#include "opt_kstack_pages.h"
 #include "opt_platform.h"
 #include "opt_ddb.h"
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -49,6 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ktr.h>
 #include <sys/limits.h>
 #include <sys/linker.h>
+#include <sys/msan.h>
 #include <sys/msgbuf.h>
 #include <sys/pcpu.h>
 #include <sys/physmem.h>
@@ -139,6 +138,15 @@ struct kva_md_info kmi;
 int64_t dczva_line_size;	/* The size of cache line the dc zva zeroes */
 int has_pan;
 
+#if defined(SOCDEV_PA)
+/*
+ * This is the virtual address used to access SOCDEV_PA. As it's set before
+ * .bss is cleared we need to ensure it's preserved. To do this use
+ * __read_mostly as it's only ever set once but read in the putc functions.
+ */
+uintptr_t socdev_va __read_mostly;
+#endif
+
 /*
  * Physical address of the EFI System Table. Stashed from the metadata hints
  * passed into the kernel and used by the EFI code to call runtime services.
@@ -204,7 +212,15 @@ has_hyp(void)
 	 * XXX The E2H check is wrong, but it's close enough for now.  Needs to
 	 * be re-evaluated once we're running regularly in EL2.
 	 */
-	return (boot_el == 2 && (hcr_el2 & HCR_E2H) == 0);
+	return (boot_el == CURRENTEL_EL_EL2 && (hcr_el2 & HCR_E2H) == 0);
+}
+
+bool
+in_vhe(void)
+{
+	/* If we are currently in EL2 then must be in VHE */
+	return ((READ_SPECIALREG(CurrentEL) & CURRENTEL_EL_MASK) ==
+	    CURRENTEL_EL_EL2);
 }
 
 static void
@@ -361,11 +377,14 @@ makectx(struct trapframe *tf, struct pcb *pcb)
 {
 	int i;
 
-	for (i = 0; i < nitems(pcb->pcb_x); i++)
-		pcb->pcb_x[i] = tf->tf_x[i + PCB_X_START];
-
 	/* NB: pcb_x[PCB_LR] is the PC, see PC_REGS() in db_machdep.h */
-	pcb->pcb_x[PCB_LR] = tf->tf_elr;
+	for (i = 0; i < nitems(pcb->pcb_x); i++) {
+		if (i == PCB_LR)
+			pcb->pcb_x[i] = tf->tf_elr;
+		else
+			pcb->pcb_x[i] = tf->tf_x[i + PCB_X_START];
+	}
+
 	pcb->pcb_sp = tf->tf_sp;
 }
 
@@ -379,7 +398,7 @@ init_proc0(vm_offset_t kstack)
 
 	proc_linkup0(&proc0, &thread0);
 	thread0.td_kstack = kstack;
-	thread0.td_kstack_pages = kstack_pages;
+	thread0.td_kstack_pages = KSTACK_PAGES;
 #if defined(PERTHREAD_SSP)
 	thread0.td_md.md_canary = boot_canary;
 #endif
@@ -405,12 +424,12 @@ init_proc0(vm_offset_t kstack)
  * read-only, e.g. to patch kernel code.
  */
 bool
-arm64_get_writable_addr(vm_offset_t addr, vm_offset_t *out)
+arm64_get_writable_addr(void *addr, void **out)
 {
 	vm_paddr_t pa;
 
 	/* Check if the page is writable */
-	if (PAR_SUCCESS(arm64_address_translate_s1e1w(addr))) {
+	if (PAR_SUCCESS(arm64_address_translate_s1e1w((vm_offset_t)addr))) {
 		*out = addr;
 		return (true);
 	}
@@ -418,7 +437,7 @@ arm64_get_writable_addr(vm_offset_t addr, vm_offset_t *out)
 	/*
 	 * Find the physical address of the given page.
 	 */
-	if (!pmap_klookup(addr, &pa)) {
+	if (!pmap_klookup((vm_offset_t)addr, &pa)) {
 		return (false);
 	}
 
@@ -426,8 +445,9 @@ arm64_get_writable_addr(vm_offset_t addr, vm_offset_t *out)
 	 * If it is within the DMAP region and is writable use that.
 	 */
 	if (PHYS_IN_DMAP(pa)) {
-		addr = PHYS_TO_DMAP(pa);
-		if (PAR_SUCCESS(arm64_address_translate_s1e1w(addr))) {
+		addr = (void *)PHYS_TO_DMAP(pa);
+		if (PAR_SUCCESS(arm64_address_translate_s1e1w(
+		    (vm_offset_t)addr))) {
 			*out = addr;
 			return (true);
 		}
@@ -900,6 +920,22 @@ initarm(struct arm64_bootparams *abp)
 
 	update_special_regs(0);
 
+	/* Set the pcpu data, this is needed by pmap_bootstrap */
+	pcpup = &pcpu0;
+	pcpu_init(pcpup, 0, sizeof(struct pcpu));
+
+	/*
+	 * Set the pcpu pointer with a backup in tpidr_el1 to be
+	 * loaded when entering the kernel from userland.
+	 */
+	__asm __volatile(
+	    "mov x18, %0 \n"
+	    "msr tpidr_el1, %0" :: "r"(pcpup));
+
+	/* locore.S sets sp_el0 to &thread0 so no need to set it here. */
+	PCPU_SET(curthread, &thread0);
+	PCPU_SET(midr, get_midr());
+
 	link_elf_ireloc(kmdp);
 #ifdef FDT
 	try_load_dtb(kmdp);
@@ -932,22 +968,6 @@ initarm(struct arm64_bootparams *abp)
 		physmem_exclude_region(efifb->fb_addr, efifb->fb_size,
 		    EXFLAG_NOALLOC);
 
-	/* Set the pcpu data, this is needed by pmap_bootstrap */
-	pcpup = &pcpu0;
-	pcpu_init(pcpup, 0, sizeof(struct pcpu));
-
-	/*
-	 * Set the pcpu pointer with a backup in tpidr_el1 to be
-	 * loaded when entering the kernel from userland.
-	 */
-	__asm __volatile(
-	    "mov x18, %0 \n"
-	    "msr tpidr_el1, %0" :: "r"(pcpup));
-
-	/* locore.S sets sp_el0 to &thread0 so no need to set it here. */
-	PCPU_SET(curthread, &thread0);
-	PCPU_SET(midr, get_midr());
-
 	/* Do basic tuning, hz etc */
 	init_param1();
 
@@ -955,7 +975,7 @@ initarm(struct arm64_bootparams *abp)
 	pan_setup();
 
 	/* Bootstrap enough of pmap  to enter the kernel proper */
-	pmap_bootstrap(KERNBASE - abp->kern_delta, lastaddr - KERNBASE);
+	pmap_bootstrap(lastaddr - KERNBASE);
 	/* Exclude entries needed in the DMAP region, but not phys_avail */
 	if (efihdr != NULL)
 		exclude_efi_map_entries(efihdr);
@@ -970,8 +990,8 @@ initarm(struct arm64_bootparams *abp)
 	 * we'll end up searching for segments that we can safely use.  Those
 	 * segments also get excluded from phys_avail.
 	 */
-#if defined(KASAN)
-	pmap_bootstrap_san(KERNBASE - abp->kern_delta);
+#if defined(KASAN) || defined(KMSAN)
+	pmap_bootstrap_san();
 #endif
 
 	physmem_init_kernel_globals();
@@ -1018,6 +1038,7 @@ initarm(struct arm64_bootparams *abp)
 
 	kcsan_cpu_init(0);
 	kasan_init();
+	kmsan_init();
 
 	env = kern_getenv("kernelname");
 	if (env != NULL)
@@ -1046,6 +1067,10 @@ initarm(struct arm64_bootparams *abp)
 	}
 
 	early_boot = 0;
+
+	if (bootverbose && kstack_pages != KSTACK_PAGES)
+		printf("kern.kstack_pages = %d ignored for thread0\n",
+		    kstack_pages);
 
 	TSEXIT();
 }

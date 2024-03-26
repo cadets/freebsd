@@ -37,9 +37,6 @@
  * uses quad precision, such as aarch64 or riscv.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <float.h>
 
 #include "gdtoaimp.h"

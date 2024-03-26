@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 PACKAGE=lib${LIB}
 # Vendor sources and generated files
@@ -12,8 +11,8 @@ LIB=	unbound
 PRIVATELIB=
 PACKAGE=	unbound
 
-CFLAGS+= -I${UNBOUNDDIR} -I${LDNSDIR} -I${.OBJDIR}
-CFLAGS+= -I${SRCTOP}/usr.sbin/unbound
+CFLAGS+= -I${UNBOUNDDIR} -I${LDNSDIR} -I${.OBJDIR} -I${.CURDIR}
+CFLAGS+= -DOPENSSL_API_COMPAT=0x10100000L
 
 SRCS=	alloc.c as112.c authzone.c autotrust.c cachedb.c config_file.c \
 	configlexer.l configparser.y context.c dname.c dns.c dns64.c \
@@ -25,8 +24,10 @@ SRCS=	alloc.c as112.c authzone.c autotrust.c cachedb.c config_file.c \
 	msgreply.c net_help.c netevent.c outbound_list.c outside_network.c \
 	packed_rrset.c parse.c parseutil.c proxy_protocol.c \
 	random.c rbtree.c redis.c \
-	regional.c respip.c rpz.c rrdef.c rrset.c rtt.c sbuffer.c slabhash.c \
-	str2wire.c tcp_conn_limit.c timehist.c tube.c ub_event_pluggable.c \
+	regional.c respip.c rfc_1982.c rpz.c rrdef.c rrset.c rtt.c sbuffer.c \
+	siphash.c slabhash.c \
+	str2wire.c tcp_conn_limit.c timehist.c timeval_func.c \
+	tube.c ub_event_pluggable.c \
 	val_anchor.c val_kcache.c val_kentry.c val_neg.c val_nsec.c \
 	val_nsec3.c val_secalgo.c val_sigcrypt.c val_utils.c validator.c \
 	view.c winsock_event.c wire2str.c

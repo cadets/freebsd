@@ -34,9 +34,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/efi.h>
 #include <sys/kernel.h>
@@ -48,10 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/vmmeter.h>
 
-#include <machine/metadata.h>
-#include <machine/pcb.h>
 #include <machine/pte.h>
-#include <machine/vfp.h>
 #include <machine/vmparam.h>
 
 #include <vm/vm.h>
@@ -220,7 +214,10 @@ efi_create_1t1_map(struct efi_md *map, int ndesc, int descsz)
 		else
 			mode = VM_MEMATTR_DEVICE;
 
-		printf("MAP %lx mode %x pages %lu\n", p->md_phys, mode, p->md_pages);
+		if (bootverbose) {
+			printf("MAP %lx mode %x pages %lu\n",
+			    p->md_phys, mode, p->md_pages);
+		}
 
 		l3_attr = ATTR_DEFAULT | ATTR_S1_IDX(mode) |
 		    ATTR_S1_AP(ATTR_S1_AP_RW) | ATTR_S1_nG | L3_PAGE;

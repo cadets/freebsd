@@ -49,9 +49,6 @@
  * October 1992
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/errno.h>
 

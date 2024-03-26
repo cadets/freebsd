@@ -1,5 +1,4 @@
 
-/* @(#)e_log.c 1.3 95/01/18 */
 /*
  * ====================================================
  * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
@@ -11,10 +10,7 @@
  * ====================================================
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
-/* __ieee754_log(x)
+/* log(x)
  * Return the logrithm of x
  *
  * Method :                  
@@ -86,7 +82,7 @@ static const double zero   =  0.0;
 static volatile double vzero = 0.0;
 
 double
-__ieee754_log(double x)
+log(double x)
 {
 	double hfsq,f,s,z,R,w,t1,t2,dk;
 	int32_t k,hx,i,j;

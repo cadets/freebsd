@@ -571,8 +571,10 @@ vdev_rebuild_range(vdev_rebuild_t *vr, uint64_t start, uint64_t size)
 	vdev_rebuild_blkptr_init(&blk, vd, start, size);
 	uint64_t psize = BP_GET_PSIZE(&blk);
 
-	if (!vdev_dtl_need_resilver(vd, &blk.blk_dva[0], psize, TXG_UNKNOWN))
+	if (!vdev_dtl_need_resilver(vd, &blk.blk_dva[0], psize, TXG_UNKNOWN)) {
+		vr->vr_pass_bytes_skipped += size;
 		return (0);
+	}
 
 	mutex_enter(&vr->vr_io_lock);
 
@@ -786,6 +788,7 @@ vdev_rebuild_thread(void *arg)
 	vr->vr_pass_start_time = gethrtime();
 	vr->vr_pass_bytes_scanned = 0;
 	vr->vr_pass_bytes_issued = 0;
+	vr->vr_pass_bytes_skipped = 0;
 
 	uint64_t update_est_time = gethrtime();
 	vdev_rebuild_update_bytes_est(vd, 0);
@@ -804,12 +807,12 @@ vdev_rebuild_thread(void *arg)
 
 		/*
 		 * Calculate the max number of in-flight bytes for top-level
-		 * vdev scanning operations (minimum 1MB, maximum 1/4 of
+		 * vdev scanning operations (minimum 1MB, maximum 1/2 of
 		 * arc_c_max shared by all top-level vdevs).  Limits for the
 		 * issuing phase are done per top-level vdev and are handled
 		 * separately.
 		 */
-		uint64_t limit = (arc_c_max / 4) / MAX(rvd->vdev_children, 1);
+		uint64_t limit = (arc_c_max / 2) / MAX(rvd->vdev_children, 1);
 		vr->vr_bytes_inflight_max = MIN(limit, MAX(1ULL << 20,
 		    zfs_rebuild_vdev_limit * vd->vdev_children));
 
@@ -1153,6 +1156,7 @@ vdev_rebuild_get_stats(vdev_t *tvd, vdev_rebuild_stat_t *vrs)
 		    vr->vr_pass_start_time);
 		vrs->vrs_pass_bytes_scanned = vr->vr_pass_bytes_scanned;
 		vrs->vrs_pass_bytes_issued = vr->vr_pass_bytes_issued;
+		vrs->vrs_pass_bytes_skipped = vr->vr_pass_bytes_skipped;
 		mutex_exit(&tvd->vdev_rebuild_lock);
 	}
 

@@ -61,8 +61,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _MACHINE_BUS_H_
@@ -105,7 +103,7 @@ struct bus_space {
 	/* mapping/unmapping */
 	int	(*bs_map)(bus_addr_t, bus_size_t, int,
 	    bus_space_handle_t *);
-	void	(*bs_unmap)(bus_size_t);
+	void	(*bs_unmap)(bus_space_handle_t, bus_size_t);
 	int	(*bs_subregion)(bus_space_handle_t, bus_size_t,
 	    bus_size_t, bus_space_handle_t *);
 

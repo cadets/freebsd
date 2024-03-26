@@ -26,8 +26,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 /*
  * Parts of this program are derived from the original FreeBSD iostat
@@ -149,7 +147,7 @@ static int dflag = 0, Iflag = 0, Cflag = 0, Tflag = 0, oflag = 0, Kflag = 0;
 static int xflag = 0, zflag = 0;
 
 /* local function declarations */
-static void usage(void);
+static void usage(void) __dead2;
 static void needhdr(int signo);
 static void needresize(int signo);
 static void needreturn(int signo);
@@ -170,16 +168,17 @@ usage(void)
 	 * This isn't mentioned in the man page, or the usage statement,
 	 * but it is supported.
 	 */
-	fprintf(stderr, "usage: iostat [-CdhIKoTxz?] [-c count] [-M core]"
+	fprintf(stderr, "usage: iostat [-CdhIKoTxz] [-c count] [-M core]"
 		" [-n devs] [-N system]\n"
 		"\t      [-t type,if,pass] [-w wait] [drives]\n");
+	exit(1);
 }
 
 int
 main(int argc, char **argv)
 {
 	int c, i;
-	int tflag = 0, hflag = 0, cflag = 0, wflag = 0, nflag = 0;
+	int hflag = 0, cflag = 0, wflag = 0, nflag = 0;
 	int count = 0, waittime = 0;
 	char *memf = NULL, *nlistf = NULL;
 	struct devstat_match *matches;
@@ -199,16 +198,16 @@ main(int argc, char **argv)
 	matches = NULL;
 	maxshowdevs = 3;
 
-	while ((c = getopt(argc, argv, "c:CdhIKM:n:N:ot:Tw:xz?")) != -1) {
-		switch(c) {
+	while ((c = getopt(argc, argv, "Cc:dhIKM:N:n:oTt:w:xz")) != -1) {
+		switch (c) {
+			case 'C':
+				Cflag++;
+				break;
 			case 'c':
 				cflag++;
 				count = atoi(optarg);
 				if (count < 1)
 					errx(1, "count %d is < 1", count);
-				break;
-			case 'C':
-				Cflag++;
 				break;
 			case 'd':
 				dflag++;
@@ -225,6 +224,9 @@ main(int argc, char **argv)
 			case 'M':
 				memf = optarg;
 				break;
+			case 'N':
+				nlistf = optarg;
+				break;
 			case 'n':
 				nflag++;
 				maxshowdevs = atoi(optarg);
@@ -232,20 +234,16 @@ main(int argc, char **argv)
 					errx(1, "number of devices %d is < 0",
 					     maxshowdevs);
 				break;
-			case 'N':
-				nlistf = optarg;
-				break;
 			case 'o':
 				oflag++;
 				break;
+			case 'T':
+				Tflag++;
+				break;
 			case 't':
-				tflag++;
 				if (devstat_buildmatch(optarg, &matches,
 						       &num_matches) != 0)
 					errx(1, "%s", devstat_errbuf);
-				break;
-			case 'T':
-				Tflag++;
 				break;
 			case 'w':
 				wflag++;
@@ -262,8 +260,6 @@ main(int argc, char **argv)
 				break;
 			default:
 				usage();
-				exit(1);
-				break;
 		}
 	}
 
@@ -616,7 +612,7 @@ main(int argc, char **argv)
 		}
 
 		if (xflag == 0 && Tflag > 0)
-			printf("%4.0Lf %5.0Lf", cur.tk_nin / etime,
+			printf("%4.0Lf %5.0Lf ", cur.tk_nin / etime,
 			    cur.tk_nout / etime);
 
 		devstats(hflag, etime, havelast);
@@ -735,7 +731,7 @@ phdr(void)
 		return;
 
 	if (Tflag > 0)
-		(void)printf("       tty");
+		(void)printf("       tty ");
 	for (i = 0, printed=0;(i < num_devices) && (printed < maxshowdevs);i++){
 		int di;
 		if ((dev_select[i].selected != 0)
@@ -757,7 +753,7 @@ phdr(void)
 		(void)printf("\n");
 
 	if (Tflag > 0)
-		(void)printf(" tin  tout");
+		(void)printf(" tin  tout ");
 
 	for (i=0, printed = 0;(i < num_devices) && (printed < maxshowdevs);i++){
 		if ((dev_select[i].selected != 0)
@@ -769,9 +765,9 @@ phdr(void)
 					(void)printf(" blk xfr msps ");
 			} else {
 				if (Iflag == 0)
-					printf(" KB/t  tps  MB/s ");
+					printf("KB/t   tps  MB/s ");
 				else
-					printf(" KB/t xfrs    MB ");
+					printf("KB/t  xfrs    MB ");
 			}
 			printed++;
 		}
@@ -938,26 +934,30 @@ devstats(int perf_select, long double etime, int havelast)
 				       msdig,
 				       ms_per_transaction);
 			else
-				printf("%4.1" PRIu64 "%4.1" PRIu64 "%5.*Lf ",
+				printf("%4" PRIu64 "%4" PRIu64 "%5.*Lf ",
 				       total_blocks,
 				       total_transfers,
 				       msdig,
 				       ms_per_transaction);
 		} else {
 			if (Iflag == 0)
-				printf(" %4.*Lf %4.0Lf %5.*Lf ",
+				printf("%4.*Lf %5.0Lf %5.*Lf ",
 				       kb_per_transfer >= 100 ? 0 : 1,
 				       kb_per_transfer,
 				       transfers_per_second,
-				       mb_per_second >= 1000 ? 0 : 1,
+				       mb_per_second >= 1000 ? 0 :
+					(total_mb >= 100 ? 1 : 2),
 				       mb_per_second);
 			else {
 				total_mb = total_bytes;
 				total_mb /= 1024 * 1024;
 
-				printf(" %4.1Lf %4.1" PRIu64 " %5.2Lf ",
+				printf("%4.*Lf %5" PRIu64 " %5.*Lf ",
+				       kb_per_transfer >= 100 ? 0 : 1,
 				       kb_per_transfer,
 				       total_transfers,
+				       total_mb >= 1000 ? 0 :
+					(total_mb >= 100 ? 1 : 2),
 				       total_mb);
 			}
 		}

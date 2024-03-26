@@ -32,8 +32,6 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /*-
@@ -407,7 +405,7 @@
  * fiber-based cards or BCOM for 1000baseT cards with a Broadcom
  * PHY.
  */
-#define SK_PHYTYPE_XMAC		0	/* integeated XMAC II PHY */
+#define SK_PHYTYPE_XMAC		0	/* integrated XMAC II PHY */
 #define SK_PHYTYPE_BCOM		1	/* Broadcom BCM5400 */
 #define SK_PHYTYPE_LONE		2	/* Level One LXT1000 */
 #define SK_PHYTYPE_NAT		3	/* National DP83891 */

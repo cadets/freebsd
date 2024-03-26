@@ -28,9 +28,6 @@
  * Tests for corner cases in log*().
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <fenv.h>
 #include <float.h>

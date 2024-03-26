@@ -31,10 +31,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\"     From: @(#)tcp.4	8.1 (Berkeley) 6/5/93
-.\" $FreeBSD$
-.\"
-.Dd February 3, 2023
+.Dd November 30, 2023
 .Dt TCP 4
 .Os
 .Sh NAME
@@ -175,7 +172,7 @@ socket option set.
 .Pp
 In addition to the facilities defined in RFC7413, this implementation supports a
 pre-shared key (PSK) mode of operation in which the TFO server requires the
-client to be in posession of a shared secret in order for the client to be able
+client to be in possession of a shared secret in order for the client to be able
 to successfully open TFO connections with the server.
 This is useful, for example, in environments where TFO servers are exposed to
 both internal and external clients and only wish to allow TFO connections from
@@ -383,7 +380,7 @@ Changes NUMA affinity filtering for an established TCP listen
 socket.
 This option takes a single integer argument which specifies
 the NUMA domain to filter on for this listen socket.
-The argument can also have the follwing special values:
+The argument can also have the following special values:
 .Bl -tag -width "Dv TCP_REUSPORT_LB_NUMA"
 .It Dv TCP_REUSPORT_LB_NUMA_NODOM
 Remove NUMA filtering for this listen socket.
@@ -467,13 +464,6 @@ See
 Maximum amount of time, in milliseconds, before a delayed ACK is sent.
 .It Va delayed_ack
 Delay ACK to try and piggyback it onto a data packet or another ACK.
-.It Va do_lrd
-Enable Lost Retransmission Detection for SACK-enabled sessions, disabled by
-default.
-Under severe congestion, a retransmission can be lost which then leads to a
-mandatory Retransmission Timeout (RTO), followed by slow-start.
-LRD will try to resend the repeatedly lost packet, preventing the time-consuming
-RTO and performance reducing slow-start.
 .It Va do_prr
 Perform SACK loss recovery using the Proportional Rate Reduction (PRR) algorithm
 described in RFC6937.
@@ -481,12 +471,6 @@ This improves the effectiveness of retransmissions particular in environments
 with ACK thinning or burst loss events, as chances to run out of the ACK clock
 are reduced, preventing lengthy and performance reducing RTO based loss recovery
 (default is true).
-.It Va do_prr_conservative
-While doing Proportional Rate Reduction, remain strictly in a packet conserving
-mode, sending only one new packet for each ACK received.
-Helpful when a misconfigured token bucket traffic policer causes persistent
-high losses leading to RTO, but reduces PRR effectiveness in more common settings
-(default is false).
 .It Va do_tcpdrain
 Flush packets in the
 .Tn TCP
@@ -678,7 +662,7 @@ cache.
 Time in seconds between pruning expired host cache entries.
 Defaults to 300 (5 minutes).
 .It Va hostcache.purge
-Expire all entires on next pruning of host cache entries.
+Expire all entries on next pruning of host cache entries.
 Any non-zero setting will be reset to zero, once the purge
 is running.
 .Bl -tag -compact
@@ -776,7 +760,7 @@ which both endpoints are local.
 .It Va path_mtu_discovery
 Enable Path MTU Discovery.
 .It Va pcbcount
-Number of active process control blocks
+Number of active protocol control blocks
 (read-only).
 .It Va perconn_stats_enable
 Controls the default collection of statistics for all connections using the
@@ -843,6 +827,9 @@ Maximum size of automatic receive buffer.
 Initial
 .Tn TCP
 receive window (buffer size).
+.It Va retries
+Maximum number of consecutive timer based retransmits sent after a data
+segment is lost (default and maximum is 12).
 .It Va rexmit_drop_options
 Drop TCP options from third and later retransmitted SYN segments
 of a connection.
@@ -907,6 +894,13 @@ Global number of TCP SACK holes currently allocated.
 .It Va sack.globalmaxholes
 Maximum number of SACK holes per system, across all connections.
 Defaults to 65536.
+.It Va sack.lrd
+Enable Lost Retransmission Detection for SACK-enabled sessions, enabled by
+default.
+Under severe congestion, a retransmission can be lost which then leads to a
+mandatory Retransmission Timeout (RTO), followed by slow-start.
+LRD will try to resend the repeatedly lost packet, preventing the time-consuming
+RTO and performance reducing slow-start or purge of the SACK scoreboard.
 .It Va sack.maxholes
 Maximum number of SACK holes per connection.
 Defaults to 128.

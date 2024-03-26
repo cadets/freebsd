@@ -29,9 +29,6 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/fcntl.h>
 #include <unistd.h>
@@ -42,6 +39,5 @@ __weak_reference(__sys_fsync, __fsync);
 int
 fsync(int fd)
 {
-
-	return (((int (*)(int))__libc_interposing[INTERPOS_fsync])(fd));
+	return (((int (*)(int))*(__libc_interposing_slot(INTERPOS_fsync)))(fd));
 }

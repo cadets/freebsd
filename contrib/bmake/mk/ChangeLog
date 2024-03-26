@@ -1,3 +1,214 @@
+2024-03-09  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* install-mk (MK_VERSION): 20240309
+	
+	* meta.sys.mk: _metaError: if .ERROR_EXIT == 6, we do not
+	want to save the .ERROR_META_FILE
+
+2024-02-20  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* install-mk (MK_VERSION): 20240220
+
+	* sys.dirdeps.mk, dirdeps-targets.mk, init.mk:
+	do not set .MAIN: dirdeps in sys.dirdeps.mk
+	dirdeps-targets.mk will do that for top-level builds
+	and init.mk will do it for others.
+	This allows a Makefile which has no need of 'dirdeps' to
+	set .MAIN for itself and "just work".
+
+2024-02-18  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* bsd.*.mk: for makefiles that get a bsd. symlink,
+	use _this in  multiple inclusion tags since .PARSEFILE will not
+	DTRT when such a makefile is included directly by Makefile and
+	automatically (without bsd. prefix).
+	Since we cannot guarantee that our sys.mk will be used, we provide
+	a default _this in each makefile that gets a bsd. prefix such that
+	the value is the same regardless of bsd. prefix.
+
+	* subdir.mk: drop the !target guard on $SUBDIR_TARGETS
+
+2024-02-12  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* install-mk (MK_VERSION): 20240212
+
+	* SPDX-License-Identifier: BSD-2-Clause
+	Add SPDX-License-Identifier to inidicate that I consider
+	my copyright on any of these makefiles equivalent to BSD-2-Clause
+
+	* autoconf.mk: allow for configure.ac as currently recommended
+
+	* subdir.mk: support @auto
+	which is replaced with each subdir that
+	has a [Mm]akefile.
+
+	* subdir.mk: include local.subdir.mk if it exists.
+
+	* subdir.mk: rework to handle .WAIT 
+
+2024-02-11  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* subdir.mk: _SUBDIRUSE report the target we are entering subdirs for.
+
+2024-02-10  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* prog.mk: treat empty SRCS the same as undefined
+
+2024-02-02  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* Avoid undefined errors in lint (-dL) mode
+
+	* man.mk (CMT2DOC_FLAGS): note that -mm does mdoc(7)
+
+2024-01-28  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* install-mk (MK_VERSION): 20240128
+
+	* FILES: add ccm.dep.mk for C++ modules
+	add suffixes.mk for common location for generic SUFFIX rules.
+
+	* auto.dep.mk autodep.mk meta.autodep.mk: include ccm.dep.mk
+	replace OBJ_EXTENSIONS with OBJ_SUFFIXES
+
+	* autodep.mk: leverage CXX_SUFFIXES for __depsrcs
+	and update style (spaces around = etc)
+
+	* init.mk: add OBJS_SRCS_FILTER to filter SRCS when
+	setting OBJS
+
+	* meta2deps.py: handle multiple ./ embedded in path better.
+
+2024-01-05  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* install-mk (MK_VERSION): 20240105
+	* dirdeps.mk: for MAKE_VERSION 20240105 we do not have the same
+	limits on command line length, so skip export of lists to env.
+
+2023-12-24  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* man.mk: add logic for staging man pages
+
+2023-11-28  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* jobs.mk: avoid C suffix in JOB_MAX_C if factor is floating
+	point.  This keeps JOB_MAX numeric incase another makefile does
+	comparisons.
+
+2023-11-04  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* dpadd.mk: add support for DPLIBS_QUALIFIER_LIST
+
+	* gendirdeps.mk: if META_XTRAS is passed to us, add to META_FILES
+
+2023-10-03  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* compiler.mk (COMPILER_VERSION): clang at least is into
+	double digit major versions.
+
+2023-10-02  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* install-mk (MK_VERSION): 20231001
+
+	* set _CCLINK in init.mk so lib.mk can use it for default SHLIB_LD
+
+	* lib.mk (cleanlib): use LD_solink so we remove all the right files.
+	Use -Wl for -soname since we now default to linking with CC
+	We should not need SHLIB_LDSTARTFILE or SHLIB_LDENDFILE when linking
+	with CC.
+
+2023-09-24  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* init.mk (QUALIFIED_VAR_LIST): Add SRCS
+
+2023-09-09  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* jobs.mk (JOB_MAX): use -jC if we can
+	we actually use JOB_MAX_C which defaults to 1.33C
+
+2023-08-18  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* now_utc: %s only works with :localtime
+
+2023-07-14  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* install-sh: ignore -c as claimed and only insist on
+	a directory for destination when more than one file to copy.
+
+	* sys.mk: when looking for SYS_OS_MK try ${.MAKE.OS} and
+	${.MAKE.OS:S,64,,} early (so we find sys/IRIX.mk for IRIX64)
+
+2023-07-13  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* install-mk (MK_VERSION): 20230711
+
+	* sys.mk: set SYS_MK and INSTALL_SH for systems with incompatible
+	install(1)
+
+	* sys/IRIX.mk:  when setting ROOT_GROUP only match the first :0:
+	set INSTALL to install-sh rather than pathname that may not exist
+	(yet).
+
+2023-07-07  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* dirdeps.mk: pass DIRDEP_TARGETS to DIRDEP_MAKE
+	normally this is empty - for the default target, but there are
+	use-cases where we might set it to something else.
+
+2023-07-04  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* install-mk (MK_VERSION): 20230704
+
+	* dirdeps.mk: apply DEBUG_DIRDEPS_LIST_FILTER to lists we output
+	when DEBUG_DIRDEPS is in effect.
+	Eg. DEBUG_DIRDEPS_LIST_FILTER=ts\n
+	can greatly improve readability.
+
+2023-05-25  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* meta.autodep.mk (beforegendirdeps): allow tasks to be done
+	at END but before gendirdeps
+
+2023-05-22  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* install-mk (MK_VERSION): 20230522
+
+	* host-target.mk: deal with garbage from uname -m on
+	Darwin ppc, also NetBSD appears to use x86_64 for MACHINE_ARCH
+	these days so just leave it be.
+	For Darwin arm and i386 use _HOST_MACHINE for _HOST_ARCH so we get
+	arm64 and x86_64 in HOST_TARGET.
+
+2023-05-15  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* sys.vars.mk: M_mtime use :mtime or 'stat -f %m' for older
+	versions of bmake.
+
+	* dirdeps.mk (TARGET_SPEC_VARS.host):
+	While *most* projects need only DEP_MACHINE for host,
+	there is always an exception.  So we allow for
+	TARGET_SPEC_VARS.host to be a subset of TARGET_SPEC_VARS.
+	The default will *just work* for most projects.
+	We set DEP_TARGET_SPEC_VARS and hence DEP_TARGET_SPEC
+	based on DEP_MACHINE.
+	Allow for M_dep_qual_fixes.host to be different too
+	and take care to apply the right set.
+
+2023-05-14  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* sys.dirdeps.mk: we *do* want to override OBJTOP
+	and if MAKEOBJDIR was not in env as we want it;
+	put it there - carefully.
+	Ensure OBJROOT ends in / or - (/ preferred)
+	Add more comments to explain what/why.
+
+2023-05-13  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* install-mk (MK_VERSION): 20230512
+
+	* dirdeps.mk: take care not to qualify "host" dirdeps
+
+	* sys.dirdeps.mk (OBJTOP): must use ?=
+
 2023-05-10  Simon J Gerraty  <sjg@beast.crufty.net>
 
 	* meta.autodep.mk: if LOCAL_DEPENDS_GUARD is "no"

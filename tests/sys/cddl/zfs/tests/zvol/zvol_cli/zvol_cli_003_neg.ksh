@@ -20,11 +20,6 @@
 # CDDL HEADER END
 #
 
-# $FreeBSD$
-
-#
-# ident	"@(#)zvol_cli_003_neg.ksh	1.2	07/01/09 SMI"
-#
 # Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #

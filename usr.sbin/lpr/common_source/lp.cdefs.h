@@ -31,7 +31,6 @@
  * official policies, either expressed or implied, of the FreeBSD Project.
  *
  * ------+---------+---------+---------+---------+---------+---------+---------*
- * $FreeBSD$
  * ------+---------+---------+---------+---------+---------+---------+---------*
  */
 
@@ -81,20 +80,6 @@
 #if !defined(__unused)
 #  define	__unused
 #endif
-
-/*
- * All the lpr source files will want to reference __FBSDID() to
- * handle rcs id's.
- */
-#if !defined(__FBSDID)
-#  if defined(lint) || defined(STRIP_FBSDID)
-#    define	__FBSDID(s)	struct skip_rcsid_struct
-#  elif defined(__IDSTRING)			/* NetBSD */
-#    define	__FBSDID(s)	__IDSTRING(rcsid,s)
-#  else
-#    define	__FBSDID(s)	static const char rcsid[] __unused = s
-#  endif
-#endif /* __FBSDID */
 
 /*
  * Some lpr include files use __BEGIN_DECLS and __END_DECLS.

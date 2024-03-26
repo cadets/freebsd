@@ -31,9 +31,6 @@
  *   virtual storage (i.e. a virstor has "physical" components)
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>

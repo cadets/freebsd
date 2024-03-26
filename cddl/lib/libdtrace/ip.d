@@ -17,8 +17,6 @@
  * information: Portions Copyright [yyyy] [name of copyright owner]
  *
  * CDDL HEADER END
- *
- * $FreeBSD$
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
@@ -264,8 +262,8 @@ inline int IFF_LOOPBACK =	0x8;
 
 #pragma D binding "1.5" translator
 translator ifinfo_t < struct ifnet *p > {
-	if_name =	p->if_xname;
-	if_local =	(p->if_flags & IFF_LOOPBACK) == 0 ? 0 : 1;
+	if_name =	p == NULL ? "<unknown>" : p->if_xname;
+	if_local =	p == NULL ? 0 : (p->if_flags & IFF_LOOPBACK) == 0 ? 0 : 1;
 	if_addr =	(uintptr_t)p;
 };
 

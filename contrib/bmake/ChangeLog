@@ -1,3 +1,311 @@
+2024-03-10  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* boot-strap: tests can take a long time; use a cookie to
+	skip them if bmake has not been updated since tests last
+	ran successfully.
+
+	* Makefile: Cygwin handles MANTARGET man
+
+	* unit-tests/Makefile: set BROKEN_TESTS for Cygwin
+
+2024-03-09  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20240309
+	Merge with NetBSD make, pick up
+	o set .ERROR_EXIT to the exit status of .ERROR_TARGET
+	this allows a .ERROR target to ignore the case of
+	.ERROR_EXIT==6 which just means that the build actually
+	failed somewhere else.
+
+2024-03-04  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20240303
+
+	* var.c: on IRIX we need both inttypes.h and stdint.h
+
+2024-03-01  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20240301
+	Merge with NetBSD make, pick up
+	o export variables with value from target scope
+	when appropriate.
+
+2024-02-12  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20240212
+	Merge with NetBSD make, pick up
+	o remove unneeded conditional-compilation toggles
+	INCLUDES, LIBRARIES, POSIX, SYSVINCLUDE, SYSVVARSUB,
+	GMAKEEXPORT NO_REGEX and SUNSHCMD
+
+	* configure.in: add check for regex.h
+
+	* var.c: replace use of NO_REGEX with HAVE_REGEX_H
+
+2024-02-04  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20240204
+	Merge with NetBSD make, pick up
+	o var.c: fix some lint (-dL) mode parsing issues
+
+2024-02-02  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION: (_MAKE_VERSION): 20240202
+	Merge with NetBSD make, pick up
+	o make.1: note that arg to :D and :U can be empty
+	o var.c: $$ is not a parse error when .MAKE.SAVE_DOLLARS=no
+
+2024-01-08  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20240108
+	Merge with NetBSD make, pick up
+	o miscellaneous cleanups
+
+2024-01-06  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20240106
+	Merge with NetBSD make, pick up
+	o fix duplicate progname when reporting an unknown target
+	o unit tests for Cmd_Exec using temp file
+
+2024-01-05  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20240105
+	Merge with NetBSD make, pick up
+	o main.c: Cmd_Exec write cmd to a file if too big
+	avoid blowing commandline/env limits
+
+2024-01-02  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20240101
+	o util.c: flesh out more of strftime
+	* configure.in: add --with-bmake-strftime
+	it is not a full implementation but enough to pass all
+	the unit-tests.
+	* parse.c: LoadFile do not append \n to empty buffer.
+
+2023-12-30  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20231230
+	Merge with NetBSD make, pick up
+	o simplify memory allocation for string buffers
+	o fix declared types of list nodes
+	o suff.c: clean up freeing of suffixes
+	o var.c: simplify debug message for the ':@var@...@' modifier
+	clean up variable handling
+
+2023-12-26  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20231226
+	Merge with NetBSD make, pick up
+	o compat.c: ensure make's output is correctly ordered with that of
+	the target when not going to a tty
+	o main.c: check for shellPath whether to call Shell_Init()
+
+2023-12-24  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20231224
+	Merge with NetBSD make, pick up
+	o compat.c: check for shellPath whether to call Shell_Init()
+	tweak the unit test to detect the bug thus fixed.
+	o make.1: do not claim .SHELL is only used by jobs mode.
+
+2023-12-22  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20231220
+	Merge with NetBSD make, pick up
+	o str.c: speed up pattern matching in the ':M' modifier
+	o var.c: fix confusing debug logging when deleting a variable
+	use consistent debug messages style when ignoring variables
+
+2023-12-10  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20231210
+	Merge with NetBSD make, pick up
+	o var.c: avoid segfault on empty :C match expression
+	explain in debug log why variable assignment is ignored.
+
+2023-12-08  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20231208
+	Merge with NetBSD make, pick up
+	o var.c: ensure fromCmd is set correctly for variables set on
+	command line.
+
+2023-11-26  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* configure.in: disable generation of 'makefile' for
+	Darwin by default.
+
+	* boot-strap: docuement --without-makefile
+
+2023-11-24  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20231124
+	Merge with NetBSD make, pick up
+	o main.c: cleanup processing of -j
+	fix lint warning about strchr
+	o var.c: more accurate error message for invalid ':mtime' argument
+	cleanup :[...] modifier
+	avoid reading beyond substring when comparing
+	o unit-tests cover all cases of :mtime, test and explain exporting
+	of variables
+	o cleanup comments
+
+2023-09-17  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* bsd.after-import.mk (ECHO_TAG): FreeBSD no longer uses
+	$FreeBSD$ tag, so avoid adding it.
+
+2023-09-09  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230909
+	Merge with NetBSD make, pick up
+	o main.c: allow -j to compute a multiple of ncpu
+	If _SC_NPROCESSORS_ONLN is supported; and -j arg is a floating
+	point number or ends in 'C' compute .MAKE.JOBS as a multiple of
+	_SC_NPROCESSORS_ONLN
+	.MAKE.JOBS.C will be "yes" if -jC is supported
+
+2023-08-20  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230820
+	Merge with NetBSD make, pick up
+	o make.1: note that :localtime is better for %s
+	o parse.c: improve error messages for invalid input.
+	o var.c: fix for %s:L:gmtime - set TZ=UTC and use localtime to get
+	correct result, it is still better to use %s:L:localtime.
+
+2023-08-18  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230818
+	Merge with NetBSD make, pick up
+	o meta.c: meta_ignore - check raw path against metaIgnorePaths
+	to potentially skip call to realpath.
+	o var.c: be strict when parsing the argument of the ':mtime' modifier
+	o unit-tests/varmod-mtime.mk: document why '${%s:L:localtime}'
+	should be used to get an equivalent value to time(3).
+
+2023-08-16  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230816
+	Merge with NetBSD make, pick up
+	o cond.c: clean up multiple-inclusion guards
+
+2023-07-25  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* unit-tests/Makefile: addd varmod-localtime to BROKEN_TESTS
+	if configure cannot work out how to control TZ.
+	Remove varmod-localtime from BROKEN_TESTS for IRIX*
+
+2023-07-24  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230723
+
+	* configure.in: fix the test for wether TZ=Europe/Berlin works.
+	Depending on the time of year, if run between 22:00 and 00:00 UTC
+	the check in configure would fail incorrectly.
+	Take the day into account as well.
+
+2023-07-18  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230711
+	Merge with NetBSD make, pick up
+	o make.1: clean up wording, clarify scope of '!' in conditions
+
+2023-07-15  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* make-bootstrap.sh.in: set prefix
+	If configure is run using ksh we get unexpanded ${prefix} in
+	DEFAULT_SYS_PATH, by ensuring prefix is set we should still get
+	correct result.
+
+2023-07-13  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230711
+	bump version for IRIX tweaks
+
+	* make.h: undef OP_NONE if defined
+
+	* unit-tests/Makefile: set BROKEN_TESTS for IRIX
+
+	* configure.in: override INSTALL on IRIX
+
+2023-06-27  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* boot-strap op_test: ensure we set TEST_MAKE as we want it.
+
+2023-06-22  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230622
+	Merge with NetBSD make, pick up
+	o optimize string matching for ':M' and ':N'
+	o warn about malformed patterns in ':M', ':N' and '.if make(...)'
+
+2023-06-21  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230621
+	Merge with NetBSD make, pick up
+	o more extensive tests for include guards
+	o parse.c: if a guard is already defined a file that uses the same
+	guard is still guarded by it.
+
+2023-06-20  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230620
+	Merge with NetBSD make, pick up
+	o allow guards to be targets as well as variables
+	The guard targets may include variable references like
+	__${.PARSEDIR:tA}/${.PARSEFILE}__
+
+2023-06-19  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230619
+	Merge with NetBSD make, pick up
+	o unit test for .undef of readOnly vars
+	o optimization for makefiles protected from multiple-inclusion
+	skip even opening the file after first include.
+	Initially this only handles makefiles guarded by a variable
+	target guards are next.
+
+2023-06-16  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230616
+	Merge with NetBSD make, pick up
+	o var.c: do not allow delete of readOnly variable
+
+2023-06-03  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230601
+	Merge with NetBSD make, pick up
+	o parse.c: .break takes no args
+	o lots of unit test updates
+
+2023-05-29  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* unit-tests/Makefile: skip tests that require /dev/filemon
+	if it does not exists - issue a warning.
+
+2023-05-22  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230522
+	Fix building on darwin ppc
+
+	* os.sh (MACHINE): Darwin powerpc cannot use `uname -m`
+	also recent NetBSD uses x86_64 for MACHINE_ARCH so conform.
+
+2023-05-15  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230515
+
+	* Makefile (COPTS.filemon_ktrace.c): NetBSD 7 needs help to
+	compile filemon_ktrace.c
+
+2023-05-13  Simon J Gerraty  <sjg@beast.crufty.net>
+
+	* VERSION (_MAKE_VERSION): 20230512
+	o sys.dirdeps.mk - broke after-import target
+
 2023-05-10  Simon J Gerraty  <sjg@beast.crufty.net>
 
 	* VERSION (_MAKE_VERSION): 20230510

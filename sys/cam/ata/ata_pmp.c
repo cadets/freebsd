@@ -26,9 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 
 #ifdef _KERNEL
@@ -113,7 +110,7 @@ struct pmp_softc {
 };
 
 static	periph_init_t	pmpinit;
-static	void		pmpasync(void *callback_arg, u_int32_t code,
+static	void		pmpasync(void *callback_arg, uint32_t code,
 				struct cam_path *path, void *arg);
 static	void		pmpsysctlinit(void *context, int pending);
 static	periph_ctor_t	pmpregister;
@@ -262,7 +259,7 @@ pmpcleanup(struct cam_periph *periph)
 }
 
 static void
-pmpasync(void *callback_arg, u_int32_t code,
+pmpasync(void *callback_arg, uint32_t code,
 	struct cam_path *path, void *arg)
 {
 	struct cam_periph *periph;
@@ -586,7 +583,7 @@ pmpdone(struct cam_periph *periph, union ccb *done_ccb)
 	struct pmp_softc *softc;
 	struct ccb_ataio *ataio;
 	struct cam_path *dpath;
-	u_int32_t  priority, res;
+	uint32_t  priority, res;
 	int i;
 
 	softc = (struct pmp_softc *)periph->softc;

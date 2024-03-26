@@ -26,8 +26,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * MS Windows 7/8/10 compatible HID Multi-touch Device driver.
  * https://msdn.microsoft.com/en-us/library/windows/hardware/jj151569(v=vs.85).aspx
@@ -252,13 +250,13 @@ static const struct hid_device_id hmt_devs[] = {
 static int
 hmt_ev_close(struct evdev_dev *evdev)
 {
-	return (hidbus_intr_stop(evdev_get_softc(evdev)));
+	return (hid_intr_stop(evdev_get_softc(evdev)));
 }
 
 static int
 hmt_ev_open(struct evdev_dev *evdev)
 {
-	return (hidbus_intr_start(evdev_get_softc(evdev)));
+	return (hid_intr_start(evdev_get_softc(evdev)));
 }
 
 static int
@@ -746,14 +744,13 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, hid_size_t d_len,
 			else
 				break;
 
-			if (hi.collevel == 1 && left_btn == 2 &&
+			if (left_btn == 2 &&
 			    hi.usage == HID_USAGE2(HUP_BUTTON, 1)) {
 				has_int_button = true;
 				sc->int_btn_loc = hi.loc;
 				break;
 			}
-			if (hi.collevel == 1 &&
-			    hi.usage >= HID_USAGE2(HUP_BUTTON, left_btn) &&
+			if (hi.usage >= HID_USAGE2(HUP_BUTTON, left_btn) &&
 			    hi.usage <= HID_USAGE2(HUP_BUTTON, HMT_BTN_MAX)) {
 				btn = (hi.usage & 0xFFFF) - left_btn;
 				setbit(sc->buttons, btn);
@@ -762,13 +759,13 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, hid_size_t d_len,
 					sc->max_button = btn + 1;
 				break;
 			}
-			if (hi.collevel == 1 && hi.usage ==
+			if (hi.usage ==
 			    HID_USAGE2(HUP_DIGITIZERS, HUD_CONTACTCOUNT)) {
 				cont_count_found = true;
 				sc->cont_count_loc = hi.loc;
 				break;
 			}
-			if (hi.collevel == 1 && hi.usage ==
+			if (hi.usage ==
 			    HID_USAGE2(HUP_DIGITIZERS, HUD_SCAN_TIME)) {
 				scan_time_found = true;
 				sc->scan_time_loc = hi.loc;

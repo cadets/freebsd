@@ -43,8 +43,6 @@
 #include <vm/vm_page.h>
 #include <vm/vm_pager.h>
 
-SND_DECLARE_FILE("$FreeBSD$");
-
 static int dsp_mmap_allow_prot_exec = 0;
 SYSCTL_INT(_hw_snd, OID_AUTO, compat_linux_mmap, CTLFLAG_RWTUN,
     &dsp_mmap_allow_prot_exec, 0,
@@ -1504,24 +1502,31 @@ dsp_ioctl(struct cdev *i_dev, u_long cmd, caddr_t arg, int mode,
 
     	case SOUND_PCM_WRITE_CHANNELS:
 /*	case SNDCTL_DSP_CHANNELS: ( == SOUND_PCM_WRITE_CHANNELS) */
-		if (*arg_i < 0) {
+		if (*arg_i < 0 || *arg_i > AFMT_CHANNEL_MAX) {
 			*arg_i = 0;
 			ret = EINVAL;
 			break;
 		}
 		if (*arg_i != 0) {
-			struct pcmchan_matrix *m;
-			uint32_t ext;
+			uint32_t ext = 0;
 
 			tmp = 0;
-			if (*arg_i > SND_CHN_MAX)
-				*arg_i = SND_CHN_MAX;
+			/*
+			 * Map channel number to surround sound formats.
+			 * Devices that need bitperfect mode to operate
+			 * (e.g. more than SND_CHN_MAX channels) are not
+			 * subject to any mapping.
+			 */
+			if (!(dsp_get_flags(i_dev) & SD_F_BITPERFECT)) {
+				struct pcmchan_matrix *m;
 
-			m = feeder_matrix_default_channel_map(*arg_i);
-			if (m != NULL)
-				ext = m->ext;
-			else
-				ext = 0;
+				if (*arg_i > SND_CHN_MAX)
+					*arg_i = SND_CHN_MAX;
+
+				m = feeder_matrix_default_channel_map(*arg_i);
+				if (m != NULL)
+					ext = m->ext;
+			}
 
 			PCM_ACQUIRE_QUICK(d);
 	  		if (wrch) {

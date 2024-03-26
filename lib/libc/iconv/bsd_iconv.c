@@ -1,4 +1,3 @@
-/* $FreeBSD$ */
 /* $NetBSD: iconv.c,v 1.11 2009/03/03 16:22:33 explorer Exp $ */
 
 /*-
@@ -30,7 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
 #include <sys/queue.h>
 #include <sys/types.h>
 
@@ -71,8 +69,6 @@ __bsd___iconv_open(const char *out, const char *in, struct _citrus_iconv *handle
 	}
 
 	handle->cv_shared->ci_discard_ilseq = strcasestr(out, "//IGNORE");
-	handle->cv_shared->ci_ilseq_invalid = false;
-	handle->cv_shared->ci_hooks = NULL;
 
 	return ((iconv_t)(void *)handle);
 }

@@ -47,7 +47,6 @@
 
 #if SANITIZER_FREEBSD
 #include <pthread_np.h>
-#include <stdlib.h>
 #include <osreldate.h>
 #include <sys/auxv.h>
 #include <sys/sysctl.h>
@@ -56,6 +55,7 @@
 // that, it was never implemented. So just define it to zero.
 #undef MAP_NORESERVE
 #define MAP_NORESERVE 0
+extern const Elf_Auxinfo *__elf_aux_vector;
 #endif
 
 #if SANITIZER_NETBSD
@@ -150,7 +150,7 @@ void GetThreadStackTopAndBottom(bool at_initialization, uptr *stack_top,
   pthread_attr_t attr;
   pthread_attr_init(&attr);
   CHECK_EQ(pthread_getattr_np(pthread_self(), &attr), 0);
-  my_pthread_attr_getstack(&attr, &stackaddr, &stacksize);
+  internal_pthread_attr_getstack(&attr, &stackaddr, &stacksize);
   pthread_attr_destroy(&attr);
 #endif  // SANITIZER_SOLARIS
 
@@ -207,7 +207,8 @@ void InitTlsSize() {
   g_use_dlpi_tls_data =
       GetLibcVersion(&major, &minor, &patch) && major == 2 && minor >= 25;
 
-#if defined(__aarch64__) || defined(__x86_64__) || defined(__powerpc64__)
+#if defined(__aarch64__) || defined(__x86_64__) || defined(__powerpc64__) || \
+    defined(__loongarch__)
   void *get_tls_static_info = dlsym(RTLD_NEXT, "_dl_get_tls_static_info");
   size_t tls_align;
   ((void (*)(size_t *, size_t *))get_tls_static_info)(&g_tls_size, &tls_align);
@@ -267,6 +268,8 @@ static uptr ThreadDescriptorSizeFallback() {
 #elif defined(__mips__)
   // TODO(sagarthakur): add more values as per different glibc versions.
   val = FIRST_32_SECOND_64(1152, 1776);
+#elif SANITIZER_LOONGARCH64
+  val = 1856; // from glibc 2.36
 #elif SANITIZER_RISCV64
   int major;
   int minor;
@@ -306,7 +309,8 @@ uptr ThreadDescriptorSize() {
   return val;
 }
 
-#if defined(__mips__) || defined(__powerpc64__) || SANITIZER_RISCV64
+#if defined(__mips__) || defined(__powerpc64__) || SANITIZER_RISCV64 || \
+    SANITIZER_LOONGARCH64
 // TlsPreTcbSize includes size of struct pthread_descr and size of tcb
 // head structure. It lies before the static tls blocks.
 static uptr TlsPreTcbSize() {
@@ -315,6 +319,8 @@ static uptr TlsPreTcbSize() {
 #elif defined(__powerpc64__)
   const uptr kTcbHead = 88; // sizeof (tcbhead_t)
 #elif SANITIZER_RISCV64
+  const uptr kTcbHead = 16;  // sizeof (tcbhead_t)
+#elif SANITIZER_LOONGARCH64
   const uptr kTcbHead = 16;  // sizeof (tcbhead_t)
 #endif
   const uptr kTlsAlign = 16;
@@ -502,6 +508,15 @@ static void GetTls(uptr *addr, uptr *size) {
   *addr = reinterpret_cast<uptr>(__builtin_thread_pointer()) -
           ThreadDescriptorSize();
   *size = g_tls_size + ThreadDescriptorSize();
+#elif SANITIZER_GLIBC && defined(__loongarch__)
+#  ifdef __clang__
+  *addr = reinterpret_cast<uptr>(__builtin_thread_pointer()) -
+          ThreadDescriptorSize();
+#  else
+  asm("or %0,$tp,$zero" : "=r"(*addr));
+  *addr -= ThreadDescriptorSize();
+#  endif
+  *size = g_tls_size + ThreadDescriptorSize();
 #elif SANITIZER_GLIBC && defined(__powerpc64__)
   // Workaround for glibc<2.25(?). 2.27 is known to not need this.
   uptr tp;
@@ -570,6 +585,7 @@ static void GetTls(uptr *addr, uptr *size) {
       *addr = (uptr)tcb->tcb_dtv[1];
     }
   }
+#else
 #error "Unknown OS"
 #endif
 }
@@ -931,11 +947,11 @@ void ReExec() {
   const char *pathname = "/proc/self/exe";
 
 #if SANITIZER_FREEBSD
-  char exe_path[PATH_MAX];
-  if (elf_aux_info(AT_EXECPATH, exe_path, sizeof(exe_path)) == 0) {
-    char link_path[PATH_MAX];
-    if (realpath(exe_path, link_path))
-      pathname = link_path;
+  for (const auto *aux = __elf_aux_vector; aux->a_type != AT_NULL; aux++) {
+    if (aux->a_type == AT_EXECPATH) {
+      pathname = static_cast<const char *>(aux->a_un.a_ptr);
+      break;
+    }
   }
 #elif SANITIZER_NETBSD
   static const int name[] = {

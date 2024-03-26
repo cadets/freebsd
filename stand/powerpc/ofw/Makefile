@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 LOADER_CD9660_SUPPORT?=	yes
 LOADER_EXT2FS_SUPPORT?=	no
@@ -18,9 +17,7 @@ INSTALLFLAGS=	-b
 
 # Architecture-specific loader code
 SRCS=		conf.c vers.c main.c elf_freebsd.c ppc64_elf_freebsd.c start.c
-SRCS+=		ucmpdi2.c gfx_fb_stub.c
-
-CFLAGS.gfx_fb_stub.c += -I${SRCTOP}/contrib/pnglite -I${SRCTOP}/sys/teken
+SRCS+=		ucmpdi2.c
 
 .include	"${BOOTSRC}/fdt.mk"
 .if ${MK_FDT} == "yes"
@@ -50,18 +47,14 @@ CFLAGS+=	-DRELOC=${RELOC} -g
 
 LDFLAGS=	-nostdlib -static
 
-.if ${MACHINE_ARCH} == "powerpc64le"
-LDFLAGS+=	-T ${.CURDIR}/ldscript.powerpcle
-.else
-LDFLAGS+=	-T ${.CURDIR}/ldscript.powerpc
-.endif
+LDFLAGS+=	-L ${.CURDIR} -T ${.CURDIR}/${MACHINE_ARCH}.ldscript
 
 # Open Firmware standalone support library
 LIBOFW=		${BOOTOBJ}/libofw/libofw.a
 CFLAGS+=	-I${BOOTSRC}/libofw
 
-DPADD=		${LDR_INTERP} ${LIBOFW} ${LIBFDT} ${LIBSA}
-LDADD=		${LDR_INTERP} ${LIBOFW} ${LIBFDT} ${LIBSA}
+DPADD=		${LDR_INTERP} ${LIBOFW} ${LIBSAFDT} ${LIBSA}
+LDADD=		${LDR_INTERP} ${LIBOFW} ${LIBSAFDT} ${LIBSA}
 
 MK_PIE=		no
 

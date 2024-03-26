@@ -29,8 +29,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <dev/drm2/drmP.h>
 #include <dev/drm2/ttm/ttm_module.h>
 #include <dev/drm2/ttm/ttm_bo_driver.h>
@@ -1500,8 +1498,8 @@ retry:
 	    VM_MAX_ADDRESS, PAGE_SIZE, 0, VM_MEMATTR_UNCACHEABLE);
 
 	if (unlikely(glob->dummy_read_page == NULL)) {
-		if (tries < 1 && vm_page_reclaim_contig(0, 1, 0,
-		    VM_MAX_ADDRESS, PAGE_SIZE, 0)) {
+		if (tries < 1 && (vm_page_reclaim_contig(0, 1, 0,
+		    VM_MAX_ADDRESS, PAGE_SIZE, 0) == 0)) {
 			tries++;
 			goto retry;
 		}

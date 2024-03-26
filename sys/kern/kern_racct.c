@@ -26,13 +26,9 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_sched.h"
 
 #include <sys/param.h>
@@ -62,8 +58,6 @@ __FBSDID("$FreeBSD$");
 #ifdef RCTL
 #include <sys/rctl.h>
 #endif
-
-#ifdef RACCT
 
 FEATURE(racct, "Resource Accounting");
 
@@ -1368,5 +1362,3 @@ racct_init(void)
 	prison0.pr_prison_racct = prison_racct_find("0");
 }
 SYSINIT(racct, SI_SUB_RACCT, SI_ORDER_FIRST, racct_init, NULL);
-
-#endif /* !RACCT */

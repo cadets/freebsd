@@ -23,12 +23,8 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
- *
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_inet6.h"
 
@@ -1753,10 +1749,15 @@ nicvf_sq_add_hdr_subdesc(struct snd_queue *sq, int qentry,
 	struct ether_vlan_header *eh;
 #ifdef INET
 	struct ip *ip;
+#endif
+#if defined(INET6) || defined(INET)
 	struct tcphdr *th;
 #endif
+#ifdef INET
+	int iphlen;
+#endif
+	int ehdrlen, poff, proto;
 	uint16_t etype;
-	int ehdrlen, iphlen, poff, proto;
 
 	nic = sq->nic;
 

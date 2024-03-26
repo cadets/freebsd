@@ -33,8 +33,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -217,7 +215,6 @@ static void
 handler(int sig)
 {
 	yppush_exit (1);
-	return;
 }
 
 /*

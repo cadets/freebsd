@@ -27,7 +27,6 @@
 #  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 #  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
-# $FreeBSD$
 
 /**
  * @file irdma_di_if.m
@@ -46,6 +45,7 @@ INTERFACE irdma_di;
  * @peer: the RDMA peer structure
  *
  * Called by the RDMA client driver to request a reset of the ice device.
+ * @return 0 on success
  */
 METHOD int reset {
 	struct ice_rdma_peer *peer;
@@ -58,6 +58,7 @@ METHOD int reset {
  *
  * Called by the RDMA client driver to request initialization of the MSI-X
  * resources used for RDMA functionality.
+ * @returns ENOSYS
  */
 METHOD int msix_init {
 	struct ice_rdma_peer *peer;
@@ -69,6 +70,8 @@ METHOD int msix_init {
  *                         registration or deregistration
  * @peer: the RDMA peer client structure
  * @res: resources to be registered or unregistered
+ * @returns 0 on success, EINVAL on argument issues, ENOMEM on memory
+ * allocation failure, EXDEV on vsi device mismatch
  */
 METHOD int qset_register_request {
 	struct ice_rdma_peer *peer;
@@ -80,6 +83,7 @@ METHOD int qset_register_request {
  *                     when opening or closing rdma driver
  * @peer: the RDMA peer client structure
  * @enable: enable or disable the rdma filter
+ * @return 0 on success, EINVAL on wrong vsi
  */
 METHOD int vsi_filter_update {
 	struct ice_rdma_peer *peer;

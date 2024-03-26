@@ -33,7 +33,6 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
  * 
- * $FreeBSD$
  */
 
 #ifndef _BHND_BHNDB_PRIVATE_H_
@@ -74,7 +73,7 @@ int				 bhndb_add_resource_region(
 				     const struct bhndb_regwin *static_regwin);
 
 int				 bhndb_find_resource_limits(
-				     struct bhndb_resources *br, int type,
+				     struct bhndb_resources *br,
 				     struct resource *r, rman_res_t *start,
 				     rman_res_t *end);
 

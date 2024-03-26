@@ -31,8 +31,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_ddb.h"
 
 #include <sys/param.h>
@@ -59,8 +57,6 @@ __FBSDID("$FreeBSD$");
 #include <xen/xen_intr.h>
 #include <xen/evtchn/evtchnvar.h>
 
-#include <dev/xen/xenpci/xenpcivar.h>
-#include <dev/pci/pcivar.h>
 #include <machine/xen/arch-intr.h>
 
 #ifdef DDB
@@ -88,7 +84,7 @@ struct xen_intr_pcpu_data {
 	 * A bitmap of ports that can be serviced from this CPU.
 	 * A set bit means interrupt handling is enabled.
 	 */
-	u_long	evtchn_enabled[sizeof(u_long) * 8];
+	xen_ulong_t	evtchn_enabled[sizeof(xen_ulong_t) * 8];
 };
 
 /*
@@ -170,6 +166,7 @@ evtchn_cpu_mask_port(u_int cpu, evtchn_port_t port)
 	struct xen_intr_pcpu_data *pcpu;
 
 	pcpu = DPCPU_ID_PTR(cpu, xen_intr_pcpu);
+	KASSERT(is_valid_evtchn(port), ("Invalid event channel port"));
 	xen_clear_bit(port, pcpu->evtchn_enabled);
 }
 
@@ -192,6 +189,7 @@ evtchn_cpu_unmask_port(u_int cpu, evtchn_port_t port)
 	struct xen_intr_pcpu_data *pcpu;
 
 	pcpu = DPCPU_ID_PTR(cpu, xen_intr_pcpu);
+	KASSERT(is_valid_evtchn(port), ("Invalid event channel port"));
 	xen_set_bit(port, pcpu->evtchn_enabled);
 }
 
@@ -373,7 +371,7 @@ xen_intr_handle_upcall(void *unused __unused)
 	/* Clear master flag /before/ clearing selector flag. */
 	wmb();
 #endif
-	l1 = atomic_readandclear_long(&v->evtchn_pending_sel);
+	l1 = atomic_readandclear_xen_ulong(&v->evtchn_pending_sel);
 
 	l1i = pc->last_processed_l1i;
 	l2i = pc->last_processed_l2i;
@@ -479,7 +477,7 @@ xen_intr_init(void *dummy __unused)
 	}
 
 	for (i = 0; i < nitems(s->evtchn_mask); i++)
-		atomic_store_rel_long(&s->evtchn_mask[i], ~0);
+		atomic_store_rel_xen_ulong(&s->evtchn_mask[i], ~0);
 
 	xen_arch_intr_init();
 
@@ -586,7 +584,7 @@ xen_intr_resume(void)
 
 	/* Mask all event channels. */
 	for (i = 0; i < nitems(s->evtchn_mask); i++)
-		atomic_store_rel_long(&s->evtchn_mask[i], ~0);
+		atomic_store_rel_xen_ulong(&s->evtchn_mask[i], ~0);
 
 	/* Clear existing port mappings */
 	for (isrc_idx = 0; isrc_idx < NR_EVENT_CHANNELS; ++isrc_idx)
@@ -623,7 +621,8 @@ void
 xen_intr_disable_intr(struct xenisrc *isrc)
 {
 
-	evtchn_mask_port(isrc->xi_port);
+	if (__predict_true(is_valid_evtchn(isrc->xi_port)))
+		evtchn_mask_port(isrc->xi_port);
 }
 
 /**
@@ -710,7 +709,8 @@ xen_intr_disable_source(struct xenisrc *isrc)
 	 * unmasked by the generic interrupt code. The event channel
 	 * device will unmask them when needed.
 	 */
-	isrc->xi_masked = !!evtchn_test_and_set_mask(isrc->xi_port);
+	if (__predict_true(is_valid_evtchn(isrc->xi_port)))
+		isrc->xi_masked = !!evtchn_test_and_set_mask(isrc->xi_port);
 }
 
 /*
@@ -868,7 +868,7 @@ xen_intr_bind_virq(device_t dev, u_int virq, u_int cpu,
 	if (error != 0) {
 		evtchn_close_t close = { .port = bind_virq.port };
 
-		xen_intr_unbind(*port_handlep);
+		xen_intr_unbind(port_handlep);
 		if (HYPERVISOR_event_channel_op(EVTCHNOP_close, &close))
 			panic("EVTCHNOP_close failed");
 		return (error);
@@ -925,7 +925,7 @@ xen_intr_alloc_and_bind_ipi(u_int cpu, driver_filter_t filter,
 	if (error != 0) {
 		evtchn_close_t close = { .port = bind_ipi.port };
 
-		xen_intr_unbind(*port_handlep);
+		xen_intr_unbind(port_handlep);
 		if (HYPERVISOR_event_channel_op(EVTCHNOP_close, &close))
 			panic("EVTCHNOP_close failed");
 		return (error);

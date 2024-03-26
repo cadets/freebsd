@@ -23,7 +23,6 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD$
 #
 
 #include <sys/bus.h>
@@ -111,7 +110,7 @@ METHOD int route_interrupt {
 } DEFAULT null_route_interrupt;
 
 #
-# Allocate 'count' MSI messsages mapped onto 'count' IRQs.  'irq' points
+# Allocate 'count' MSI messages mapped onto 'count' IRQs.  'irq' points
 # to an array of at least 'count' ints.  The max number of messages this
 # device supports is included so that the MD code can take that into
 # account when assigning resources so that the proper number of low bits

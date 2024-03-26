@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * The following controllers are supported by this driver:
  *   BCM5706C A2, A3
@@ -10663,7 +10661,7 @@ bce_dump_driver_state(struct bce_softc *sc)
 	val_hi = BCE_ADDR_HI(sc->tx_bd_chain);
 	val_lo = BCE_ADDR_LO(sc->tx_bd_chain);
 	BCE_PRINTF("0x%08X:%08X - (sc->tx_bd_chain) tx_bd chain "
-	    "virtual adddress\n", val_hi, val_lo);
+	    "virtual address\n", val_hi, val_lo);
 
 	val_hi = BCE_ADDR_HI(sc->rx_bd_chain);
 	val_lo = BCE_ADDR_LO(sc->rx_bd_chain);

@@ -64,9 +64,6 @@
  *	the crunched binary without creating all the links.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/auxv.h>
 #include <sys/sysctl.h>

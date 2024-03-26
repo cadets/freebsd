@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 
 /*
  * (C)opyright 2000 Darren Reed.
@@ -29,9 +28,6 @@
 #include <errno.h>
 #include "ipsend.h"
 
-#if !defined(lint) && defined(LIBC_SCCS)
-static	char	sirix[] = "@(#)sirix.c	1.0 10/9/97 (C)1997 Marc Boucher";
-#endif
 
 
 int

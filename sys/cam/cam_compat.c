@@ -29,9 +29,6 @@
  *
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/types.h>
@@ -51,8 +48,6 @@ __FBSDID("$FreeBSD$");
 #include <cam/cam_periph.h>
 
 #include <cam/scsi/scsi_pass.h>
-
-#include "opt_cam.h"
 
 static int cam_compat_handle_0x17(struct cdev *dev, u_long cmd, caddr_t addr,
     int flag, struct thread *td, d_ioctl_t *cbfnp);
@@ -216,8 +211,8 @@ cam_compat_handle_0x17(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		cpi17 = (struct ccb_pathinq_0x17 *)hdr17;
 		cpi17->version_num = cpi->version_num;
 		cpi17->hba_inquiry = cpi->hba_inquiry;
-		cpi17->target_sprt = (u_int8_t)cpi->target_sprt;
-		cpi17->hba_misc = (u_int8_t)cpi->hba_misc;
+		cpi17->target_sprt = (uint8_t)cpi->target_sprt;
+		cpi17->hba_misc = (uint8_t)cpi->hba_misc;
 		cpi17->hba_eng_cnt = cpi->hba_eng_cnt;
 		bcopy(&cpi->vuhba_flags[0], &cpi17->vuhba_flags[0], VUHBALEN);
 		cpi17->max_target = cpi->max_target;
@@ -382,11 +377,13 @@ cam_compat_translate_dev_match_0x18(union ccb *ccb)
 	struct dev_match_result		*dm;
 	struct dev_match_result_0x18	*dm18;
 	struct cam_periph_map_info	mapinfo;
-	int i;
+	int error, i;
 
 	/* Remap the CCB into kernel address space */
 	bzero(&mapinfo, sizeof(mapinfo));
-	cam_periph_mapmem(ccb, &mapinfo, maxphys);
+	error = cam_periph_mapmem(ccb, &mapinfo, maxphys);
+	if (error != 0)
+		return (error);
 
 	dm = ccb->cdm.matches;
 	/* Translate in-place: old fields are smaller */
@@ -434,21 +431,22 @@ cam_compat_translate_dev_match_0x18(union ccb *ccb)
 		}
 	}
 
-	cam_periph_unmapmem(ccb, &mapinfo);
-
-	return (0);
+	return (cam_periph_unmapmem(ccb, &mapinfo));
 }
 
 static int
 cam_compat_handle_0x19(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
     struct thread *td, d_ioctl_t *cbfnp)
 {
+	struct cam_periph_map_info mapinfo;
 	union ccb *ccb = (union ccb *)addr;
-	struct cam_periph_map_info	mapinfo;
+	int error;
 
 	if (cmd == CAMIOCOMMAND && ccb->ccb_h.func_code == XPT_DEV_MATCH) {
 		bzero(&mapinfo, sizeof(mapinfo));
-		cam_periph_mapmem(ccb, &mapinfo, maxphys);
+		error = cam_periph_mapmem(ccb, &mapinfo, maxphys);
+		if (error != 0)
+			return (error);
 		for (int i = 0; i < ccb->cdm.num_patterns; i++) {
 			struct dev_match_pattern *p = &ccb->cdm.patterns[i];
 
@@ -462,7 +460,9 @@ cam_compat_handle_0x19(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			    p->pattern.periph_pattern.flags == 0x01f)
 				p->pattern.periph_pattern.flags = PERIPH_MATCH_ANY;
 		}
-		cam_periph_unmapmem(ccb, &mapinfo);
+		error = cam_periph_unmapmem(ccb, &mapinfo);
+		if (error != 0)
+			return (error);
 	}
 	return ((cbfnp)(dev, cmd, addr, flag, td));
 }

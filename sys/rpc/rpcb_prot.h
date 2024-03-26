@@ -40,15 +40,11 @@ extern "C" {
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 /*
  * Copyright (c) 1988 by Sun Microsystems, Inc.
  */
 /* from rpcb_prot.x */
-
-/* #pragma ident	"@(#)rpcb_prot.x	1.5	94/04/29 SMI" */
 
 #ifndef _KERNEL
 

@@ -25,9 +25,6 @@
  * $Id: siutils.c,v 1.821.2.48 2011-02-11 20:59:28 Exp $
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>

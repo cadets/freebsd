@@ -1,4 +1,4 @@
-# $NetBSD: var-op-expand.mk,v 1.17 2022/09/08 20:23:45 rillig Exp $
+# $NetBSD: var-op-expand.mk,v 1.19 2023/11/19 21:47:52 rillig Exp $
 #
 # Tests for the := variable assignment operator, which expands its
 # right-hand side.
@@ -20,9 +20,9 @@ VAR:=			value
 
 # When a ':=' assignment is performed, its right-hand side is evaluated and
 # expanded as far as possible.  Contrary to other situations, '$$' and
-# variable expressions based on undefined variables are preserved though.
+# expressions based on undefined variables are preserved though.
 #
-# Whether a variable expression is undefined or not is determined at the end
+# Whether an expression is undefined or not is determined at the end
 # of evaluating the expression.  The consequence is that ${:Ufallback} expands
 # to "fallback"; initially this expression is undefined since it is based on
 # the variable named "", which is guaranteed to be never defined, but at the
@@ -274,12 +274,14 @@ indirect:=	${INDIRECT:tl}
 .if ${indirect} != " ok "
 .  error
 .else
+# expect+1: warning: XXX Neither branch should be taken.
 .  warning	XXX Neither branch should be taken.
 .endif
 LATER=	uppercase-value
 later=	lowercase-value
 # expect+1: Unknown modifier "s,value,replaced,"
 .if ${indirect} != "uppercase-replaced ok uppercase-sysv"
+# expect+1: warning: XXX Neither branch should be taken.
 .  warning	XXX Neither branch should be taken.
 .else
 .  error

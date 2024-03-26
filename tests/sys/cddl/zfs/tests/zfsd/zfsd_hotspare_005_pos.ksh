@@ -20,14 +20,9 @@
 # CDDL HEADER END
 #
 
-# $FreeBSD$
-
 #
 # Copyright 2012 Spectra Logic.  All rights reserved.
 # Use is subject to license terms.
-#
-# ident	"@(#)hotspare_replace_007_pos.ksh	1.0	12/08/10 SL"
-#
 . $STF_SUITE/tests/hotspare/hotspare.kshlib
 
 ################################################################################

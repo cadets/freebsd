@@ -1,10 +1,5 @@
-#
-# @(#)Makefile	2.1 88/08/02 4.0 RPCSRC
-#
-#
 #   Build all demo services
 #
-# $FreeBSD$
 #
 
 PACKAGE=examples

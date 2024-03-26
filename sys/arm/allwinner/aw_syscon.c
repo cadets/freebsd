@@ -29,9 +29,6 @@
  * Allwinner syscon driver
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
@@ -44,8 +41,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
 
-#include <dev/extres/syscon/syscon.h>
-#include <dev/extres/syscon/syscon_generic.h>
+#include <dev/syscon/syscon.h>
+#include <dev/syscon/syscon_generic.h>
 
 static struct ofw_compat_data compat_data[] = {
 	{"allwinner,sun50i-a64-system-controller", 1},

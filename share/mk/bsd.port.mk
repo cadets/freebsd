@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 .if !defined(PORTSDIR)
 # Autodetect if the command is being run in a ports tree that's not rooted
@@ -10,11 +9,7 @@ _PORTSDIR=	${.CURDIR}/${RELPATH}
 .endif
 .endfor
 _PORTSDIR?=	/usr/ports
-.if defined(.PARSEDIR)
 PORTSDIR=	${_PORTSDIR:tA}
-.else # fmake doesn't have :tA
-PORTSDIR!=	realpath ${_PORTSDIR}
-.endif
 .endif
 
 BSDPORTMK?=	${PORTSDIR}/Mk/bsd.port.mk

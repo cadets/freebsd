@@ -1,6 +1,5 @@
-# $FreeBSD$
 
-.PATH: ${SRCTOP}/sys/arm/allwinner
+.PATH: ${SRCTOP}/sys/dev/spibus/controller/allwinner/
 
 KMOD=	aw_spi
 SRCS=	aw_spi.c

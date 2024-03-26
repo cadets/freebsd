@@ -26,9 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/imgact.h>
 #include <sys/imgact_elf.h>
@@ -786,6 +783,8 @@ linux_futex_wait(struct thread *td, struct linux_futex_args *args)
 	}
 	umtxq_unlock(&uq->uq_key);
 	umtx_key_release(&uq->uq_key);
+	if (error == ERESTART)
+		error = EINTR;
 	return (error);
 }
 

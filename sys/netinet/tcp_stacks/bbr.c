@@ -31,8 +31,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
@@ -4763,7 +4761,7 @@ bbr_timeout_persist(struct tcpcb *tp, struct tcp_bbr *bbr, uint32_t cts)
 	 * the idle time (no responses to probes) reaches the maximum
 	 * backoff that we would use if retransmitting.
 	 */
-	if (tp->t_rxtshift == TCP_MAXRXTSHIFT &&
+	if (tp->t_rxtshift >= V_tcp_retries &&
 	    (ticks - tp->t_rcvtime >= tcp_maxpersistidle ||
 	    ticks - tp->t_rcvtime >= TCP_REXMTVAL(tp) * tcp_totbackoff)) {
 		KMOD_TCPSTAT_INC(tcps_persistdrop);
@@ -4796,7 +4794,7 @@ bbr_timeout_persist(struct tcpcb *tp, struct tcp_bbr *bbr, uint32_t cts)
 			tp->t_flags &= ~TF_DELACK;
 		free(t_template, M_TEMP);
 	}
-	if (tp->t_rxtshift < TCP_MAXRXTSHIFT)
+	if (tp->t_rxtshift < V_tcp_retries)
 		tp->t_rxtshift++;
 	bbr_start_hpts_timer(bbr, tp, cts, 3, 0, 0);
 out:
@@ -4990,8 +4988,8 @@ bbr_timeout_rxt(struct tcpcb *tp, struct tcp_bbr *bbr, uint32_t cts)
 		 */
 		tp->t_rxtshift++;
 	}
-	if (tp->t_rxtshift > TCP_MAXRXTSHIFT) {
-		tp->t_rxtshift = TCP_MAXRXTSHIFT;
+	if (tp->t_rxtshift > V_tcp_retries) {
+		tp->t_rxtshift = V_tcp_retries;
 		KMOD_TCPSTAT_INC(tcps_timeoutdrop);
 		tcp_log_end_status(tp, TCP_EI_STATUS_RETRAN);
 		/* XXXGL: previously t_softerror was casted to uint16_t */
@@ -5280,6 +5278,9 @@ bbr_stopall(struct tcpcb *tp)
 
 	bbr = (struct tcp_bbr *)tp->t_fb_ptr;
 	bbr->rc_all_timers_stopped = 1;
+
+	tcp_hpts_remove(tp);
+
 	return (0);
 }
 
@@ -6844,7 +6845,7 @@ bbr_update_rtt(struct tcpcb *tp, struct tcp_bbr *bbr,
 	 * Ok its a SACK block that we retransmitted. or a windows
 	 * machine without timestamps. We can tell nothing from the
 	 * time-stamp since its not there or the time the peer last
-	 * recieved a segment that moved forward its cum-ack point.
+	 * received a segment that moved forward its cum-ack point.
 	 *
 	 * Lets look at the last retransmit and see what we can tell
 	 * (with BBR for space we only keep 2 note we have to keep
@@ -8187,7 +8188,7 @@ bbr_process_data(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 * then we just ignore the text.
 	 */
 	tfo_syn = ((tp->t_state == TCPS_SYN_RECEIVED) &&
-		   IS_FASTOPEN(tp->t_flags));
+	    (tp->t_flags & TF_FASTOPEN));
 	if ((tlen || (thflags & TH_FIN) || (tfo_syn && tlen > 0)) &&
 	    TCPS_HAVERCVDFIN(tp->t_state) == 0) {
 		tcp_seq save_start = th->th_seq;
@@ -8772,7 +8773,7 @@ bbr_do_syn_sent(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		 * If not all the data that was sent in the TFO SYN
 		 * has been acked, resend the remainder right away.
 		 */
-		if (IS_FASTOPEN(tp->t_flags) &&
+		if ((tp->t_flags & TF_FASTOPEN) &&
 		    (tp->snd_una != tp->snd_max)) {
 			tp->snd_nxt = th->th_ack;
 			tfo_partial = 1;
@@ -8928,6 +8929,9 @@ bbr_do_syn_recv(struct mbuf *m, struct tcphdr *th, struct socket *so,
 
 	bbr = (struct tcp_bbr *)tp->t_fb_ptr;
 	ctf_calc_rwin(so, tp);
+	if ((thflags & TH_RST) ||
+	    (tp->t_fin_is_rst && (thflags & TH_FIN)))
+		return (ctf_process_rst(m, th, so, tp));
 	if ((thflags & TH_ACK) &&
 	    (SEQ_LEQ(th->th_ack, tp->snd_una) ||
 	     SEQ_GT(th->th_ack, tp->snd_max))) {
@@ -8935,7 +8939,7 @@ bbr_do_syn_recv(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		ctf_do_dropwithreset(m, tp, th, BANDLIM_RST_OPENPORT, tlen);
 		return (1);
 	}
-	if (IS_FASTOPEN(tp->t_flags)) {
+	if (tp->t_flags & TF_FASTOPEN) {
 		/*
 		 * When a TFO connection is in SYN_RECEIVED, the only valid
 		 * packets are the initial SYN, a retransmit/copy of the
@@ -8959,9 +8963,6 @@ bbr_do_syn_recv(struct mbuf *m, struct tcphdr *th, struct socket *so,
 			return (0);
 		}
 	}
-	if ((thflags & TH_RST) ||
-	    (tp->t_fin_is_rst && (thflags & TH_FIN)))
-		return (ctf_process_rst(m, th, so, tp));
 	/*
 	 * RFC 1323 PAWS: If we have a timestamp reply on this segment and
 	 * it's less than ts_recent, drop it.
@@ -9014,7 +9015,7 @@ bbr_do_syn_recv(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 * processing; else drop segment and return.
 	 */
 	if ((thflags & TH_ACK) == 0) {
-		if (IS_FASTOPEN(tp->t_flags)) {
+		if (tp->t_flags & TF_FASTOPEN) {
 			cc_conn_init(tp);
 		}
 		return (bbr_process_data(m, th, so, tp, drop_hdrlen, tlen,
@@ -9051,7 +9052,7 @@ bbr_do_syn_recv(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	/* Drop off any SYN in the send map (probably not there)  */
 	if (thflags & TH_ACK)
 		bbr_log_syn(tp, to);
-	if (IS_FASTOPEN(tp->t_flags) && tp->t_tfo_pending) {
+	if ((tp->t_flags & TF_FASTOPEN) && tp->t_tfo_pending) {
 		tcp_fastopen_decrement_counter(tp->t_tfo_pending);
 		tp->t_tfo_pending = NULL;
 	}
@@ -9073,7 +9074,7 @@ bbr_do_syn_recv(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		 * is not harmless as it would undo the snd_cwnd reduction
 		 * that occurs when a TFO SYN|ACK is retransmitted.
 		 */
-		if (!IS_FASTOPEN(tp->t_flags))
+		if (!(tp->t_flags & TF_FASTOPEN))
 			cc_conn_init(tp);
 	}
 	/*
@@ -9927,6 +9928,8 @@ bbr_init(struct tcpcb *tp, void **ptr)
 	struct inpcb *inp = tptoinpcb(tp);
 	struct tcp_bbr *bbr = NULL;
 	uint32_t cts;
+
+	tcp_hpts_init(tp);
 
 	*ptr = uma_zalloc(bbr_pcb_zone, (M_NOWAIT | M_ZERO));
 	if (*ptr == NULL) {
@@ -11405,7 +11408,7 @@ bbr_do_segment_nounlock(struct tcpcb *tp, struct mbuf *m, struct tcphdr *th,
 			if ((tp->t_flags & TF_SACK_PERMIT) &&
 			    (to.to_flags & TOF_SACKPERM) == 0)
 				tp->t_flags &= ~TF_SACK_PERMIT;
-			if (IS_FASTOPEN(tp->t_flags)) {
+			if (tp->t_flags & TF_FASTOPEN) {
 				if (to.to_flags & TOF_FASTOPEN) {
 					uint16_t mss;
 
@@ -11526,7 +11529,9 @@ bbr_do_segment_nounlock(struct tcpcb *tp, struct mbuf *m, struct tcphdr *th,
 			bbr_set_pktepoch(bbr, cts, __LINE__);
 		bbr_check_bbr_for_state(bbr, cts, __LINE__, (bbr->r_ctl.rc_lost - lost));
 		if (nxt_pkt == 0) {
-			if (bbr->r_wanted_output != 0) {
+			if ((bbr->r_wanted_output != 0) ||
+			    (tp->t_flags & TF_ACKNOW)) { 
+
 				bbr->rc_output_starts_timer = 0;
 				did_out = 1;
 				if (tcp_output(tp) < 0)
@@ -12057,7 +12062,7 @@ bbr_output_wtime(struct tcpcb *tp, const struct timeval *tv)
 	 * For TFO connections in SYN_RECEIVED, only allow the initial
 	 * SYN|ACK and those sent by the retransmit timer.
 	 */
-	if (IS_FASTOPEN(tp->t_flags) &&
+	if ((tp->t_flags & TF_FASTOPEN) &&
 	    ((tp->t_state == TCPS_SYN_RECEIVED) ||
 	     (tp->t_state == TCPS_SYN_SENT)) &&
 	    SEQ_GT(tp->snd_max, tp->snd_una) &&	/* initial SYN or SYN|ACK sent */
@@ -12376,7 +12381,7 @@ recheck_resend:
 		 * When sending additional segments following a TFO SYN|ACK,
 		 * do not include the SYN bit.
 		 */
-		if (IS_FASTOPEN(tp->t_flags) &&
+		if ((tp->t_flags & TF_FASTOPEN) &&
 		    (tp->t_state == TCPS_SYN_RECEIVED))
 			flags &= ~TH_SYN;
 		sb_offset--, len++;
@@ -12407,7 +12412,7 @@ recheck_resend:
 	 *    actively created socket
 	 *  - When the socket is in the CLOSED state (RST is being sent)
 	 */
-	if (IS_FASTOPEN(tp->t_flags) &&
+	if ((tp->t_flags & TF_FASTOPEN) &&
 	    (((flags & TH_SYN) && (tp->t_rxtshift > 0)) ||
 	     ((tp->t_state == TCPS_SYN_SENT) &&
 	      (tp->t_tfo_client_cookie_len == 0)) ||
@@ -12417,7 +12422,7 @@ recheck_resend:
 		rsm = NULL;
 	}
 	/* Without fast-open there should never be data sent on a SYN */
-	if ((flags & TH_SYN) && (!IS_FASTOPEN(tp->t_flags)))
+	if ((flags & TH_SYN) && !(tp->t_flags & TF_FASTOPEN))
 		len = 0;
 	if (len <= 0) {
 		/*
@@ -12841,7 +12846,7 @@ send:
 			 * have caused the original SYN or SYN|ACK to have
 			 * been dropped by a middlebox.
 			 */
-			if (IS_FASTOPEN(tp->t_flags) &&
+			if ((tp->t_flags & TF_FASTOPEN) &&
 			    (tp->t_rxtshift == 0)) {
 				if (tp->t_state == TCPS_SYN_RECEIVED) {
 					to.to_tfo_len = TCP_FASTOPEN_COOKIE_LEN;
@@ -12897,7 +12902,7 @@ send:
 		 * If we wanted a TFO option to be added, but it was unable
 		 * to fit, ensure no data is sent.
 		 */
-		if (IS_FASTOPEN(tp->t_flags) && wanted_cookie &&
+		if ((tp->t_flags & TF_FASTOPEN) && wanted_cookie &&
 		    !(to.to_flags & TOF_FASTOPEN))
 			len = 0;
 	}
@@ -13377,6 +13382,11 @@ send:
 	 * the pointer in case of a stack switch.
 	 */
 	tp->snd_up = tp->snd_una;
+	/*
+	 * Put TCP length in extended header, and then checksum extended
+	 * header and data.
+	 */
+	m->m_pkthdr.len = hdrlen + len;	/* in6_cksum() need this */
 
 #if defined(IPSEC_SUPPORT) || defined(TCP_SIGNATURE)
 	if (to.to_flags & TOF_SIGNATURE) {
@@ -13396,11 +13406,6 @@ send:
 	}
 #endif
 
-	/*
-	 * Put TCP length in extended header, and then checksum extended
-	 * header and data.
-	 */
-	m->m_pkthdr.len = hdrlen + len;	/* in6_cksum() need this */
 #ifdef INET6
 	if (isipv6) {
 		/*
@@ -13806,8 +13811,9 @@ nomore:
 				return (error);
 			}
 		case EPERM:
+		case EACCES:
 			tp->t_softerror = error;
-			/* Fall through */
+			/* FALLTHROUGH */
 		case EHOSTDOWN:
 		case EHOSTUNREACH:
 		case ENETDOWN:

@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_kdb.h"
 #include "opt_stack.h"
 
@@ -46,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/smp.h>
 #include <sys/stack.h>
 #include <sys/sysctl.h>
+#include <sys/tslog.h>
 
 #include <machine/kdb.h>
 #include <machine/pcb.h>
@@ -502,11 +501,19 @@ kdb_dbbe_select(const char *name)
 }
 
 static bool
-kdb_backend_permitted(struct kdb_dbbe *be, struct ucred *cred)
+kdb_backend_permitted(struct kdb_dbbe *be, struct thread *td)
 {
+	struct ucred *cred;
 	int error;
 
-	error = securelevel_gt(cred, kdb_enter_securelevel);
+	cred = td->td_ucred;
+	if (cred == NULL) {
+		KASSERT(td == &thread0 && cold,
+		    ("%s: missing cred for %p", __func__, td));
+		error = 0;
+	} else {
+		error = securelevel_gt(cred, kdb_enter_securelevel);
+	}
 #ifdef MAC
 	/*
 	 * Give MAC a chance to weigh in on the policy: if the securelevel is
@@ -559,6 +566,7 @@ kdb_init(void)
 	struct kdb_dbbe *be, **iter;
 	int cur_pri, pri;
 
+	TSENTER();
 	kdb_active = 0;
 	kdb_dbbe = NULL;
 	cur_pri = -1;
@@ -582,6 +590,7 @@ kdb_init(void)
 		printf("KDB: current backend: %s\n",
 		    kdb_dbbe->dbbe_name);
 	}
+	TSEXIT();
 }
 
 /*
@@ -755,7 +764,7 @@ kdb_trap(int type, int code, struct trapframe *tf)
 		CPU_CLR(PCPU_GET(cpuid), &other_cpus);
 		stop_cpus_hard(other_cpus);
 #endif
-		curthread->td_stopsched = 1;
+		scheduler_stopped = true;
 		did_stop_cpus = 1;
 	} else
 		did_stop_cpus = 0;
@@ -773,7 +782,7 @@ kdb_trap(int type, int code, struct trapframe *tf)
 	cngrab();
 
 	for (;;) {
-		if (!kdb_backend_permitted(be, curthread->td_ucred)) {
+		if (!kdb_backend_permitted(be, curthread)) {
 			/* Unhandled breakpoint traps are fatal. */
 			handled = 1;
 			break;
@@ -792,7 +801,7 @@ kdb_trap(int type, int code, struct trapframe *tf)
 	kdb_active--;
 
 	if (did_stop_cpus) {
-		curthread->td_stopsched = 0;
+		scheduler_stopped = false;
 #ifdef SMP
 		CPU_AND(&other_cpus, &other_cpus, &stopped_cpus);
 		restart_cpus(other_cpus);

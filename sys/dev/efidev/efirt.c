@@ -30,8 +30,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_acpi.h"
 
 #include <sys/param.h>
@@ -287,6 +285,11 @@ rt_ok(void)
 	return (0);
 }
 
+/*
+ * The fpu_kern_enter() call in allows firmware to use FPU, as
+ * mandated by the specification.  It also enters a critical section,
+ * giving us neccessary protection against context switches.
+ */
 static int
 efi_enter(void)
 {

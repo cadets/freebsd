@@ -31,8 +31,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef	_FENV_H_
@@ -73,32 +71,13 @@ __BEGIN_DECLS
 extern const fenv_t	__fe_dfl_env;
 #define	FE_DFL_ENV	(&__fe_dfl_env)
 
-#if !defined(__riscv_float_abi_soft) && !defined(__riscv_float_abi_double)
-#if defined(__riscv_float_abi_single)
-#error single precision floating point ABI not supported
-#else
-#error compiler did not set soft/hard float macros
-#endif
+#ifndef __riscv_float_abi_double
+#error only double hard float ABI supported
 #endif
 
-#ifndef __riscv_float_abi_soft
 #define	__rfs(__fcsr)	__asm __volatile("csrr %0, fcsr" : "=r" (__fcsr))
 #define	__wfs(__fcsr)	__asm __volatile("csrw fcsr, %0" :: "r" (__fcsr))
-#endif
 
-#ifdef __riscv_float_abi_soft
-int feclearexcept(int __excepts);
-int fegetexceptflag(fexcept_t *__flagp, int __excepts);
-int fesetexceptflag(const fexcept_t *__flagp, int __excepts);
-int feraiseexcept(int __excepts);
-int fetestexcept(int __excepts);
-int fegetround(void);
-int fesetround(int __round);
-int fegetenv(fenv_t *__envp);
-int feholdexcept(fenv_t *__envp);
-int fesetenv(const fenv_t *__envp);
-int feupdateenv(const fenv_t *__envp);
-#else
 __fenv_static inline int
 feclearexcept(int __excepts)
 {
@@ -214,18 +193,10 @@ feupdateenv(const fenv_t *__envp)
 
 	return (0);
 }
-#endif /* !__riscv_float_abi_soft */
 
 #if __BSD_VISIBLE
 
-/* We currently provide no external definitions of the functions below. */
-
-#ifdef __riscv_float_abi_soft
-int feenableexcept(int __mask);
-int fedisableexcept(int __mask);
-int fegetexcept(void);
-#else
-static inline int
+__fenv_static inline int
 feenableexcept(int __mask __unused)
 {
 
@@ -234,7 +205,7 @@ feenableexcept(int __mask __unused)
 	return (0);
 }
 
-static inline int
+__fenv_static inline int
 fedisableexcept(int __mask __unused)
 {
 
@@ -243,6 +214,7 @@ fedisableexcept(int __mask __unused)
 	return (0);
 }
 
+/* We currently provide no external definition of fegetexcept(). */
 static inline int
 fegetexcept(void)
 {
@@ -251,7 +223,6 @@ fegetexcept(void)
 
 	return (0);
 }
-#endif /* !__riscv_float_abi_soft */
 
 #endif /* __BSD_VISIBLE */
 

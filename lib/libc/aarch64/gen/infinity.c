@@ -2,9 +2,6 @@
  * infinity.c
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <math.h>
 
 /* bytes for +Infinity on aarch64 */

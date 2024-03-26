@@ -1,4 +1,3 @@
-/*	$FreeBSD$ */
 
 /*
  * Copyright (C) 2012 by Darren Reed.
@@ -92,10 +91,6 @@
 /* END OF INCLUDES */
 
 
-#if !defined(lint)
-static const char sccsid[] = "@(#)ip_state.c	1.8 6/5/96 (C) 1993-2000 Darren Reed";
-static const char rcsid[] = "@(#)$Id$";
-#endif
 
 
 static ipftuneable_t ipf_state_tuneables[] = {
@@ -1255,7 +1250,7 @@ ipf_state_matchisps(ipstate_t *is1, ipstate_t *is2)
 		case IPPROTO_TCP :
 		case IPPROTO_UDP :
 		case IPPROTO_GRE :
-			/* greinfo_t can be also interprted as port pair */
+			/* greinfo_t can be also interpreted as port pair */
 			rv = ipf_state_matchports(&is1->is_ps.is_us,
 						  &is2->is_ps.is_us);
 			break;

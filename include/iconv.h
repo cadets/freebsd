@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 /*	$NetBSD: iconv.h,v 1.6 2005/02/03 04:39:32 perry Exp $	*/
 
 /*-
@@ -34,12 +33,10 @@
 #ifndef _ICONV_H_
 #define _ICONV_H_
 
-#include <sys/cdefs.h>
 #include <sys/types.h>
 
 #include <wchar.h>
 
-#include <sys/cdefs.h>
 #include <sys/types.h>
 
 #ifdef __cplusplus

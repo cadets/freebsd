@@ -32,9 +32,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/limits.h>
@@ -51,6 +48,7 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/riscvreg.h>
 #include <machine/cpu.h>
+#include <machine/cpufunc.h>
 #include <machine/pcb.h>
 #include <machine/frame.h>
 #include <machine/sbi.h>
@@ -180,7 +178,7 @@ cpu_copy_thread(struct thread *td, struct thread *td0)
  * Set that machine state for performing an upcall that starts
  * the entry function with the given argument.
  */
-void
+int
 cpu_set_upcall(struct thread *td, void (*entry)(void *), void *arg,
 	stack_t *stack)
 {
@@ -191,6 +189,7 @@ cpu_set_upcall(struct thread *td, void (*entry)(void *), void *arg,
 	tf->tf_sp = STACKALIGN((uintptr_t)stack->ss_sp + stack->ss_size);
 	tf->tf_sepc = (register_t)entry;
 	tf->tf_a[0] = (register_t)arg;
+	return (0);
 }
 
 int
@@ -268,4 +267,10 @@ cpu_procctl(struct thread *td __unused, int idtype __unused, id_t id __unused,
 {
 
 	return (EINVAL);
+}
+
+void
+cpu_sync_core(void)
+{
+	fence_i();
 }

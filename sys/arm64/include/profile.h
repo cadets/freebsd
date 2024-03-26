@@ -28,8 +28,11 @@
  *
  *	from: NetBSD: profile.h,v 1.9 1997/04/06 08:47:37 cgd Exp
  *	from: FreeBSD: src/sys/alpha/include/profile.h,v 1.4 1999/12/29
- * $FreeBSD$
  */
+
+#ifdef __arm__
+#include <arm/profile.h>
+#else /* !__arm__ */
 
 #ifndef _MACHINE_PROFILE_H_
 #define	_MACHINE_PROFILE_H_
@@ -65,6 +68,8 @@ static void _mcount
 "	.globl	.mcount				\n"	\
 "	.mcount:				\n"	\
 "	.cfi_startproc				\n"	\
+	/* Allow this to work with BTI, see BTI_C in asm.h */ \
+"	hint	#34				\n"	\
 	/* Load the caller return address as frompc */	\
 "	ldr	x0, [x29, #8]			\n"	\
 	/* Use our return address as selfpc */		\
@@ -89,3 +94,5 @@ mcount(uintfptr_t frompc)
 #endif /* !_KERNEL */
 
 #endif /* !_MACHINE_PROFILE_H_ */
+
+#endif /* !__arm__ */

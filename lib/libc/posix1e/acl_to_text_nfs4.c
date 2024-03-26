@@ -25,9 +25,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -75,6 +72,7 @@ format_who(char *str, size_t size, const acl_entry_t entry, int numeric)
 			snprintf(str, size, "user:%d", (unsigned int)*id);
 		else
 			snprintf(str, size, "user:%s", pwd->pw_name);
+		acl_free(id);
 		break;
 
 	case ACL_GROUP_OBJ:
@@ -94,6 +92,7 @@ format_who(char *str, size_t size, const acl_entry_t entry, int numeric)
 			snprintf(str, size, "group:%d", (unsigned int)*id);
 		else
 			snprintf(str, size, "group:%s", grp->gr_name);
+		acl_free(id);
 		break;
 
 	case ACL_EVERYONE:
@@ -160,6 +159,7 @@ format_additional_id(char *str, size_t size, const acl_entry_t entry)
 		if (id == NULL)
 			return (-1);
 		snprintf(str, size, ":%d", (unsigned int)*id);
+		acl_free(id);
 	}
 
 	return (0);

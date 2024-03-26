@@ -37,8 +37,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /*
@@ -89,6 +87,9 @@ struct ucred;
 struct vattr;
 struct vnode;
 struct vop_setlabel_args;
+
+struct in_addr;
+struct in6_addr;
 
 #include <sys/acl.h>			/* XXX acl_type_t */
 #include <sys/types.h>			/* accmode_t */
@@ -190,6 +191,12 @@ int	mac_ifnet_ioctl_get(struct ucred *cred, struct ifreq *ifr,
 	    struct ifnet *ifp);
 int	mac_ifnet_ioctl_set(struct ucred *cred, struct ifreq *ifr,
 	    struct ifnet *ifp);
+
+/* Check if the IP address is allowed for the interface. */
+int	mac_inet_check_add_addr(struct ucred *cred,
+	    const struct in_addr *ia, struct ifnet *ifp);
+int	mac_inet6_check_add_addr(struct ucred *cred,
+	    const struct in6_addr *ia6, struct ifnet *ifp);
 
 int	mac_inpcb_check_deliver(struct inpcb *inp, struct mbuf *m);
 int	mac_inpcb_check_visible(struct ucred *cred, struct inpcb *inp);
@@ -401,11 +408,11 @@ void	mac_socket_destroy(struct socket *);
 int	mac_socket_init(struct socket *, int);
 void	mac_socket_newconn(struct socket *oldso, struct socket *newso);
 int	mac_getsockopt_label(struct ucred *cred, struct socket *so,
-	    struct mac *extmac);
+	    const struct mac *extmac);
 int	mac_getsockopt_peerlabel(struct ucred *cred, struct socket *so,
-	    struct mac *extmac);
+	    const struct mac *extmac);
 int	mac_setsockopt_label(struct ucred *cred, struct socket *so,
-	    struct mac *extmac);
+	    const struct mac *extmac);
 
 void	mac_socketpeer_set_from_mbuf(struct mbuf *m, struct socket *so);
 void	mac_socketpeer_set_from_socket(struct socket *oldso,

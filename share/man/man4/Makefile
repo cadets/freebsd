@@ -1,5 +1,3 @@
-#	@(#)Makefile	8.1 (Berkeley) 6/18/93
-# $FreeBSD$
 
 .include <src.opts.mk>
 
@@ -55,11 +53,10 @@ MAN=	aac.4 \
 	at45d.4 \
 	ata.4 \
 	ath.4 \
-	ath_ahb.4 \
 	ath_hal.4 \
-	ath_pci.4 \
 	atkbd.4 \
 	atkbdc.4 \
+	${_atopcase.4} \
 	atp.4 \
 	${_atf_test_case.4} \
 	${_atrtc.4} \
@@ -173,9 +170,9 @@ MAN=	aac.4 \
 	genetlink.4 \
 	geom.4 \
 	geom_linux_lvm.4 \
-	geom_map.4 \
 	geom_uzip.4 \
 	gif.4 \
+	${_gve.4} \
 	gpio.4 \
 	gpioiic.4 \
 	gpiokeys.4 \
@@ -291,6 +288,7 @@ MAN=	aac.4 \
 	mac_bsdextended.4 \
 	mac_ddb.4 \
 	mac_ifoff.4 \
+	mac_ipacl.4 \
 	mac_lomac.4 \
 	mac_mls.4 \
 	mac_none.4 \
@@ -319,6 +317,7 @@ MAN=	aac.4 \
 	mod_cc.4 \
 	mos.4 \
 	mouse.4 \
+	mpi3mr.4 \
 	mpr.4 \
 	mps.4 \
 	mpt.4 \
@@ -434,6 +433,7 @@ MAN=	aac.4 \
 	pcm.4 \
 	${_pf.4} \
 	${_pflog.4} \
+	${_pflow.4} \
 	${_pfsync.4} \
 	pim.4 \
 	pms.4 \
@@ -470,7 +470,6 @@ MAN=	aac.4 \
 	rtnetlink.4 \
 	rtsx.4 \
 	rtw88.4 \
-	rtw88fw.4 \
 	rtwn.4 \
 	rtwnfw.4 \
 	rtwn_pci.4 \
@@ -570,6 +569,7 @@ MAN=	aac.4 \
 	virtio_balloon.4 \
 	virtio_blk.4 \
 	virtio_console.4 \
+	virtio_gpu.4 \
 	virtio_random.4 \
 	virtio_scsi.4 \
 	${_vmci.4} \
@@ -621,7 +621,6 @@ MLINKS+=altera_atse.4 atse.4
 MLINKS+=altera_sdcard.4 altera_sdcardc.4
 MLINKS+=altq.4 ALTQ.4
 MLINKS+=ath.4 if_ath.4
-MLINKS+=ath_pci.4 if_ath_pci.4
 MLINKS+=aue.4 if_aue.4
 MLINKS+=axe.4 if_axe.4
 MLINKS+=bce.4 if_bce.4
@@ -659,7 +658,9 @@ MLINKS+=disc.4 if_disc.4
 MLINKS+=edsc.4 if_edsc.4
 MLINKS+=em.4 if_em.4 \
 	em.4 igb.4 \
-	em.4 if_igb.4
+	em.4 if_igb.4 \
+	em.4 lem.4 \
+	em.4 if_lem.4
 MLINKS+=enc.4 if_enc.4
 MLINKS+=epair.4 if_epair.4
 MLINKS+=et.4 if_et.4
@@ -689,6 +690,7 @@ MLINKS+=ipfirewall.4 ipaccounting.4 \
 MLINKS+=ipheth.4 if_ipheth.4
 MLINKS+=ipw.4 if_ipw.4
 MLINKS+=iwi.4 if_iwi.4
+MLINKS+=iwlwifi.4 if_iwlwifi.4
 MLINKS+=iwm.4 if_iwm.4
 MLINKS+=iwn.4 if_iwn.4
 MLINKS+=ixgbe.4 ix.4
@@ -732,10 +734,9 @@ MLINKS+=re.4 if_re.4
 MLINKS+=rl.4 if_rl.4
 MLINKS+=rtwn_pci.4 if_rtwn_pci.4
 MLINKS+=rue.4 if_rue.4
-MLINKS+=scsi.4 CAM.4 \
-	scsi.4 cam.4 \
-	scsi.4 scbus.4 \
-	scsi.4 SCSI.4
+MLINKS+=scsi.4 cam.4
+MLINKS+=scsi.4 scbus.4
+MLINKS+=scsi.4 SCSI.4
 MLINKS+=sge.4 if_sge.4
 MLINKS+=sis.4 if_sis.4
 MLINKS+=sk.4 if_sk.4
@@ -792,6 +793,7 @@ _amdsmb.4=	amdsmb.4
 _amdsmn.4=	amdsmn.4
 _amdtemp.4=	amdtemp.4
 _asmc.4=	asmc.4
+_atopcase.4=	atopcase.4
 _bxe.4=		bxe.4
 _bytgpio.4=	bytgpio.4
 _chvgpio.4=	chvgpio.4
@@ -890,6 +892,7 @@ _nvme.4=	nvme.4
 
 .if ${MACHINE_CPUARCH} == "amd64" || ${MACHINE_CPUARCH} == "i386" || \
 	 ${MACHINE_CPUARCH} == "aarch64"
+_gve.4=		gve.4
 _ipmi.4=	ipmi.4
 _linux.4=	linux.4
 _ossl.4=	ossl.4
@@ -966,6 +969,7 @@ _atf_test_case.4=	atf-test-case.4
 .if ${MK_PF} != "no"
 _pf.4=		pf.4
 _pflog.4=	pflog.4
+_pflow.4=	pflow.4
 _pfsync.4=	pfsync.4
 .endif
 

@@ -1,5 +1,3 @@
-# $FreeBSD$
-#	@(#)Makefile	8.1 (Berkeley) 6/8/93
 
 # Only parse this if executing make in this directory, not in other places
 # in src that lack a Makefile, such as sys/dev/*.  Otherwise the MAKESYSPATH
@@ -20,6 +18,7 @@ FILES=	\
 	bsd.clang-analyze.mk \
 	bsd.compiler.mk \
 	bsd.compat.mk \
+	bsd.compat.pre.mk \
 	bsd.confs.mk \
 	bsd.cpu.mk \
 	bsd.crunchgen.mk \
@@ -60,8 +59,11 @@ FILES=	\
 	bsd.test.mk \
 	dirdeps.mk \
 	dirdeps-options.mk \
+	dirdeps-targets.mk \
 	gendirdeps.mk \
+	host-target.mk \
 	install-new.mk \
+	jobs.mk \
 	meta.autodep.mk \
 	meta.stage.mk \
 	meta.subdir.mk \
@@ -70,6 +72,7 @@ FILES=	\
 	stage-install.sh \
 	sys.mk \
 	sys.dependfile.mk \
+	sys.dirdeps.mk \
 	version_gen.awk
 
 FILESDIR=	${BINDIR}/mk

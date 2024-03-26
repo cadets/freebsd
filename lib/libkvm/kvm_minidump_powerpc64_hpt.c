@@ -26,9 +26,6 @@
  * From: FreeBSD: src/lib/libkvm/kvm_minidump_riscv.c
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <vm/vm.h>
 
@@ -253,9 +250,6 @@ static int
 ppc64mmu_hpt_init(kvm_t *kd)
 {
 	struct hpt_data *data;
-	struct minidumphdr *hdr;
-
-	hdr = &kd->vmst->hdr;
 
 	/* Alloc MMU data */
 	data = _kvm_malloc(kd, sizeof(*data));

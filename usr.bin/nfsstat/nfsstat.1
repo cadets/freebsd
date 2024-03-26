@@ -25,10 +25,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\"     From: @(#)nfsstat.1	8.1 (Berkeley) 6/6/93
-.\" $FreeBSD$
-.\"
-.Dd December 31, 2019
+.Dd December 28, 2023
 .Dt NFSSTAT 1
 .Os
 .Sh NAME
@@ -39,7 +36,7 @@ statistics
 .Sh SYNOPSIS
 .Nm
 .Op Fl -libxo
-.Op Fl cdEemszW
+.Op Fl cdEemqszW
 .Op Fl w Ar wait
 .Sh DESCRIPTION
 The
@@ -53,7 +50,7 @@ If you wish to compare RPC counts between NFSv3 and NFSv4, you must use
 statistics in the client(s).
 .Pp
 The options are as follows:
-.Bl -tag -width indent
+.Bl -tag -width "-w wait"
 .It Fl c
 Only display client side statistics.
 .It Fl d
@@ -111,7 +108,7 @@ useful when combined with
 or
 .Fl s
 and a time delay.
-.It Fl w
+.It Fl w Ar wait
 Display a shorter summary of
 .Tn NFS
 activity for both the client and server at
@@ -120,7 +117,7 @@ second intervals.
 .It Fl z
 Reset statistics after displaying them.
 .It Fl q
-Do not print header
+Do not print headers.
 .It Fl -libxo
 Generate output via
 .Xr libxo 3

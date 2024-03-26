@@ -32,9 +32,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)callout.h	8.2 (Berkeley) 1/21/94
- * $FreeBSD$
  */
 
 #ifndef _SYS_CALLOUT_H_
@@ -84,7 +81,7 @@
  */
 #define	callout_active(c)	((c)->c_flags & CALLOUT_ACTIVE)
 #define	callout_deactivate(c)	((c)->c_flags &= ~CALLOUT_ACTIVE)
-#define	callout_drain(c)	_callout_stop_safe(c, CS_DRAIN, NULL)
+#define	callout_drain(c)	_callout_stop_safe(c, CS_DRAIN)
 void	callout_init(struct callout *, int);
 void	_callout_init_lock(struct callout *, struct lock_object *, int);
 #define	callout_init_mtx(c, mtx, flags)					\
@@ -122,11 +119,9 @@ int	callout_schedule(struct callout *, int);
 int	callout_schedule_on(struct callout *, int, int);
 #define	callout_schedule_curcpu(c, on_tick)				\
     callout_schedule_on((c), (on_tick), PCPU_GET(cpuid))
-#define	callout_stop(c)		_callout_stop_safe(c, 0, NULL)
-int	_callout_stop_safe(struct callout *, int, void (*)(void *));
+#define	callout_stop(c)		_callout_stop_safe(c, 0)
+int	_callout_stop_safe(struct callout *, int);
 void	callout_process(sbintime_t now);
-#define callout_async_drain(c, d)					\
-    _callout_stop_safe(c, 0, d)
 void callout_when(sbintime_t sbt, sbintime_t precision, int flags,
     sbintime_t *sbt_res, sbintime_t *prec_res);
 #endif

@@ -32,8 +32,6 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
  * OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _MAKEFS_CD9660_H
@@ -252,7 +250,6 @@ typedef struct _iso9660_disk {
 	unsigned rock_ridge_move_count;
 	cd9660node *rr_moved_dir;
 
-	int archimedes_enabled;
 	int chrp_boot;
 
 	/* Spec breaking options */

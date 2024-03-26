@@ -28,9 +28,6 @@
  * Author: Lawrence Stewart <lstewart@netflix.com>
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/arb.h>
 #include <sys/errno.h>

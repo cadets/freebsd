@@ -30,9 +30,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/bio.h>
@@ -101,7 +98,7 @@ struct hio {
 	 */
 	refcnt_t		 hio_writecount;
 	/*
-	 * Memsync request was acknowleged by remote.
+	 * Memsync request was acknowledged by remote.
 	 */
 	bool			 hio_memsyncacked;
 	/*

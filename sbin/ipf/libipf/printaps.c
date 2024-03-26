@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 
 /*
  * Copyright (C) 2012 by Darren Reed.
@@ -12,9 +11,6 @@
 #include "kmem.h"
 
 
-#if !defined(lint)
-static const char rcsid[] = "@(#)$Id$";
-#endif
 
 
 void

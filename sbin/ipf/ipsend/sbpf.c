@@ -1,4 +1,3 @@
-/* $FreeBSD$ */
 /*
  * (C)opyright 1995-1998 Darren Reed. (from tcplog)
  *
@@ -40,10 +39,6 @@
 
 #include "ipsend.h"
 
-#if !defined(lint)
-static const char sccsid[] = "@(#)sbpf.c	1.3 8/25/95 (C)1995 Darren Reed";
-static const char rcsid[] = "@(#)$Id$";
-#endif
 
 /*
  * the code herein is dervied from libpcap.

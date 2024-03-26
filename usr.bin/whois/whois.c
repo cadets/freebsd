@@ -29,21 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1980, 1993\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#if 0
-#ifndef lint
-static char sccsid[] = "@(#)whois.c	8.1 (Berkeley) 6/6/93";
-#endif /* not lint */
-#endif
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/poll.h>
@@ -159,7 +144,7 @@ static const char *port = DEFAULT_PORT;
 static const char *choose_server(char *);
 static struct addrinfo *gethostinfo(const char *, const char *, int);
 static void s_asprintf(char **ret, const char *format, ...) __printflike(2, 3);
-static void usage(void);
+static void usage(void) __dead2;
 static void whois(const char *, const char *, const char *, int);
 
 int

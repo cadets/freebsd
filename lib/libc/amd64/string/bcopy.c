@@ -2,9 +2,6 @@
  * Public domain.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <string.h>
 
 void

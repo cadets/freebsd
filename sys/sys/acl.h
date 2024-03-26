@@ -27,8 +27,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 /*
  * Developed by the TrustedBSD Project.
@@ -46,13 +44,13 @@
  * POSIX.1e and NFSv4 ACL types and related constants.
  */
 
-typedef uint32_t	acl_tag_t;
-typedef uint32_t	acl_perm_t;
-typedef uint16_t	acl_entry_type_t;
-typedef uint16_t	acl_flag_t;
-typedef int		acl_type_t;
-typedef int		*acl_permset_t;
-typedef uint16_t	*acl_flagset_t;
+typedef __acl_tag_t		acl_tag_t;
+typedef __acl_perm_t		acl_perm_t;
+typedef __acl_entry_type_t	acl_entry_type_t;
+typedef __acl_flag_t		acl_flag_t;
+typedef __acl_type_t		acl_type_t;
+typedef __acl_permset_t		acl_permset_t;
+typedef __acl_flagset_t		acl_flagset_t;
 
 /*
  * With 254 entries, "struct acl_t_struct" is exactly one 4kB page big.

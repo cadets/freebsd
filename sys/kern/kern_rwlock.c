@@ -30,8 +30,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_ddb.h"
 #include "opt_hwpmc_hooks.h"
 #include "opt_no_adaptive_rwlocks.h"
@@ -309,7 +307,7 @@ __rw_try_wlock_int(struct rwlock *rw LOCK_FILE_LINE_ARG_DEF)
 
 	td = curthread;
 	tid = (uintptr_t)td;
-	if (SCHEDULER_STOPPED_TD(td))
+	if (SCHEDULER_STOPPED())
 		return (1);
 
 	KASSERT(kdb_active != 0 || !TD_IS_IDLETHREAD(td),
@@ -484,6 +482,8 @@ __rw_rlock_hard(struct rwlock *rw, struct thread *td, uintptr_t v
 	lock_profile_obtain_lock_failed(&rw->lock_object, false,
 	    &contested, &waittime);
 
+	THREAD_CONTENDS_ON_LOCK(&rw->lock_object);
+
 	for (;;) {
 		if (__rw_rlock_try(rw, td, &v, false LOCK_FILE_LINE_ARG))
 			break;
@@ -630,6 +630,7 @@ retry_ts:
 			    __func__, rw);
 		v = RW_READ_VALUE(rw);
 	}
+	THREAD_CONTENTION_DONE(&rw->lock_object);
 #if defined(KDTRACE_HOOKS) || defined(LOCK_PROFILING)
 	if (__predict_true(!doing_lockprof))
 		return;
@@ -665,7 +666,7 @@ __rw_rlock_int(struct rwlock *rw LOCK_FILE_LINE_ARG_DEF)
 
 	td = curthread;
 
-	KASSERT(kdb_active != 0 || SCHEDULER_STOPPED_TD(td) ||
+	KASSERT(kdb_active != 0 || SCHEDULER_STOPPED() ||
 	    !TD_IS_IDLETHREAD(td),
 	    ("rw_rlock() by idle thread %p on rwlock %s @ %s:%d",
 	    td, rw->lock_object.lo_name, file, line));
@@ -978,6 +979,8 @@ __rw_wlock_hard(volatile uintptr_t *c, uintptr_t v LOCK_FILE_LINE_ARG_DEF)
 	lock_profile_obtain_lock_failed(&rw->lock_object, false,
 	    &contested, &waittime);
 
+	THREAD_CONTENDS_ON_LOCK(&rw->lock_object);
+
 	for (;;) {
 		if (v == RW_UNLOCKED) {
 			if (_rw_write_lock_fetch(rw, &v, tid))
@@ -1163,6 +1166,7 @@ retry_ts:
 #endif
 		v = RW_READ_VALUE(rw);
 	}
+	THREAD_CONTENTION_DONE(&rw->lock_object);
 	if (__predict_true(!extra_work))
 		return;
 #ifdef ADAPTIVE_RWLOCKS

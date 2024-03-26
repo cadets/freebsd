@@ -20,8 +20,6 @@
  *
  * Portions Copyright 2006-2008 John Birrell jb@freebsd.org
  *
- * $FreeBSD$
- *
  */
 
 /*
@@ -29,7 +27,6 @@
  * Use is subject to license terms.
  */
 
-#include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/conf.h>
@@ -60,7 +57,7 @@
 #include <sys/dtrace.h>
 #include <sys/dtrace_bsd.h>
 
-#include "dtrace_cddl.h"
+#include <cddl/dev/dtrace/dtrace_cddl.h>
 
 #define	PROF_NAMELEN		15
 
@@ -250,13 +247,16 @@ profile_probe(profile_probe_t *prof, hrtime_t late)
 	if (frame != NULL) {
 		if (TRAPF_USERMODE(frame))
 			upc = TRAPF_PC(frame);
-		else
+		else {
 			pc = TRAPF_PC(frame);
+			td->t_dtrace_trapframe = frame;
+		}
 	} else if (TD_IS_IDLETHREAD(td))
 		pc = (uintfptr_t)&cpu_idle;
 
 	curthread->t_hypertrace_vmhdl = NULL;
 	dtrace_probe(prof->prof_id, pc, upc, late, 0, 0);
+	td->t_dtrace_trapframe = NULL;
 }
 
 static void

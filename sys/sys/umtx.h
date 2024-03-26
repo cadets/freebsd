@@ -25,8 +25,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD$
- *
  */
 
 #ifndef _SYS_UMTX_H_
@@ -137,6 +135,7 @@ struct umtx_robust_lists_params {
 __BEGIN_DECLS
 
 int _umtx_op(void *obj, int op, u_long val, void *uaddr, void *uaddr2);
+int _umtx_op_err(void *obj, int op, u_long val, void *uaddr, void *uaddr2);
 
 __END_DECLS
 

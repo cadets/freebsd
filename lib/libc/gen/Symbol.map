@@ -1,7 +1,3 @@
-/*
- * $FreeBSD$
- */
-
 FBSD_1.0 {
 	__xuname;
 	pthread_atfork;
@@ -103,7 +99,6 @@ FBSD_1.0 {
 	vwarnx;
 	sys_errlist;
 	sys_nerr;
-	errno;
 	exect;
 	execl;
 	execle;
@@ -111,6 +106,7 @@ FBSD_1.0 {
 	execv;
 	execvp;
 	execvP;
+	fabs;
 	fmtcheck;
 	fmtmsg;
 	fnmatch;
@@ -162,7 +158,6 @@ FBSD_1.0 {
 	endnetgrent;
 	innetgr;
 	getosreldate;
-	getpagesize;
 	getpeereid;
 	_getprogname;
 	getprogname;
@@ -185,10 +180,12 @@ FBSD_1.0 {
 	endusershell;
 	setusershell;
 	getvfsbyname;
+	__nan;
 	__isnan;
 	isnan;
 	__isnanf;
 	isnanf;
+	__infinity;
 	__isinf;
 	isinf;
 	__isinff;
@@ -200,6 +197,7 @@ FBSD_1.0 {
 	ldexp;
 	lockf;
 	lrand48;
+	makecontext;
 	modf;
 	mrand48;
 	nice;
@@ -221,6 +219,12 @@ FBSD_1.0 {
 	group_from_gid;
 	setdomainname;
 	sethostname;
+	_setjmp;
+	_longjmp;
+	setjmp;
+	longjmp;
+	sigsetjmp;
+	siglongjmp;
 	longjmperror;
 	getmode;
 	setmode;
@@ -257,7 +261,6 @@ FBSD_1.0 {
 	setlogmask;
 	ttyname_r;
 	ttyname;
-	timezone;
 	times;
 	time;
 	telldir;
@@ -333,7 +336,6 @@ FBSD_1.1 {
 FBSD_1.2 {
 	cfmakesane;
 	endutxent;
-	getpagesizes;
 	getutxent;
 	getutxid;
 	getutxline;
@@ -355,6 +357,7 @@ FBSD_1.2 {
 };
 
 FBSD_1.3 {
+	cap_sandboxed;
 	clock_getcpuclockid;
 	dirfd;
 	dup3;
@@ -398,7 +401,6 @@ FBSD_1.5 {
 	devname;
 	devname_r;
 	dirname;
-	elf_aux_info;
 	fts_children;
 	fts_close;
 	fts_get_clientptr;
@@ -427,6 +429,8 @@ FBSD_1.6 {
 	eventfd_write;
 	getlogin_r;
 	memalign;
+	memfd_create;
+	pthread_getname_np;
 	scandir_b;
 	sigandset;
 	sigisemptyset;
@@ -443,10 +447,15 @@ FBSD_1.7 {
 	 scandirat;
 	 sched_getaffinity;
 	 sched_setaffinity;
-	 sched_getcpu;
 	 versionsort;
 	 __cpuset_alloc;
 	 __cpuset_free;
+};
+
+FBSD_1.8 {
+	aio_read2;
+	aio_write2;
+	execvpe;
 };
 
 FBSDprivate_1.0 {
@@ -555,6 +564,8 @@ FBSDprivate_1.0 {
 	__waitpid;
 	_waitpid;
 
+	__libc_interposing_slot;
+
 	_libc_sem_init_compat;
 	_libc_sem_destroy_compat;
 	_libc_sem_open_compat;
@@ -568,10 +579,10 @@ FBSDprivate_1.0 {
 
 	__libc_tcdrain;
 
-	__elf_aux_vector;
 	__pthread_distribute_static_tls;
 	__pthread_map_stacks_exec;
 	__fillcontextx;
 	__fillcontextx2;
 	__getcontextx_size;
+	__makecontext;
 };

@@ -31,9 +31,6 @@
  *	$KAME: scope6.c,v 1.10 2000/07/24 13:29:31 itojun Exp $
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
@@ -528,7 +525,7 @@ in6_getscopezone(const struct ifnet *ifp, int scope)
 }
 
 /*
- * Extracts scope from adddress @dst, stores cleared address
+ * Extracts scope from address @dst, stores cleared address
  * inside @dst and zone inside @scopeid
  */
 void

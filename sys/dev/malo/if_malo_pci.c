@@ -31,11 +31,6 @@
  * THE POSSIBILITY OF SUCH DAMAGES.
  */
 
-#include <sys/cdefs.h>
-#ifdef __FreeBSD__
-__FBSDID("$FreeBSD$");
-#endif
-
 /*
  * PCI front-end for the Marvell 88W8335 Wireless LAN controller driver.
  */

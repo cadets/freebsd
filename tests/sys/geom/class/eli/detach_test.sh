@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 . $(atf_get_srcdir)/conf.sh
 
@@ -13,7 +12,7 @@ detach_l_body()
 	geli_test_setup
 
 	sectors=100
-	md=$(attach_md -t malloc -s `expr $sectors + 1`)
+	attach_md md -t malloc -s `expr $sectors + 1`
 
 	atf_check dd if=/dev/random of=keyfile bs=512 count=16 status=none
 

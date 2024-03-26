@@ -25,11 +25,12 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *      from: @(#)proc.h        7.1 (Berkeley) 5/15/91
  *	from: FreeBSD: src/sys/i386/include/proc.h,v 1.11 2001/06/29
- * $FreeBSD$
  */
+
+#ifdef __arm__
+#include <arm/proc.h>
+#else /* !__arm__ */
 
 #ifndef	_MACHINE_PROC_H_
 #define	_MACHINE_PROC_H_
@@ -75,3 +76,5 @@ struct mdproc {
 #define	KINFO_PROC32_SIZE 816
 
 #endif /* !_MACHINE_PROC_H_ */
+
+#endif /* !__arm__ */

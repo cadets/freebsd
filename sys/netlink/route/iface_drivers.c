@@ -25,9 +25,7 @@
  * SUCH DAMAGE.
  */
 
-#include "opt_netlink.h"
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include <sys/types.h>
@@ -77,7 +75,7 @@ _nl_modify_ifp_generic(struct ifnet *ifp, struct nl_parsed_link *lattrs,
 
 			memcpy(buf, lattrs->ifla_ifalias, len);
 			if_setdescr(ifp, buf);
-			getmicrotime(&ifp->if_lastchange);
+			if_setlastchange(ifp);
 		} else {
 			nlmsg_report_err_msg(npt, "Not enough privileges to set descr");
 			return (EPERM);
@@ -122,7 +120,7 @@ void
 _nl_store_ifp_cookie(struct nl_pstate *npt, struct ifnet *ifp)
 {
 	int ifname_len = strlen(if_name(ifp));
-	uint32_t ifindex = (uint32_t)ifp->if_index;
+	uint32_t ifindex = (uint32_t)if_getindex(ifp);
 
 	int nla_len = sizeof(struct nlattr) * 3 +
 		sizeof(ifindex) + NL_ITEM_ALIGN(ifname_len + 1);

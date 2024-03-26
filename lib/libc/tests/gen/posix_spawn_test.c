@@ -29,9 +29,6 @@
  * IEEE Std. 1003.1-2008.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/wait.h>
 #include <errno.h>
 #include <stdio.h>

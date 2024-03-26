@@ -24,8 +24,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * ARMADA 8040 GPIO driver.
  */
@@ -45,7 +43,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/intr.h>
 #include <machine/resource.h>
 
-#include <dev/extres/syscon/syscon.h>
+#include <dev/syscon/syscon.h>
 
 #include <dev/gpio/gpiobusvar.h>
 

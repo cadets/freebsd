@@ -28,21 +28,24 @@
  */
 
 #include <machine/asm.h>
-__FBSDID("$FreeBSD$");
+#include <sys/elf_common.h>
 
 	.section .init,"ax",@progbits
 	.align 4
 	.globl	_init
 	.type	_init,@function
 _init:
-	sub	sp, sp, #16
-	str	lr, [sp]
+	PAC_LR_SIGN
+	stp	x29, x30, [sp, #-16]!
+	mov	x29, sp
 
 	.section .fini,"ax",@progbits
 	.align 4
 	.globl	_fini
 	.type	_fini,@function
 _fini:
-	sub	sp, sp, #16
-	str	lr, [sp]
+	PAC_LR_SIGN
+	stp	x29, x30, [sp, #-16]!
+	mov	x29, sp
 
+GNU_PROPERTY_AARCH64_FEATURE_1_NOTE(GNU_PROPERTY_AARCH64_FEATURE_1_VAL)

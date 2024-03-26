@@ -29,8 +29,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Micrel KSZ8081/KSZ9021/KSZ9031 Gigabit Ethernet Transceiver
  */
@@ -277,6 +275,8 @@ micphy_attach(device_t dev)
 		ksz9031_load_values(sc, cfg->phynode);
 	else
 		ksz9021_load_values(sc, cfg->phynode);
+
+	mii_fdt_free_config(cfg);
 
 	return (0);
 }

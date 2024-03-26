@@ -27,24 +27,21 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _CAM_CAM_XPT_H
 #define _CAM_CAM_XPT_H 1
 
 #ifdef _KERNEL
-#include <sys/cdefs.h>
 #include <cam/cam_ccb.h>
 #endif
+#include <sys/sbuf.h>
 
 /* Forward Declarations */
 union ccb;
 struct cam_periph;
 struct cam_ed;
 struct cam_sim;
-struct sbuf;
 
 /*
  * Definition of a CAM path.  Paths are created from bus, target, and lun ids
@@ -63,9 +60,9 @@ struct cam_path;
  */
 struct async_node {
 	SLIST_ENTRY(async_node)	links;
-	u_int32_t	event_enable;	/* Async Event enables */
-	u_int32_t	event_lock;	/* Take SIM lock for handlers. */
-	void		(*callback)(void *arg, u_int32_t code,
+	uint32_t	event_enable;	/* Async Event enables */
+	uint32_t	event_lock;	/* Take SIM lock for handlers. */
+	void		(*callback)(void *arg, uint32_t code,
 				    struct cam_path *path, void *args);
 	void		*callback_arg;
 };
@@ -80,11 +77,11 @@ union ccb		*xpt_alloc_ccb_nowait(void);
 void			xpt_free_ccb(union ccb *free_ccb);
 void			xpt_setup_ccb_flags(struct ccb_hdr *ccb_h,
 					    struct cam_path *path,
-					    u_int32_t priority,
-					    u_int32_t flags);
+					    uint32_t priority,
+					    uint32_t flags);
 void			xpt_setup_ccb(struct ccb_hdr *ccb_h,
 				      struct cam_path *path,
-				      u_int32_t priority);
+				      uint32_t priority);
 void			xpt_merge_ccb(union ccb *dst_ccb,
 				      union ccb *src_ccb);
 cam_status		xpt_create_path(struct cam_path **new_path_ptr,
@@ -105,9 +102,9 @@ int			xpt_path_comp(struct cam_path *path1,
 				      struct cam_path *path2);
 int			xpt_path_comp_dev(struct cam_path *path,
 					  struct cam_ed *dev);
-int			xpt_path_string(struct cam_path *path, char *str,
+char *			xpt_path_string(struct cam_path *path, char *str,
 					size_t str_len);
-int			xpt_path_sbuf(struct cam_path *path, struct sbuf *sb);
+void			xpt_path_sbuf(struct cam_path *path, struct sbuf *sb);
 path_id_t		xpt_path_path_id(struct cam_path *path);
 target_id_t		xpt_path_target_id(struct cam_path *path);
 lun_id_t		xpt_path_lun_id(struct cam_path *path);
@@ -115,9 +112,8 @@ struct cam_sim		*xpt_path_sim(struct cam_path *path);
 struct cam_periph	*xpt_path_periph(struct cam_path *path);
 device_t		xpt_path_sim_device(const struct cam_path *path);
 void			xpt_print_path(struct cam_path *path);
-void			xpt_print_device(struct cam_ed *device);
 void			xpt_print(struct cam_path *path, const char *fmt, ...);
-void			xpt_async(u_int32_t async_code, struct cam_path *path,
+void			xpt_async(uint32_t async_code, struct cam_path *path,
 				  void *async_arg);
 void			xpt_rescan(union ccb *ccb);
 void			xpt_hold_boot(void);

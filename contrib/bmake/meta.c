@@ -1,4 +1,4 @@
-/*      $NetBSD: meta.c,v 1.205 2023/03/28 14:39:31 rillig Exp $ */
+/*      $NetBSD: meta.c,v 1.207 2023/12/17 09:02:26 rillig Exp $ */
 
 /*
  * Implement 'meta' mode.
@@ -620,7 +620,7 @@ meta_mode_init(const char *make_mode)
     metaBailiwickStr = Var_Subst("${.MAKE.META.BAILIWICK:O:u:tA}",
 				 SCOPE_GLOBAL, VARE_WANTRES);
     /* TODO: handle errors */
-    str2Lst_Append(&metaBailiwick, metaBailiwickStr);
+    AppendWords(&metaBailiwick, metaBailiwickStr);
     /*
      * We ignore any paths that start with ${.MAKE.META.IGNORE_PATHS}
      */
@@ -629,7 +629,7 @@ meta_mode_init(const char *make_mode)
     metaIgnorePathsStr = Var_Subst("${" MAKE_META_IGNORE_PATHS ":O:u:tA}",
 				   SCOPE_GLOBAL, VARE_WANTRES);
     /* TODO: handle errors */
-    str2Lst_Append(&metaIgnorePaths, metaIgnorePathsStr);
+    AppendWords(&metaIgnorePaths, metaIgnorePathsStr);
 
     /*
      * We ignore any paths that match ${.MAKE.META.IGNORE_PATTERNS}
@@ -939,6 +939,13 @@ meta_ignore(GNode *gn, const char *p)
 	return true;
 
     if (*p == '/') {
+	/* first try the raw path "as is" */
+	if (has_any_prefix(p, &metaIgnorePaths)) {
+#ifdef DEBUG_META_MODE
+	    DEBUG1(META, "meta_oodate: ignoring path: %s\n", p);
+#endif
+	    return true;
+	}
 	cached_realpath(p, fname); /* clean it up */
 	if (has_any_prefix(fname, &metaIgnorePaths)) {
 #ifdef DEBUG_META_MODE

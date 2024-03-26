@@ -25,7 +25,6 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD$
 #
 ############################################################ INCLUDES
 
@@ -196,7 +195,7 @@ while :; do
 		--default-item \"\$defaultitem\"   \
 		--menu \"\$prompt\"                \
 		$height $width $rows               \
-		$menu_list                         \
+		${USE_DIALOG:+--} $menu_list       \
 		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
 	) || {
 		f_quietly rm -f "$KEYMAPFILE"

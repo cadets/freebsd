@@ -29,9 +29,6 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <sys/socket.h>
@@ -43,7 +40,6 @@ __weak_reference(__sys_recvmsg, __recvmsg);
 ssize_t
 recvmsg(int s, struct msghdr *msg, int flags)
 {
-
 	return (((int (*)(int, struct msghdr *, int))
-	    __libc_interposing[INTERPOS_recvmsg])(s, msg, flags));
+	    *(__libc_interposing_slot(INTERPOS_recvmsg)))(s, msg, flags));
 }

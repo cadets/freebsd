@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SVM_SOFTC_H_
@@ -37,6 +35,12 @@
 #define SVM_MSR_BITMAP_SIZE	(2 * PAGE_SIZE)
 
 struct svm_softc;
+
+struct dbg {
+	uint32_t	rflags_tf;   /* saved RFLAGS.TF value when single-stepping a vcpu */
+	bool		popf_sstep;  /* indicates that we've stepped over popf */
+	bool		pushf_sstep; /* indicates that we've stepped over pushf */
+};
 
 struct asid {
 	uint64_t	gen;	/* range is [1, ~0UL] */
@@ -56,6 +60,8 @@ struct svm_vcpu {
 	struct asid	asid;
 	struct vm_mtrr  mtrr;
 	int		vcpuid;
+	struct dbg	dbg;
+	int		caps;	 /* optional vm capabilities */
 };
 
 /*

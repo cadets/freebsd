@@ -22,6 +22,7 @@
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011, 2020 by Delphix. All rights reserved.
  * Copyright (c) 2017, Intel Corporation.
+ * Copyright (c) 2023, Klara Inc.
  */
 
 #ifndef _SYS_VDEV_IMPL_H
@@ -57,8 +58,6 @@ extern "C" {
  * Forward declarations that lots of things need.
  */
 typedef struct vdev_queue vdev_queue_t;
-typedef struct vdev_cache vdev_cache_t;
-typedef struct vdev_cache_entry vdev_cache_entry_t;
 struct abd;
 
 extern uint_t zfs_vdev_queue_depth_pct;
@@ -74,7 +73,7 @@ typedef void	vdev_fini_func_t(vdev_t *vd);
 typedef int	vdev_open_func_t(vdev_t *vd, uint64_t *size, uint64_t *max_size,
     uint64_t *ashift, uint64_t *pshift);
 typedef void	vdev_close_func_t(vdev_t *vd);
-typedef uint64_t vdev_asize_func_t(vdev_t *vd, uint64_t psize);
+typedef uint64_t vdev_asize_func_t(vdev_t *vd, uint64_t psize, uint64_t txg);
 typedef uint64_t vdev_min_asize_func_t(vdev_t *vd);
 typedef uint64_t vdev_min_alloc_func_t(vdev_t *vd);
 typedef void	vdev_io_start_func_t(zio_t *zio);
@@ -132,44 +131,27 @@ typedef const struct vdev_ops {
 /*
  * Virtual device properties
  */
-struct vdev_cache_entry {
-	struct abd	*ve_abd;
-	uint64_t	ve_offset;
-	clock_t		ve_lastused;
-	avl_node_t	ve_offset_node;
-	avl_node_t	ve_lastused_node;
-	uint32_t	ve_hits;
-	uint16_t	ve_missed_update;
-	zio_t		*ve_fill_io;
-};
-
-struct vdev_cache {
-	avl_tree_t	vc_offset_tree;
-	avl_tree_t	vc_lastused_tree;
-	kmutex_t	vc_lock;
-};
-
-typedef struct vdev_queue_class {
-	uint32_t	vqc_active;
-
-	/*
-	 * Sorted by offset or timestamp, depending on if the queue is
-	 * LBA-ordered vs FIFO.
-	 */
-	avl_tree_t	vqc_queued_tree;
+typedef union vdev_queue_class {
+	struct {
+		ulong_t 	vqc_list_numnodes;
+		list_t		vqc_list;
+	};
+	avl_tree_t	vqc_tree;
 } vdev_queue_class_t;
 
 struct vdev_queue {
 	vdev_t		*vq_vdev;
 	vdev_queue_class_t vq_class[ZIO_PRIORITY_NUM_QUEUEABLE];
-	avl_tree_t	vq_active_tree;
 	avl_tree_t	vq_read_offset_tree;
 	avl_tree_t	vq_write_offset_tree;
-	avl_tree_t	vq_trim_offset_tree;
 	uint64_t	vq_last_offset;
 	zio_priority_t	vq_last_prio;	/* Last sent I/O priority. */
+	uint32_t	vq_cqueued;	/* Classes with queued I/Os. */
+	uint32_t	vq_cactive[ZIO_PRIORITY_NUM_QUEUEABLE];
+	uint32_t	vq_active;	/* Number of active I/Os. */
 	uint32_t	vq_ia_active;	/* Active interactive I/Os. */
 	uint32_t	vq_nia_credit;	/* Non-interactive I/Os credit. */
+	list_t		vq_active_list;	/* List of active I/Os. */
 	hrtime_t	vq_io_complete_ts; /* time last i/o completed */
 	hrtime_t	vq_io_delta_ts;
 	zio_t		vq_io_search; /* used as local for stack reduction */
@@ -288,7 +270,6 @@ struct vdev {
 	metaslab_group_t *vdev_mg;	/* metaslab group		*/
 	metaslab_group_t *vdev_log_mg;	/* embedded slog metaslab group	*/
 	metaslab_t	**vdev_ms;	/* metaslab array		*/
-	uint64_t	vdev_pending_fastwrite; /* allocated fastwrites */
 	txg_list_t	vdev_ms_list;	/* per-txg dirty metaslab lists	*/
 	txg_list_t	vdev_dtl_list;	/* per-txg dirty DTL lists	*/
 	txg_node_t	vdev_txg_node;	/* per-txg dirty vdev linkage	*/
@@ -301,6 +282,7 @@ struct vdev {
 	uint64_t	vdev_noalloc;	/* device is passivated?	*/
 	uint64_t	vdev_removing;	/* device is being removed?	*/
 	uint64_t	vdev_failfast;	/* device failfast setting	*/
+	boolean_t	vdev_rz_expanding; /* raidz is being expanded?	*/
 	boolean_t	vdev_ishole;	/* is a hole in the namespace	*/
 	uint64_t	vdev_top_zap;
 	vdev_alloc_bias_t vdev_alloc_bias; /* metaslab allocation bias	*/
@@ -442,8 +424,8 @@ struct vdev {
 	boolean_t	vdev_copy_uberblocks;  /* post expand copy uberblocks */
 	boolean_t	vdev_resilver_deferred;  /* resilver deferred */
 	boolean_t	vdev_kobj_flag; /* kobj event record */
+	boolean_t	vdev_attaching; /* vdev attach ashift handling */
 	vdev_queue_t	vdev_queue;	/* I/O deadline schedule queue	*/
-	vdev_cache_t	vdev_cache;	/* physical block cache		*/
 	spa_aux_vdev_t	*vdev_aux;	/* for l2cache and spares vdevs	*/
 	zio_t		*vdev_probe_zio; /* root of current probe	*/
 	vdev_aux_t	vdev_label_aux;	/* on-disk aux state		*/
@@ -473,12 +455,14 @@ struct vdev {
 	zfs_ratelimit_t vdev_checksum_rl;
 
 	/*
-	 * Checksum and IO thresholds for tuning ZED
+	 * Vdev properties for tuning ZED
 	 */
 	uint64_t	vdev_checksum_n;
 	uint64_t	vdev_checksum_t;
 	uint64_t	vdev_io_n;
 	uint64_t	vdev_io_t;
+	uint64_t	vdev_slow_io_n;
+	uint64_t	vdev_slow_io_t;
 };
 
 #define	VDEV_PAD_SIZE		(8 << 10)
@@ -556,6 +540,7 @@ typedef struct vdev_label {
 /*
  * Size of embedded boot loader region on each label.
  * The total size of the first two labels plus the boot area is 4MB.
+ * On RAIDZ, this space is overwritten during RAIDZ expansion.
  */
 #define	VDEV_BOOT_SIZE		(7ULL << 19)			/* 3.5M */
 
@@ -628,7 +613,7 @@ extern vdev_ops_t vdev_indirect_ops;
  */
 extern void vdev_default_xlate(vdev_t *vd, const range_seg64_t *logical_rs,
     range_seg64_t *physical_rs, range_seg64_t *remain_rs);
-extern uint64_t vdev_default_asize(vdev_t *vd, uint64_t psize);
+extern uint64_t vdev_default_asize(vdev_t *vd, uint64_t psize, uint64_t txg);
 extern uint64_t vdev_default_min_asize(vdev_t *vd);
 extern uint64_t vdev_get_min_asize(vdev_t *vd);
 extern void vdev_set_min_asize(vdev_t *vd);

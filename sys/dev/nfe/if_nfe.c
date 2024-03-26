@@ -21,8 +21,6 @@
 /* Driver for NVIDIA nForce MCP Fast Ethernet and Gigabit Ethernet */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #ifdef HAVE_KERNEL_OPTION_HEADERS
 #include "opt_device_polling.h"
 #endif
@@ -2623,7 +2621,7 @@ nfe_start_locked(if_t ifp)
 			break;
 		}
 		enq++;
-		if_etherbpfmtap(ifp, m0);
+		ether_bpf_mtap_if(ifp, m0);
 	}
 
 	if (enq > 0) {

@@ -26,9 +26,6 @@
  *
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
@@ -38,8 +35,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
 
-#include <dev/extres/syscon/syscon.h>
-#include <dev/extres/regulator/regulator.h>
+#include <dev/syscon/syscon.h>
+#include <dev/regulator/regulator.h>
 
 #include "syscon_if.h"
 
@@ -301,4 +298,4 @@ static driver_t rk_iodomain_driver = {
 };
 
 EARLY_DRIVER_MODULE(rk_iodomain, simplebus, rk_iodomain_driver, 0, 0,
-    BUS_PASS_INTERRUPT + BUS_PASS_ORDER_MIDDLE);
+    BUS_PASS_INTERRUPT + BUS_PASS_ORDER_LAST);

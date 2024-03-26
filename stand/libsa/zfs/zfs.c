@@ -22,12 +22,7 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	$FreeBSD$
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 /*
  *	Stand-alone file reading package.
@@ -1269,8 +1264,12 @@ zfs_nvstore_unset_impl(void *vdev, const char *name, bool unset_env)
 			rv = zfs_set_bootenv(vdev, spa->spa_bootenv);
 	}
 
-	if (unset_env)
-		env_discard(env_getenv(name));
+	if (unset_env) {
+		struct env_var *ev = env_getenv(name);
+
+		if (ev != NULL)
+			env_discard(ev);
+	}
 	return (rv);
 }
 

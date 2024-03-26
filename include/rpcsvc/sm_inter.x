@@ -1,6 +1,3 @@
-/* @(#)sm_inter.x	2.2 88/08/01 4.0 RPCSRC */
-/* @(#)sm_inter.x 1.7 87/06/24 Copyr 1987 Sun Micro */
-
 /*-
  * Copyright (c) 2010, Oracle America, Inc.
  *
@@ -37,11 +34,6 @@
  * Copyright (C) 1986 Sun Microsystems, Inc.
  *
  */
-
-#ifndef RPC_HDR
-%#include <sys/cdefs.h>
-%__FBSDID("$FreeBSD$");
-#endif
 
 program SM_PROG { 
 	version SM_VERS  {

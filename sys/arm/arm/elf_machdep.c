@@ -25,9 +25,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
@@ -57,8 +54,8 @@ __FBSDID("$FreeBSD$");
 #include "opt_global.h"         /* for OPT_KDTRACE_HOOKS */
 #include "opt_stack.h"          /* for OPT_STACK */
 
-static bool elf32_arm_abi_supported(struct image_params *, int32_t *,
-    uint32_t *);
+static bool elf32_arm_abi_supported(const struct image_params *,
+    const int32_t *, const uint32_t *);
 
 u_long elf_hwcap;
 u_long elf_hwcap2;
@@ -75,7 +72,6 @@ struct sysentvec elf32_freebsd_sysvec = {
 	.sv_elf_core_osabi = ELFOSABI_FREEBSD,
 	.sv_elf_core_abi_vendor = FREEBSD_ABI_VENDOR,
 	.sv_elf_core_prepare_notes = __elfN(prepare_notes),
-	.sv_imgact_try	= NULL,
 	.sv_minsigstksz	= MINSIGSTKSZ,
 	.sv_minuser	= VM_MIN_ADDRESS,
 	.sv_maxuser	= VM_MAXUSER_ADDRESS,
@@ -90,7 +86,7 @@ struct sysentvec elf32_freebsd_sysvec = {
 	.sv_maxssiz	= NULL,
 	.sv_flags	=
 			  SV_ASLR | SV_SHP | SV_TIMEKEEP | SV_RNG_SEED_VER |
-			  SV_ABI_FREEBSD | SV_ILP32,
+			  SV_ABI_FREEBSD | SV_ILP32 | SV_SIGSYS,
 	.sv_set_syscall_retval = cpu_set_syscall_retval,
 	.sv_fetch_syscall_args = cpu_fetch_syscall_args,
 	.sv_syscallnames = syscallnames,
@@ -112,7 +108,6 @@ static Elf32_Brandinfo freebsd_brand_info = {
 	.brand		= ELFOSABI_FREEBSD,
 	.machine	= EM_ARM,
 	.compat_3_brand	= "FreeBSD",
-	.emul_path	= NULL,
 	.interp_path	= "/libexec/ld-elf.so.1",
 	.sysvec		= &elf32_freebsd_sysvec,
 	.interp_newpath	= NULL,
@@ -126,8 +121,8 @@ SYSINIT(elf32, SI_SUB_EXEC, SI_ORDER_FIRST,
 	&freebsd_brand_info);
 
 static bool
-elf32_arm_abi_supported(struct image_params *imgp, int32_t *osrel __unused,
-    uint32_t *fctl0 __unused)
+elf32_arm_abi_supported(const struct image_params *imgp,
+    const int32_t *osrel __unused, const uint32_t *fctl0 __unused)
 {
 	const Elf_Ehdr *hdr = (const Elf_Ehdr *)imgp->image_header;
 

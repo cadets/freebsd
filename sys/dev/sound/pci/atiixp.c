@@ -69,8 +69,6 @@
 
 #include <dev/sound/pci/atiixp.h>
 
-SND_DECLARE_FILE("$FreeBSD$");
-
 #define ATI_IXP_DMA_RETRY_MAX	100
 
 #define ATI_IXP_BUFSZ_MIN	4096
@@ -1099,9 +1097,9 @@ atiixp_chip_post_init(void *arg)
 	    "polling", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc->dev,
 	    sizeof(sc->dev), sysctl_atiixp_polling, "I", "Enable polling mode");
 
-	snprintf(status, SND_STATUSLEN, "at memory 0x%jx irq %jd %s",
+	snprintf(status, SND_STATUSLEN, "mem 0x%jx irq %jd on %s",
 	    rman_get_start(sc->reg), rman_get_start(sc->irq),
-	    PCM_KLDSTRING(snd_atiixp));
+	    device_get_nameunit(device_get_parent(sc->dev)));
 
 	pcm_setstatus(sc->dev, status);
 

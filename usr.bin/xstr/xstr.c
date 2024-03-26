@@ -29,19 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-
-__FBSDID("$FreeBSD$");
-
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1980, 1993\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif
-
-#ifndef lint
-static const char sccsid[] = "@(#)xstr.c	8.1 (Berkeley) 6/9/93";
-#endif
 
 #include <sys/types.h>
 
@@ -84,7 +71,7 @@ static int xgetc(FILE *);
 static off_t hashit(char *, int);
 static off_t yankstr(char **);
 
-static void usage(void);
+static void usage(void) __dead2;
 
 static void flushsh(void);
 static void found(int, off_t, char *);

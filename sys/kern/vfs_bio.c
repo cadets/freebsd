@@ -44,9 +44,6 @@
  * see man buf(9) for more info.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/asan.h>
@@ -63,10 +60,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/limits.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
+#include <sys/memdesc.h>
 #include <sys/mount.h>
 #include <sys/mutex.h>
 #include <sys/kernel.h>
 #include <sys/kthread.h>
+#include <sys/pctrie.h>
 #include <sys/proc.h>
 #include <sys/racct.h>
 #include <sys/refcount.h>
@@ -160,6 +159,9 @@ nbufp(unsigned i)
 }
 
 caddr_t __read_mostly unmapped_buf;
+#ifdef INVARIANTS
+caddr_t	poisoned_buf = (void *)-1;
+#endif
 
 /* Used below and for softdep flushing threads in ufs/ffs/ffs_softdep.c */
 struct proc *bufdaemonproc;
@@ -320,7 +322,8 @@ SYSCTL_COUNTER_U64(_vfs, OID_AUTO, notbufdflushes, CTLFLAG_RD, &notbufdflushes,
 static long barrierwrites;
 SYSCTL_LONG(_vfs, OID_AUTO, barrierwrites, CTLFLAG_RW | CTLFLAG_STATS,
     &barrierwrites, 0, "Number of barrier writes");
-SYSCTL_INT(_vfs, OID_AUTO, unmapped_buf_allowed, CTLFLAG_RD,
+SYSCTL_INT(_vfs, OID_AUTO, unmapped_buf_allowed,
+    CTLFLAG_RDTUN | CTLFLAG_NOFETCH,
     &unmapped_buf_allowed, 0,
     "Permit the use of the unmapped i/o");
 int maxbcachebuf = MAXBCACHEBUF;
@@ -1168,7 +1171,12 @@ kern_vfs_bio_buffer_alloc(caddr_t v, long physmem_est)
 	}
 
 	if (nswbuf == 0) {
-		nswbuf = min(nbuf / 4, 256);
+		/*
+		 * Pager buffers are allocated for short periods, so scale the
+		 * number of reserved buffers based on the number of CPUs rather
+		 * than amount of memory.
+		 */
+		nswbuf = min(nbuf / 4, 32 * mp_ncpus);
 		if (nswbuf < NSWBUF_MIN)
 			nswbuf = NSWBUF_MIN;
 	}
@@ -1196,6 +1204,7 @@ bufinit(void)
 	struct buf *bp;
 	int i;
 
+	TSENTER();
 	KASSERT(maxbcachebuf >= MAXBSIZE,
 	    ("maxbcachebuf (%d) must be >= MAXBSIZE (%d)\n", maxbcachebuf,
 	    MAXBSIZE));
@@ -1205,6 +1214,9 @@ bufinit(void)
 	mtx_init(&bdirtylock, "dirty buf lock", NULL, MTX_DEF);
 
 	unmapped_buf = (caddr_t)kva_alloc(maxphys);
+#ifdef INVARIANTS
+	poisoned_buf = unmapped_buf;
+#endif
 
 	/* finally, initialize each buffer header and stick on empty q */
 	for (i = 0; i < nbuf; i++) {
@@ -1331,6 +1343,7 @@ bufinit(void)
 	buffreekvacnt = counter_u64_alloc(M_WAITOK);
 	bufdefragcnt = counter_u64_alloc(M_WAITOK);
 	bufkvaspace = counter_u64_alloc(M_WAITOK);
+	TSEXIT();
 }
 
 #ifdef INVARIANTS
@@ -3972,9 +3985,11 @@ getblkx(struct vnode *vp, daddr_t blkno, daddr_t dblkno, int size, int slpflag,
 	    ("GB_KVAALLOC only makes sense with GB_UNMAPPED"));
 	if (vp->v_type != VCHR)
 		ASSERT_VOP_LOCKED(vp, "getblk");
-	if (size > maxbcachebuf)
-		panic("getblk: size(%d) > maxbcachebuf(%d)\n", size,
+	if (size > maxbcachebuf) {
+		printf("getblkx: size(%d) > maxbcachebuf(%d)\n", size,
 		    maxbcachebuf);
+		return (EIO);
+	}
 	if (!unmapped_buf_allowed)
 		flags &= ~(GB_UNMAPPED | GB_KVAALLOC);
 
@@ -4148,6 +4163,12 @@ newbuf_unlocked:
 		vmio = vp->v_object != NULL;
 		if (vmio) {
 			maxsize = size + (offset & PAGE_MASK);
+			if (maxsize > maxbcachebuf) {
+				printf(
+			    "getblkx: maxsize(%d) > maxbcachebuf(%d)\n",
+				    maxsize, maxbcachebuf);
+				return (EIO);
+			}
 		} else {
 			maxsize = size;
 			/* Do not allow non-VMIO notmapped buffers. */
@@ -5145,7 +5166,9 @@ bufobj_init(struct bufobj *bo, void *private)
         rw_init(BO_LOCKPTR(bo), "bufobj interlock");
         bo->bo_private = private;
         TAILQ_INIT(&bo->bo_clean.bv_hd);
+	pctrie_init(&bo->bo_clean.bv_root);
         TAILQ_INIT(&bo->bo_dirty.bv_hd);
+	pctrie_init(&bo->bo_dirty.bv_root);
 }
 
 void
@@ -5221,6 +5244,20 @@ bdata2bio(struct buf *bp, struct bio *bip)
 		bip->bio_data = bp->b_data;
 		bip->bio_ma = NULL;
 	}
+}
+
+struct memdesc
+memdesc_bio(struct bio *bio)
+{
+	if ((bio->bio_flags & BIO_VLIST) != 0)
+		return (memdesc_vlist((struct bus_dma_segment *)bio->bio_data,
+		    bio->bio_ma_n));
+
+	if ((bio->bio_flags & BIO_UNMAPPED) != 0)
+		return (memdesc_vmpages(bio->bio_ma, bio->bio_bcount,
+		    bio->bio_ma_offset));
+
+	return (memdesc_vaddr(bio->bio_data, bio->bio_bcount));
 }
 
 static int buf_pager_relbuf;

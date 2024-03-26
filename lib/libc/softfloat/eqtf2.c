@@ -4,9 +4,6 @@
  * Written by Matt Thomas, 2011.  This file is in the Public Domain.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "softfloat-for-gcc.h"
 #include "milieu.h"
 #include "softfloat.h"

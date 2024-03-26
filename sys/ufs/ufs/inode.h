@@ -32,9 +32,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)inode.h	8.9 (Berkeley) 5/14/95
- * $FreeBSD$
  */
 
 #ifndef _UFS_UFS_INODE_H_
@@ -80,10 +77,10 @@ struct iown_tracker {
  * exclusive.
  */
 struct inode {
-	TAILQ_ENTRY(inode) i_nextsnap; /* snapshot file list. */
-	struct	vnode  *i_vnode;/* Vnode associated with this inode. */
-	struct 	ufsmount *i_ump;/* Ufsmount point associated with this inode. */
-	struct	 dquot *i_dquot[MAXQUOTAS]; /* Dquot structures. */
+	TAILQ_ENTRY(inode) i_nextsnap; /* Snapshot file list. */
+	struct vnode	*i_vnode; /* Vnode associated with this inode. */
+	struct ufsmount	*i_ump; /* Ufsmount point associated with this inode. */
+	struct dquot	*i_dquot[MAXQUOTAS]; /* Dquot structures. */
 	union {
 		struct dirhash *dirhash; /* Hashing for large directories. */
 		daddr_t *snapblklist;    /* Collect expunged snapshot blocks. */
@@ -97,8 +94,8 @@ struct inode {
 	} dinode_u;
 
 	ino_t	  i_number;	/* The identity of the inode. */
-	u_int32_t i_flag;	/* flags, see below */
-	int	  i_effnlink;	/* i_nlink when I/O completes */
+	uint32_t  i_flag;	/* flags, see below */
+	int32_t	  i_effnlink;	/* i_nlink when I/O completes */
 
 	/*
 	 * Side effects; used during directory lookup.
@@ -121,7 +118,7 @@ struct inode {
 	/*
 	 * Data for extended attribute modification.
  	 */
-	u_char	  *i_ea_area;	/* Pointer to malloced copy of EA area */
+	uint8_t	  *i_ea_area;	/* Pointer to malloced copy of EA area */
 	unsigned  i_ea_len;	/* Length of i_ea_area */
 	int	  i_ea_error;	/* First errno in transaction */
 	int	  i_ea_refs;	/* Number of users of EA area */
@@ -129,13 +126,13 @@ struct inode {
 	/*
 	 * Copies from the on-disk dinode itself.
 	 */
-	u_int64_t i_size;	/* File byte count. */
-	u_int64_t i_gen;	/* Generation number. */
-	u_int32_t i_flags;	/* Status flags (chflags). */
-	u_int32_t i_uid;	/* File owner. */
-	u_int32_t i_gid;	/* File group. */
-	u_int16_t i_mode;	/* IFMT, permissions; see below. */
-	int16_t	  i_nlink;	/* File link count. */
+	uint64_t i_size;	/* File byte count. */
+	uint64_t i_gen;		/* Generation number. */
+	uint32_t i_flags;	/* Status flags (chflags). */
+	uint32_t i_uid;		/* File owner. */
+	uint32_t i_gid;		/* File group. */
+	int32_t  i_nlink;	/* File link count. */
+	uint16_t i_mode;	/* IFMT, permissions; see below. */
 };
 /*
  * These flags are kept in i_flag.
@@ -245,6 +242,12 @@ I_IS_UFS2(const struct inode *ip)
 	else							\
 		(ip)->i_din2->d##field = (val); 		\
 	} while (0)
+#define	DIP_SET_NLINK(ip, val) do {					\
+	KASSERT(ip->i_nlink >= 0, ("%s:%d %s(): setting negative "	\
+	    "nlink value %d for inode %jd\n", __FILE__, __LINE__,	\
+	    __FUNCTION__, (ip)->i_nlink, (ip)->i_number));		\
+	DIP_SET(ip, i_nlink, val);					\
+	} while (0)
 
 #define	IS_SNAPSHOT(ip)		((ip)->i_flags & SF_SNAPSHOT)
 #define	IS_UFS(vp)		((vp)->v_data != NULL)
@@ -272,8 +275,8 @@ struct indir {
 
 /* This overlays the fid structure (see mount.h). */
 struct ufid {
-	u_int16_t ufid_len;	/* Length of structure. */
-	u_int16_t ufid_pad;	/* Force 32-bit alignment. */
+	uint16_t ufid_len;	/* Length of structure. */
+	uint16_t ufid_pad;	/* Force 32-bit alignment. */
 	uint32_t  ufid_ino;	/* File number (ino). */
 	uint32_t  ufid_gen;	/* Generation number. */
 };

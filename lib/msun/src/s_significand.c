@@ -1,4 +1,3 @@
-/* @(#)s_signif.c 5.1 93/09/24 */
 /*
  * ====================================================
  * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
@@ -9,9 +8,6 @@
  * is preserved.
  * ====================================================
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 /*
  * significand(x) computes just
@@ -25,5 +21,5 @@ __FBSDID("$FreeBSD$");
 double
 significand(double x)
 {
-	return __ieee754_scalb(x,(double) -ilogb(x));
+	return scalb(x,(double) -ilogb(x));
 }

@@ -27,9 +27,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/capsicum.h>
 #include <sys/ktr.h>
@@ -53,7 +50,7 @@ __FBSDID("$FreeBSD$");
 #define	USAGE \
 	"usage: ktrdump [-cflqrtH] [-i ktrfile] [-M core] [-N system] [-o outfile]\n"
 
-static void usage(void);
+static void usage(void) __dead2;
 
 static struct nlist nl[] = {
 	{ .n_name = "_ktr_version" },

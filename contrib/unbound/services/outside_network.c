@@ -550,9 +550,28 @@ reuse_tcp_find(struct outside_network* outnet, struct sockaddr_storage* addr,
 		log_assert(&key_p.reuse != (struct reuse_tcp*)result);
 		log_assert(&key_p != ((struct reuse_tcp*)result)->pending);
 	}
+
+	/* It is possible that we search for something before the first element
+	 * in the tree. Replace a null pointer with the first element.
+	 */
+	if (!result) {
+		verbose(VERB_CLIENT, "reuse_tcp_find: taking first");
+		result = rbtree_first(&outnet->tcp_reuse);
+	}
+
 	/* not found, return null */
 	if(!result || result == RBTREE_NULL)
 		return NULL;
+
+	/* It is possible that we got the previous address, but that the
+	 * address we are looking for is in the tree. If the address we got
+	 * is less than the address we are looking, then take the next entry.
+	 */
+	if (reuse_cmp_addrportssl(result->key, &key_p.reuse) < 0) {
+		verbose(VERB_CLIENT, "reuse_tcp_find: key too low");
+		result = rbtree_next(result);
+	}
+
 	verbose(VERB_CLIENT, "reuse_tcp_find check inexact match");
 	/* inexact match, find one of possibly several connections to the
 	 * same destination address, with the correct port, ssl, and
@@ -620,6 +639,15 @@ outnet_tcp_take_into_use(struct waiting_tcp* w)
 	log_assert(w->addrlen > 0);
 	pend->c->tcp_do_toggle_rw = 0;
 	pend->c->tcp_do_close = 0;
+
+	/* Consistency check, if we have ssl_upstream but no sslctx, then
+	 * log an error and return failure.
+	 */
+	if (w->ssl_upstream && !w->outnet->sslctx) {
+		log_err("SSL upstream requested but no SSL context");
+		return 0;
+	}
+
 	/* open socket */
 	s = outnet_get_tcp_fd(&w->addr, w->addrlen, w->outnet->tcp_mss, w->outnet->ip_dscp);
 
@@ -981,7 +1009,7 @@ use_free_buffer(struct outside_network* outnet)
 			sldns_buffer tmp;
 			sldns_buffer_init_frm_data(&tmp, w->pkt, w->pkt_len);
 			dt_msg_send_outside_query(outnet->dtenv, &w->sq->addr,
-				&pend_tcp->pi->addr, comm_tcp, w->sq->zone,
+				&pend_tcp->pi->addr, comm_tcp, NULL, w->sq->zone,
 				w->sq->zonelen, &tmp);
 		}
 #endif
@@ -2209,7 +2237,7 @@ randomize_and_send_udp(struct pending* pend, sldns_buffer* packet, int timeout)
 		outnet->dtenv->log_forwarder_query_messages)) {
 			log_addr(VERB_ALGO, "from local addr", &pend->pc->pif->addr, pend->pc->pif->addrlen);
 			log_addr(VERB_ALGO, "request to upstream", &pend->addr, pend->addrlen);
-			dt_msg_send_outside_query(outnet->dtenv, &pend->addr, &pend->pc->pif->addr, comm_udp,
+			dt_msg_send_outside_query(outnet->dtenv, &pend->addr, &pend->pc->pif->addr, comm_udp, NULL,
 				pend->sq->zone, pend->sq->zonelen, packet);
 	}
 #endif
@@ -2489,7 +2517,7 @@ pending_tcp_query(struct serviced_query* sq, sldns_buffer* packet,
 			sldns_buffer tmp;
 			sldns_buffer_init_frm_data(&tmp, w->pkt, w->pkt_len);
 			dt_msg_send_outside_query(sq->outnet->dtenv, &sq->addr,
-				&pend->pi->addr, comm_tcp, sq->zone,
+				&pend->pi->addr, comm_tcp, NULL, sq->zone,
 				sq->zonelen, &tmp);
 		}
 #endif
@@ -2792,6 +2820,25 @@ serviced_perturb_qname(struct ub_randstate* rnd, uint8_t* qbuf, size_t len)
 	}
 }
 
+static uint16_t
+serviced_query_udp_size(struct serviced_query* sq, enum serviced_query_status status) {
+	uint16_t udp_size;
+	if(status == serviced_query_UDP_EDNS_FRAG) {
+		if(addr_is_ip6(&sq->addr, sq->addrlen)) {
+			if(EDNS_FRAG_SIZE_IP6 < EDNS_ADVERTISED_SIZE)
+				udp_size = EDNS_FRAG_SIZE_IP6;
+			else	udp_size = EDNS_ADVERTISED_SIZE;
+		} else {
+			if(EDNS_FRAG_SIZE_IP4 < EDNS_ADVERTISED_SIZE)
+				udp_size = EDNS_FRAG_SIZE_IP4;
+			else	udp_size = EDNS_ADVERTISED_SIZE;
+		}
+	} else {
+		udp_size = EDNS_ADVERTISED_SIZE;
+	}
+	return udp_size;
+}
+
 /** put serviced query into a buffer */
 static void
 serviced_encode(struct serviced_query* sq, sldns_buffer* buff, int with_edns)
@@ -2815,19 +2862,7 @@ serviced_encode(struct serviced_query* sq, sldns_buffer* buff, int with_edns)
 		edns.opt_list_in = NULL;
 		edns.opt_list_out = sq->opt_list;
 		edns.opt_list_inplace_cb_out = NULL;
-		if(sq->status == serviced_query_UDP_EDNS_FRAG) {
-			if(addr_is_ip6(&sq->addr, sq->addrlen)) {
-				if(EDNS_FRAG_SIZE_IP6 < EDNS_ADVERTISED_SIZE)
-					edns.udp_size = EDNS_FRAG_SIZE_IP6;
-				else	edns.udp_size = EDNS_ADVERTISED_SIZE;
-			} else {
-				if(EDNS_FRAG_SIZE_IP4 < EDNS_ADVERTISED_SIZE)
-					edns.udp_size = EDNS_FRAG_SIZE_IP4;
-				else	edns.udp_size = EDNS_ADVERTISED_SIZE;
-			}
-		} else {
-			edns.udp_size = EDNS_ADVERTISED_SIZE;
-		}
+		edns.udp_size = serviced_query_udp_size(sq, sq->status);
 		edns.bits = 0;
 		if(sq->dnssec & EDNS_DO)
 			edns.bits = EDNS_DO;
@@ -3055,7 +3090,7 @@ serviced_tcp_callback(struct comm_point* c, void* arg, int error,
 		log_addr(VERB_ALGO, "response from upstream", &sq->addr, sq->addrlen);
 		log_addr(VERB_ALGO, "to local addr", &pi->addr, pi->addrlen);
 		dt_msg_send_outside_response(sq->outnet->dtenv, &sq->addr,
-			&pi->addr, c->type, sq->zone, sq->zonelen, sq->qbuf,
+			&pi->addr, c->type, c->ssl, sq->zone, sq->zonelen, sq->qbuf,
 			sq->qbuflen, &sq->last_sent_time, sq->outnet->now_tv,
 			c->buffer);
 	}
@@ -3224,7 +3259,8 @@ serviced_udp_callback(struct comm_point* c, void* arg, int error,
 
 	sq->pending = NULL; /* removed after callback */
 	if(error == NETEVENT_TIMEOUT) {
-		if(sq->status == serviced_query_UDP_EDNS && sq->last_rtt < 5000) {
+		if(sq->status == serviced_query_UDP_EDNS && sq->last_rtt < 5000 &&
+		   (serviced_query_udp_size(sq, serviced_query_UDP_EDNS_FRAG) < serviced_query_udp_size(sq, serviced_query_UDP_EDNS))) {
 			/* fallback to 1480/1280 */
 			sq->status = serviced_query_UDP_EDNS_FRAG;
 			log_name_addr(VERB_ALGO, "try edns1xx0", sq->qbuf+10,
@@ -3268,7 +3304,7 @@ serviced_udp_callback(struct comm_point* c, void* arg, int error,
 		log_addr(VERB_ALGO, "to local addr", &p->pc->pif->addr,
 			p->pc->pif->addrlen);
 		dt_msg_send_outside_response(outnet->dtenv, &sq->addr,
-			&p->pc->pif->addr, c->type, sq->zone, sq->zonelen,
+			&p->pc->pif->addr, c->type, c->ssl, sq->zone, sq->zonelen,
 			sq->qbuf, sq->qbuflen, &sq->last_sent_time,
 			sq->outnet->now_tv, c->buffer);
 	}

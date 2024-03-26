@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 # Part of a unified Makefile for building kernels.  This part includes all
 # the definitions that need to be after all the % directives except %RULES
@@ -32,10 +31,6 @@ MKMODULESENV+=	CONF_CFLAGS="${CONF_CFLAGS}"
 
 .if defined(WITH_CTF)
 MKMODULESENV+=	WITH_CTF="${WITH_CTF}"
-.endif
-
-.if defined(WITH_EXTRA_TCP_STACKS)
-MKMODULESENV+=	WITH_EXTRA_TCP_STACKS="${WITH_EXTRA_TCP_STACKS}"
 .endif
 
 .if !empty(KCSAN_ENABLED)
@@ -146,6 +141,15 @@ ports-${__target}:
 .endfor
 .endif
 
+# Generate the .bin (booti images) kernel as an extra build output.
+# The targets and rules to generate these appear in Makefile.$MACHINE
+# if the platform supports it.
+.if ${MK_KERNEL_BIN} != "no"
+KERNEL_EXTRA+= ${KERNEL_KO}.bin
+KERNEL_EXTRA_INSTALL+= ${KERNEL_KO}.bin
+CLEAN+=	${KERNEL_KO}.bin
+.endif
+
 .ORDER: kernel-install modules-install
 
 beforebuild: .PHONY
@@ -241,20 +245,22 @@ offset.inc: $S/kern/genoffset.sh genoffset.o
 	NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genoffset.sh genoffset.o > ${.TARGET}
 
 genoffset.o: $S/kern/genoffset.c
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} -fcommon $S/kern/genoffset.c
+	${CC} -c ${CFLAGS:N-flto*:N-fno-common:N-fsanitize*:N-fno-sanitize*} \
+	    -fcommon $S/kern/genoffset.c
 
 # genoffset_test.o is not actually used for anything - the point of compiling it
 # is to exercise the CTASSERT that checks that the offsets in the offset.inc
 # _lite struct(s) match those in the original(s). 
 genoffset_test.o: $S/kern/genoffset.c offset.inc
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} -fcommon -DOFFSET_TEST \
-	    $S/kern/genoffset.c -o ${.TARGET}
+	${CC} -c ${CFLAGS:N-flto*:N-fno-common:N-fsanitize*:N-fno-sanitize*} \
+	    -fcommon -DOFFSET_TEST $S/kern/genoffset.c -o ${.TARGET}
 
 assym.inc: $S/kern/genassym.sh genassym.o genoffset_test.o
 	NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genassym.sh genassym.o > ${.TARGET}
 
 genassym.o: $S/$M/$M/genassym.c  offset.inc
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} -fcommon $S/$M/$M/genassym.c
+	${CC} -c ${CFLAGS:N-flto*:N-fno-common:N-fsanitize*:N-fno-sanitize*} \
+	    -fcommon $S/$M/$M/genassym.c
 
 OBJS_DEPEND_GUESS+= opt_global.h
 genoffset.o genassym.o vers.o: opt_global.h
@@ -422,33 +428,34 @@ kernel-install: .PHONY
 	fi
 .endif
 	mkdir -p ${DESTDIR}${KODIR}
-	${INSTALL} -p -m 555 -o ${KMODOWN} -g ${KMODGRP} ${KERNEL_KO} ${DESTDIR}${KODIR}/
+	${INSTALL} -p -m ${KMODMODE} -o ${KMODOWN} -g ${KMODGRP} ${KERNEL_KO} ${DESTDIR}${KODIR}/
 .if defined(DEBUG) && !defined(INSTALL_NODEBUG) && ${MK_KERNEL_SYMBOLS} != "no"
 	mkdir -p ${DESTDIR}${KERN_DEBUGDIR}${KODIR}
-	${INSTALL} -p -m 555 -o ${KMODOWN} -g ${KMODGRP} ${KERNEL_KO}.debug ${DESTDIR}${KERN_DEBUGDIR}${KODIR}/
+	${INSTALL} -p -m ${KMODMODE} -o ${KMODOWN} -g ${KMODGRP} ${KERNEL_KO}.debug ${DESTDIR}${KERN_DEBUGDIR}${KODIR}/
 .endif
 .if defined(KERNEL_EXTRA_INSTALL)
-	${INSTALL} -p -m 555 -o ${KMODOWN} -g ${KMODGRP} ${KERNEL_EXTRA_INSTALL} ${DESTDIR}${KODIR}/
+	${INSTALL} -p -m ${KMODMODE} -o ${KMODOWN} -g ${KMODGRP} ${KERNEL_EXTRA_INSTALL} ${DESTDIR}${KODIR}/
 .endif
 
 
 
 kernel-reinstall:
 	@-chflags -R noschg ${DESTDIR}${KODIR}
-	${INSTALL} -p -m 555 -o ${KMODOWN} -g ${KMODGRP} ${KERNEL_KO} ${DESTDIR}${KODIR}/
+	${INSTALL} -p -m ${KMODMODE} -o ${KMODOWN} -g ${KMODGRP} ${KERNEL_KO} ${DESTDIR}${KODIR}/
 .if defined(DEBUG) && !defined(INSTALL_NODEBUG) && ${MK_KERNEL_SYMBOLS} != "no"
-	${INSTALL} -p -m 555 -o ${KMODOWN} -g ${KMODGRP} ${KERNEL_KO}.debug ${DESTDIR}${KERN_DEBUGDIR}${KODIR}/
+	${INSTALL} -p -m ${KMODMODE} -o ${KMODOWN} -g ${KMODGRP} ${KERNEL_KO}.debug ${DESTDIR}${KERN_DEBUGDIR}${KODIR}/
 .endif
 
 config.o env.o hints.o vers.o vnode_if.o:
 	${NORMAL_C}
 	${NORMAL_CTFCONVERT}
 
+NEWVERS_ENV+= MAKE="${MAKE}"
 .if ${MK_REPRODUCIBLE_BUILD} != "no"
-REPRO_FLAG="-R"
+NEWVERS_ARGS+= -R
 .endif
 vers.c: .NOMETA_CMP $S/conf/newvers.sh $S/sys/param.h ${SYSTEM_DEP:Nvers.*}
-	MAKE="${MAKE}" sh $S/conf/newvers.sh ${REPRO_FLAG} ${KERN_IDENT}
+	${NEWVERS_ENV} sh $S/conf/newvers.sh ${NEWVERS_ARGS} ${KERN_IDENT}
 
 vnode_if.c: $S/tools/vnode_if.awk $S/kern/vnode_if.src
 	${AWK} -f $S/tools/vnode_if.awk $S/kern/vnode_if.src -c
@@ -465,7 +472,7 @@ vnode_if_typedef.h:
 .if ${MFS_IMAGE:Uno} != "no"
 .if empty(MD_ROOT_SIZE_CONFIGURED)
 embedfs_${MFS_IMAGE:T:R}.o: ${MFS_IMAGE} $S/dev/md/embedfs.S
-	${CC} ${CFLAGS} ${ACFLAGS} -DMFS_IMAGE="${MFS_IMAGE}" -c \
+	${CC} ${CFLAGS} ${ACFLAGS} -DMFS_IMAGE=\""${MFS_IMAGE}"\" -c \
 	    $S/dev/md/embedfs.S -o ${.TARGET}
 .endif
 .endif

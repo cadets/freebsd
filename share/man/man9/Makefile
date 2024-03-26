@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 .include <src.opts.mk>
 
@@ -69,10 +68,12 @@ MAN=	accept_filter.9 \
 	copy.9 \
 	counter.9 \
 	cpuset.9 \
+	cr_bsd_visible.9 \
 	cr_cansee.9 \
+	cr_canseejailproc.9 \
+	cr_canseeothergids.9 \
+	cr_canseeotheruids.9 \
 	critical_enter.9 \
-	cr_seeothergids.9 \
-	cr_seeotheruids.9 \
 	crypto.9 \
 	crypto_buffer.9 \
 	crypto_driver.9 \
@@ -267,6 +268,7 @@ MAN=	accept_filter.9 \
 	pmap_copy.9 \
 	pmap_enter.9 \
 	pmap_extract.9 \
+	pmap_kextract.9 \
 	pmap_growkernel.9 \
 	pmap_init.9 \
 	pmap_is_modified.9 \
@@ -808,7 +810,6 @@ MLINKS+=byteorder.9 be16dec.9 \
 	byteorder.9 le64enc.9 \
 	byteorder.9 le64toh.9
 MLINKS+=callout.9 callout_active.9 \
-	callout.9 callout_async_drain.9 \
 	callout.9 callout_deactivate.9 \
 	callout.9 callout_drain.9 \
 	callout.9 callout_init.9 \
@@ -897,6 +898,7 @@ MLINKS+=counter.9 counter_u64_alloc.9 \
 	counter.9 counter_u64_add.9 \
 	counter.9 counter_enter.9 \
 	counter.9 counter_exit.9 \
+	counter.9 counter_ratecheck.9 \
 	counter.9 counter_u64_add_protected.9 \
 	counter.9 counter_u64_fetch.9 \
 	counter.9 counter_u64_zero.9 \
@@ -983,13 +985,20 @@ MLINKS+=DB_COMMAND.9 DB_ALIAS.9 \
 	DB_COMMAND.9 DB_SHOW_ALL_ALIAS.9 \
 	DB_COMMAND.9 DB_SHOW_ALL_COMMAND.9 \
 	DB_COMMAND.9 DB_SHOW_COMMAND.9 \
-	DB_COMMAND.9 DB_SHOW_COMMAND_FLAGS.9
+	DB_COMMAND.9 DB_SHOW_COMMAND_FLAGS.9 \
+	DB_COMMAND.9 DB_DECLARE_TABLE.9 \
+	DB_COMMAND.9 DB_DEFINE_TABLE.9 \
+	DB_COMMAND.9 DB_TABLE_COMMAND.9 \
+	DB_COMMAND.9 DB_TABLE_COMMAND_FLAGS.9 \
+	DB_COMMAND.9 DB_TABLE_ALIAS.9 \
+	DB_COMMAND.9 DB_TABLE_ALIAS_FLAGS.9
 MLINKS+=DECLARE_MODULE.9 DECLARE_MODULE_TIED.9
 MLINKS+=dev_clone.9 drain_dev_clone_events.9
 MLINKS+=dev_refthread.9 devvn_refthread.9 \
 	dev_refthread.9 dev_relthread.9
 MLINKS+=devfs_set_cdevpriv.9 devfs_clear_cdevpriv.9 \
-	devfs_set_cdevpriv.9 devfs_get_cdevpriv.9
+	devfs_set_cdevpriv.9 devfs_get_cdevpriv.9 \
+	devfs_set_cdevpriv.9 devfs_foreach_cdevpriv.9
 MLINKS+=device_add_child.9 device_add_child_ordered.9
 MLINKS+=device_enable.9 device_disable.9 \
 	device_enable.9 device_is_enabled.9
@@ -1004,6 +1013,7 @@ MLINKS+=device_get_sysctl.9 device_get_sysctl_ctx.9 \
 MLINKS+=device_quiet.9 device_is_quiet.9 \
 	device_quiet.9 device_verbose.9
 MLINKS+=device_set_desc.9 device_get_desc.9 \
+	device_set_desc.9 device_set_descf.9 \
 	device_set_desc.9 device_set_desc_copy.9
 MLINKS+=device_set_flags.9 device_get_flags.9
 MLINKS+=devstat.9 devicestat.9 \
@@ -1112,7 +1122,8 @@ MLINKS+=fpu_kern.9 fpu_kern_alloc_ctx.9 \
 	fpu_kern.9 fpu_kern_thread.9 \
 	fpu_kern.9 is_fpu_kern_thread.9
 MLINKS+=g_attach.9 g_detach.9
-MLINKS+=g_bio.9 g_alloc_bio.9 \
+MLINKS+=g_bio.9 bio.9 \
+	g_bio.9 g_alloc_bio.9 \
 	g_bio.9 g_clone_bio.9 \
 	g_bio.9 g_destroy_bio.9 \
 	g_bio.9 g_duplicate_bio.9 \
@@ -1149,6 +1160,7 @@ MLINKS+=g_provider.9 g_destroy_provider.9 \
 	g_provider.9 g_error_provider.9 \
 	g_provider.9 g_new_providerf.9
 MLINKS+=gone_in.9 gone_in_dev.9
+MLINKS+=groupmember.9 realgroupmember.9
 MLINKS+=hash.9 hash32.9 \
 	hash.9 hash32_buf.9 \
 	hash.9 hash32_str.9 \
@@ -1203,8 +1215,7 @@ MLINKS+=ieee80211_node.9 ieee80211_dump_node.9 \
 	ieee80211_node.9 ieee80211_find_rxnode_withkey.9 \
 	ieee80211_node.9 ieee80211_free_node.9 \
 	ieee80211_node.9 ieee80211_iterate_nodes.9 \
-	ieee80211_node.9 ieee80211_ref_node.9 \
-	ieee80211_node.9 ieee80211_unref_node.9
+	ieee80211_node.9 ieee80211_ref_node.9
 MLINKS+=ieee80211_output.9 ieee80211_process_callback.9 \
 	ieee80211_output.9 M_SEQNO_GET.9 \
 	ieee80211_output.9 M_WME_GETAC.9
@@ -1361,6 +1372,7 @@ MLINKS+=kmsan.9 KMSAN.9 \
 	kmsan.9 kmsan_check_bio.9 \
 	kmsan.9 kmsan_check_ccb.9 \
 	kmsan.9 kmsan_check_mbuf.9 \
+	kmsan.9 kmsan_check_uio.9 \
 	kmsan.9 kmsan_mark.9 \
 	kmsan.9 kmsan_oirg.9
 MLINKS+=kobj.9 DEFINE_CLASS.9 \
@@ -1388,7 +1400,6 @@ MLINKS+=kqueue.9 knlist_add.9 \
 	kqueue.9 knlist_init.9 \
 	kqueue.9 knlist_init_mtx.9 \
 	kqueue.9 knlist_remove.9 \
-	kqueue.9 knlist_remove_inevent.9 \
 	kqueue.9 knote_fdclose.9 \
 	kqueue.9 KNOTE_LOCKED.9 \
 	kqueue.9 KNOTE_UNLOCKED.9 \
@@ -1507,6 +1518,7 @@ MLINKS+=\
 	mbuf.9 m_pullup.9 \
 	mbuf.9 m_split.9 \
 	mbuf.9 mtod.9 \
+	mbuf.9 mtodo.9 \
 	mbuf.9 M_TRAILINGSPACE.9 \
 	mbuf.9 m_unshare.9 \
 	mbuf.9 M_WRITABLE.9
@@ -1800,10 +1812,9 @@ MLINKS+=PHOLD.9 PRELE.9 \
 	PHOLD.9 PROC_ASSERT_NOT_HELD.9
 MLINKS+=pmap_copy.9 pmap_copy_page.9
 MLINKS+=pmap_extract.9 pmap_extract_and_hold.9
-MLINKS+=pmap_init.9 pmap_init2.9
+MLINKS+=pmap_kextract.9 vtophys.9
 MLINKS+=pmap_is_modified.9 pmap_ts_referenced.9
-MLINKS+=pmap_pinit.9 pmap_pinit0.9 \
-	pmap_pinit.9 pmap_pinit2.9
+MLINKS+=pmap_pinit.9 pmap_pinit0.9
 MLINKS+=pmap_qenter.9 pmap_qremove.9
 MLINKS+=pmap_quick_enter_page.9 pmap_quick_remove_page.9
 MLINKS+=pmap_remove.9 pmap_remove_all.9 \
@@ -1823,8 +1834,7 @@ MLINKS+=prng.9 prng32.9 \
 	prng.9 prng64_bounded.9
 MLINKS+=proc_rwmem.9 proc_readmem.9 \
 	proc_rwmem.9 proc_writemem.9
-MLINKS+=psignal.9 gsignal.9 \
-	psignal.9 pgsignal.9 \
+MLINKS+=psignal.9 pgsignal.9 \
 	psignal.9 tdsignal.9
 MLINKS+=pwmbus.9 pwm.9
 MLINKS+=random.9 arc4rand.9 \
@@ -1861,6 +1871,7 @@ MLINKS+=rman.9 rman_activate_resource.9 \
 	rman.9 rman_get_rid.9 \
 	rman.9 rman_get_size.9 \
 	rman.9 rman_get_start.9 \
+	rman.9 rman_get_type.9 \
 	rman.9 rman_get_virtual.9 \
 	rman.9 rman_init.9 \
 	rman.9 rman_init_from_resource.9 \
@@ -1875,6 +1886,7 @@ MLINKS+=rman.9 rman_activate_resource.9 \
 	rman.9 rman_set_bustag.9 \
 	rman.9 rman_set_mapping.9 \
 	rman.9 rman_set_rid.9 \
+	rman.9 rman_set_type.9 \
 	rman.9 rman_set_virtual.9
 MLINKS+=rmlock.9 rm_assert.9 \
 	rmlock.9 rm_destroy.9 \

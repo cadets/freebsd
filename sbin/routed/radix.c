@@ -27,10 +27,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)radix.c	8.4 (Berkeley) 11/2/94
- *
- * $FreeBSD$
  */
 
 /*
@@ -38,9 +34,6 @@
  */
 
 #include "defs.h"
-
-__RCSID("$FreeBSD$");
-
 #define log(x, msg) syslog(x, msg)
 #define panic(s) {log(LOG_ERR,s); exit(1);}
 #define min(a,b) (((a)<(b))?(a):(b))

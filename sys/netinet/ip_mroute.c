@@ -31,8 +31,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *      @(#)ip_mroute.c 8.2 (Berkeley) 11/15/93
  */
 
 /*
@@ -70,8 +68,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_mrouting.h"
 
@@ -174,7 +170,9 @@ VNET_DEFINE_STATIC(u_long, mfchash);
 	  ((g).s_addr >> 20) ^ ((g).s_addr >> 10) ^ (g).s_addr) & V_mfchash)
 #define	MFCHASHSIZE	256
 
-static u_long mfchashsize;			/* Hash size */
+static u_long mfchashsize = MFCHASHSIZE;	/* Hash size */
+SYSCTL_ULONG(_net_inet_ip, OID_AUTO, mfchashsize, CTLFLAG_RDTUN,
+    &mfchashsize, 0, "IPv4 Multicast Forwarding Table hash size");
 VNET_DEFINE_STATIC(u_char *, nexpire);		/* 0..mfchashsize-1 */
 #define	V_nexpire		VNET(nexpire)
 VNET_DEFINE_STATIC(LIST_HEAD(mfchashhdr, mfc)*, mfchashtbl);
@@ -228,7 +226,7 @@ SYSCTL_VNET_PCPUSTAT(_net_inet_pim, PIMCTL_STATS, stats, struct pimstat,
     pimstat, "PIM Statistics (struct pimstat, netinet/pim_var.h)");
 
 static u_long	pim_squelch_wholepkt = 0;
-SYSCTL_ULONG(_net_inet_pim, OID_AUTO, squelch_wholepkt, CTLFLAG_RW,
+SYSCTL_ULONG(_net_inet_pim, OID_AUTO, squelch_wholepkt, CTLFLAG_RWTUN,
     &pim_squelch_wholepkt, 0,
     "Disable IGMP_WHOLEPKT notifications if rendezvous point is unspecified");
 
@@ -317,7 +315,7 @@ static void	bw_upcalls_send(void);
 static int	del_bw_upcall(struct bw_upcall *);
 static int	del_mfc(struct mfcctl2 *);
 static int	del_vif(vifi_t);
-static int	del_vif_locked(vifi_t, struct ifnet **);
+static int	del_vif_locked(vifi_t, struct ifnet **, struct ifnet **);
 static void	expire_bw_upcalls_send(void *);
 static void	expire_mfc(struct mfc *);
 static void	expire_upcalls(void *);
@@ -618,7 +616,7 @@ if_detached_event(void *arg __unused, struct ifnet *ifp)
 {
 	vifi_t vifi;
 	u_long i, vifi_cnt = 0;
-	struct ifnet *free_ptr;
+	struct ifnet *free_ptr, *multi_leave;
 
 	MRW_WLOCK();
 
@@ -635,6 +633,7 @@ if_detached_event(void *arg __unused, struct ifnet *ifp)
 	 * 3. Expire any matching multicast forwarding cache entries.
 	 * 4. Free vif state. This should disable ALLMULTI on the interface.
 	 */
+restart:
 	for (vifi = 0; vifi < V_numvifs; vifi++) {
 		if (V_viftable[vifi].v_ifp != ifp)
 			continue;
@@ -647,9 +646,15 @@ if_detached_event(void *arg __unused, struct ifnet *ifp)
 				}
 			}
 		}
-		del_vif_locked(vifi, &free_ptr);
+		del_vif_locked(vifi, &multi_leave, &free_ptr);
 		if (free_ptr != NULL)
 			vifi_cnt++;
+		if (multi_leave) {
+			MRW_WUNLOCK();
+			if_allmulti(multi_leave, 0);
+			MRW_WLOCK();
+			goto restart;
+		}
 	}
 
 	MRW_WUNLOCK();
@@ -701,6 +706,10 @@ ip_mrouter_init(struct socket *so, int version)
 
 	V_mfchashtbl = hashinit_flags(mfchashsize, M_MRTABLE, &V_mfchash,
 	    HASH_NOWAIT);
+	if (V_mfchashtbl == NULL) {
+		MRW_WUNLOCK();
+		return (ENOMEM);
+	}
 
 	/* Create upcall ring */
 	mtx_init(&V_bw_upcalls_ring_mtx, "mroute upcall buf_ring mtx", NULL, MTX_DEF);
@@ -998,11 +1007,12 @@ add_vif(struct vifctl *vifcp)
  * Delete a vif from the vif table
  */
 static int
-del_vif_locked(vifi_t vifi, struct ifnet **ifp_free)
+del_vif_locked(vifi_t vifi, struct ifnet **ifp_multi_leave, struct ifnet **ifp_free)
 {
 	struct vif *vifp;
 
 	*ifp_free = NULL;
+	*ifp_multi_leave = NULL;
 
 	MRW_WLOCK_ASSERT();
 
@@ -1015,7 +1025,7 @@ del_vif_locked(vifi_t vifi, struct ifnet **ifp_free)
 	}
 
 	if (!(vifp->v_flags & (VIFF_TUNNEL | VIFF_REGISTER)))
-		if_allmulti(vifp->v_ifp, 0);
+		*ifp_multi_leave = vifp->v_ifp;
 
 	if (vifp->v_flags & VIFF_REGISTER) {
 		V_reg_vif_num = VIFI_INVALID;
@@ -1045,14 +1055,17 @@ static int
 del_vif(vifi_t vifi)
 {
 	int cc;
-	struct ifnet *free_ptr;
+	struct ifnet *free_ptr, *multi_leave;
 
 	MRW_WLOCK();
-	cc = del_vif_locked(vifi, &free_ptr);
+	cc = del_vif_locked(vifi, &multi_leave, &free_ptr);
 	MRW_WUNLOCK();
 
-	if (free_ptr)
+	if (multi_leave)
+		if_allmulti(multi_leave, 0);
+	if (free_ptr) {
 		if_free(free_ptr);
+	}
 
 	return cc;
 }
@@ -1237,22 +1250,17 @@ del_mfc(struct mfcctl2 *mfccp)
 
 	MRW_WLOCK();
 
-	rt = mfc_find(&origin, &mcastgrp);
+	LIST_FOREACH(rt, &V_mfchashtbl[MFCHASH(origin, mcastgrp)], mfc_hash) {
+		if (in_hosteq(rt->mfc_origin, origin) &&
+		    in_hosteq(rt->mfc_mcastgrp, mcastgrp))
+			break;
+	}
 	if (rt == NULL) {
 		MRW_WUNLOCK();
 		return EADDRNOTAVAIL;
 	}
 
-	/*
-	 * free the bw_meter entries
-	 */
-	free_bw_list(rt->mfc_bw_meter_leq);
-	rt->mfc_bw_meter_leq = NULL;
-	free_bw_list(rt->mfc_bw_meter_geq);
-	rt->mfc_bw_meter_geq = NULL;
-
-	LIST_REMOVE(rt, mfc_hash);
-	free(rt, M_MRTABLE);
+	expire_mfc(rt);
 
 	MRW_WUNLOCK();
 
@@ -2808,17 +2816,11 @@ ip_mroute_modevent(module_t mod, int type, void *unused)
 			return (EINVAL);
 		}
 
-		mfchashsize = MFCHASHSIZE;
-		if (TUNABLE_ULONG_FETCH("net.inet.ip.mfchashsize", &mfchashsize) &&
-				!powerof2(mfchashsize)) {
+		if (!powerof2(mfchashsize)) {
 			printf("WARNING: %s not a power of 2; using default\n",
 					"net.inet.ip.mfchashsize");
 			mfchashsize = MFCHASHSIZE;
 		}
-
-		pim_squelch_wholepkt = 0;
-		TUNABLE_ULONG_FETCH("net.inet.pim.squelch_wholepkt",
-				&pim_squelch_wholepkt);
 
 		pim_encap_cookie = ip_encap_attach(&ipv4_encap_cfg, NULL, M_WAITOK);
 

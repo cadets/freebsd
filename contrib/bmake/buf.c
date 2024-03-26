@@ -1,4 +1,4 @@
-/*	$NetBSD: buf.c,v 1.55 2022/01/08 17:25:19 rillig Exp $	*/
+/*	$NetBSD: buf.c,v 1.57 2023/12/19 19:33:39 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990 The Regents of the University of California.
@@ -69,13 +69,13 @@
  * SUCH DAMAGE.
  */
 
-/* Automatically-expanding null-terminated character buffers. */
+/* Automatically growing null-terminated buffers of characters. */
 
 #include <limits.h>
 #include "make.h"
 
 /*	"@(#)buf.c	8.1 (Berkeley) 6/6/93"	*/
-MAKE_RCSID("$NetBSD: buf.c,v 1.55 2022/01/08 17:25:19 rillig Exp $");
+MAKE_RCSID("$NetBSD: buf.c,v 1.57 2023/12/19 19:33:39 rillig Exp $");
 
 /* Make space in the buffer for adding at least 16 more bytes. */
 void
@@ -106,7 +106,7 @@ Buf_AddBytes(Buffer *buf, const char *bytes, size_t bytes_len)
 
 /* Add the bytes between start and end to the buffer. */
 void
-Buf_AddBytesBetween(Buffer *buf, const char *start, const char *end)
+Buf_AddRange(Buffer *buf, const char *start, const char *end)
 {
 	Buf_AddBytes(buf, start, (size_t)(end - start));
 }

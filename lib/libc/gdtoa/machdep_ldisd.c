@@ -37,9 +37,6 @@
  * is the same as a double, such as the Alpha.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "gdtoaimp.h"
 #undef strtold_l
 

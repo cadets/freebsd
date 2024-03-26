@@ -16,8 +16,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
  *
- * $FreeBSD$
- *
  */
 
 /*
@@ -26,9 +24,6 @@
  * Broadcom likes to give the same chip lots of different names. The name of
  * this driver is taken from the Raspberry Pi 4 Broadcom 2838 chip.
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>

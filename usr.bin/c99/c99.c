@@ -34,9 +34,6 @@
  * specially.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 
 #include <err.h>
@@ -50,7 +47,7 @@ static u_int cargs, nargs;
 
 static void addarg(const char *);
 static void addlib(const char *);
-static void usage(void);
+static void usage(void) __dead2;
 
 int
 main(int argc, char *argv[])

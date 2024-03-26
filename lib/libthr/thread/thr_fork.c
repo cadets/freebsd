@@ -57,9 +57,6 @@
  *
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/syscall.h>
 #include "namespace.h"
 #include <errno.h>

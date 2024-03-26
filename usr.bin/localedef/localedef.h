@@ -26,8 +26,6 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /*
@@ -35,7 +33,7 @@
  */
 
 /* Common header files. */
-#include <sys/cdefs.h>
+
 #include <sys/types.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -176,4 +174,4 @@ const char *get_wide_encoding(void);
 int max_wide(void);
 
 //#define	_(x)	gettext(x)
-#define	INTERR	fprintf(stderr,"internal fault (%s:%d)", __FILE__, __LINE__)
+#define	INTERR	fprintf(stderr,"internal fault (%s:%d)\n", __FILE__, __LINE__)

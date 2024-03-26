@@ -1,7 +1,11 @@
 /*
  * SPDX-License-Identifier: CDDL 1.0
  *
- * Copyright 2022 Christos Margiolis <christos@FreeBSD.org>
+ * Copyright (c) 2022 Christos Margiolis <christos@FreeBSD.org>
+ * Copyright (c) 2023 The FreeBSD Foundation
+ *
+ * Portions of this software were developed by Christos Margiolis
+ * <christos@FreeBSD.org> under sponsorship from the FreeBSD Foundation.
  */
 
 #include <sys/param.h>
@@ -65,11 +69,39 @@ static dtrace_provider_id_t	kinst_id;
 struct kinst_probe_list	*kinst_probetab;
 static struct cdev	*kinst_cdev;
 
-int
+/*
+ * Tracing memcpy() will crash the kernel when kinst tries to trace an instance
+ * of the memcpy() calls in kinst_invop(). To fix this, we can use
+ * kinst_memcpy() in those cases, with its arguments marked as 'volatile' to
+ * "outsmart" the compiler and avoid having it replaced by a regular memcpy().
+ */
+volatile void *
+kinst_memcpy(volatile void *dst, volatile const void *src, size_t len)
+{
+	volatile const unsigned char *src0;
+	volatile unsigned char *dst0;
+
+	src0 = src;
+	dst0 = dst;
+
+	while (len--)
+		*dst0++ = *src0++;
+
+	return (dst);
+}
+
+bool
 kinst_excluded(const char *name)
 {
 	if (kinst_md_excluded(name))
-		return (1);
+		return (true);
+
+	/*
+	 * cpu_switch() can cause a crash if it modifies the value of curthread
+	 * while in probe context.
+	 */
+	if (strcmp(name, "cpu_switch") == 0)
+		return (true);
 
 	/*
 	 * Anything beginning with "dtrace_" may be called from probe context
@@ -78,7 +110,7 @@ kinst_excluded(const char *name)
 	 */
 	if (strncmp(name, "dtrace_", strlen("dtrace_")) == 0 &&
 	    strncmp(name, "dtrace_safe_", strlen("dtrace_safe_")) != 0)
-		return (1);
+		return (true);
 
 	/*
 	 * Omit instrumentation of functions that are probably in DDB.  It
@@ -89,7 +121,7 @@ kinst_excluded(const char *name)
 	 */
 	if (strncmp(name, "db_", strlen("db_")) == 0 ||
 	    strncmp(name, "kdb_", strlen("kdb_")) == 0)
-		return (1);
+		return (true);
 
 	/*
 	 * Lock owner methods may be called from probe context.
@@ -98,7 +130,7 @@ kinst_excluded(const char *name)
 	    strcmp(name, "owner_rm") == 0 ||
 	    strcmp(name, "owner_rw") == 0 ||
 	    strcmp(name, "owner_sx") == 0)
-		return (1);
+		return (true);
 
 	/*
 	 * When DTrace is built into the kernel we need to exclude the kinst
@@ -106,13 +138,13 @@ kinst_excluded(const char *name)
 	 */
 #ifndef _KLD_MODULE
 	if (strncmp(name, "kinst_", strlen("kinst_")) == 0)
-		return (1);
+		return (true);
 #endif
 
 	if (strcmp(name, "trap_check") == 0)
-		return (1);
+		return (true);
 
-	return (0);
+	return (false);
 }
 
 void
@@ -196,6 +228,9 @@ kinst_destroy(void *arg, dtrace_id_t id, void *parg)
 	struct kinst_probe *kp = parg;
 
 	LIST_REMOVE(kp, kp_hashnext);
+#ifndef __amd64__
+	kinst_trampoline_dealloc(kp->kp_tramp);
+#endif
 	free(kp, M_KINST);
 }
 

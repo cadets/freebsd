@@ -25,8 +25,6 @@
  * Sun Microsystems, Inc.
  * 2550 Garcia Avenue
  * Mountain View, California  94043
- *
- * $FreeBSD$
  */
 
 /*
@@ -43,8 +41,6 @@
 #ifndef	_RPCSVC_NIS_DB_H
 #define	_RPCSVC_NIS_DB_H
 
-
-/* From: #pragma ident	"@(#)nis_db.h	1.8	94/05/03 SMI" */
 
 /*
  * Note: although the version of <rpcsvc/nis_db.h> shipped with Solaris

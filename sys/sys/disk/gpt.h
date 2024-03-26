@@ -22,8 +22,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SYS_DISK_GPT_H_
@@ -83,6 +81,13 @@ struct gpt_hdr {
 #ifdef CTASSERT
 CTASSERT(offsetof(struct gpt_hdr, padding) == 92);
 #endif
+
+/*
+ * The GPT standard (section 5.3 of UEFI standard version 2.10) requires
+ * we reserve at least 16k after the PMBR and the GPT header for the GPT
+ * Array Entries.
+ */
+#define GPT_MIN_RESERVED	16384
 
 struct gpt_ent {
 	gpt_uuid_t	ent_type;

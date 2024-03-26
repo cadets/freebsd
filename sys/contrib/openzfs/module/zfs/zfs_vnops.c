@@ -47,6 +47,7 @@
 #include <sys/fs/zfs.h>
 #include <sys/dmu.h>
 #include <sys/dmu_objset.h>
+#include <sys/dsl_crypt.h>
 #include <sys/spa.h>
 #include <sys/txg.h>
 #include <sys/dbuf.h>
@@ -57,8 +58,26 @@
 #include <sys/zfs_vfsops.h>
 #include <sys/zfs_znode.h>
 
+/*
+ * Enable the experimental block cloning feature.  If this setting is 0, then
+ * even if feature@block_cloning is enabled, attempts to clone blocks will act
+ * as though the feature is disabled.
+ */
+int zfs_bclone_enabled = 1;
 
-static ulong_t zfs_fsync_sync_cnt = 4;
+/*
+ * When set zfs_clone_range() waits for dirty data to be written to disk.
+ * This allows the clone operation to reliably succeed when a file is modified
+ * and then immediately cloned. For small files this may be slower than making
+ * a copy of the file and is therefore not the default.  However, in certain
+ * scenarios this behavior may be desirable so a tunable is provided.
+ */
+static int zfs_bclone_wait_dirty = 0;
+
+/*
+ * Maximum bytes to read per chunk in zfs_read().
+ */
+static uint64_t zfs_vnops_read_chunk_size = 1024 * 1024;
 
 int
 zfs_fsync(znode_t *zp, int syncflag, cred_t *cr)
@@ -66,19 +85,14 @@ zfs_fsync(znode_t *zp, int syncflag, cred_t *cr)
 	int error = 0;
 	zfsvfs_t *zfsvfs = ZTOZSB(zp);
 
-	(void) tsd_set(zfs_fsyncer_key, (void *)(uintptr_t)zfs_fsync_sync_cnt);
-
 	if (zfsvfs->z_os->os_sync != ZFS_SYNC_DISABLED) {
 		if ((error = zfs_enter_verify_zp(zfsvfs, zp, FTAG)) != 0)
-			goto out;
+			return (error);
 		atomic_inc_32(&zp->z_sync_writes_cnt);
 		zil_commit(zfsvfs->z_log, zp->z_id);
 		atomic_dec_32(&zp->z_sync_writes_cnt);
 		zfs_exit(zfsvfs, FTAG);
 	}
-out:
-	tsd_set(zfs_fsyncer_key, NULL);
-
 	return (error);
 }
 
@@ -187,8 +201,6 @@ zfs_access(znode_t *zp, int mode, int flag, cred_t *cr)
 	zfs_exit(zfsvfs, FTAG);
 	return (error);
 }
-
-static uint64_t zfs_vnops_read_chunk_size = 1024 * 1024; /* Tunable */
 
 /*
  * Read bytes from specified file into supplied buffer.
@@ -462,14 +474,12 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 		return (SET_ERROR(EINVAL));
 	}
 
-	const uint64_t max_blksz = zfsvfs->z_max_blksz;
-
 	/*
 	 * Pre-fault the pages to ensure slow (eg NFS) pages
 	 * don't hold up txg.
-	 * Skip this if uio contains loaned arc_buf.
 	 */
-	if (zfs_uio_prefaultpages(MIN(n, max_blksz), uio)) {
+	ssize_t pfbytes = MIN(n, DMU_MAX_ACCESS >> 1);
+	if (zfs_uio_prefaultpages(pfbytes, uio)) {
 		zfs_exit(zfsvfs, FTAG);
 		return (SET_ERROR(EFAULT));
 	}
@@ -522,6 +532,8 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 
 	uint64_t end_size = MAX(zp->z_size, woff + n);
 	zilog_t *zilog = zfsvfs->z_log;
+	boolean_t commit = (ioflag & (O_SYNC | O_DSYNC)) ||
+	    (zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS);
 
 	const uint64_t uid = KUID_TO_SUID(ZTOUID(zp));
 	const uint64_t gid = KGID_TO_SGID(ZTOGID(zp));
@@ -544,10 +556,31 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 			break;
 		}
 
+		uint64_t blksz;
+		if (lr->lr_length == UINT64_MAX && zp->z_size <= zp->z_blksz) {
+			if (zp->z_blksz > zfsvfs->z_max_blksz &&
+			    !ISP2(zp->z_blksz)) {
+				/*
+				 * File's blocksize is already larger than the
+				 * "recordsize" property.  Only let it grow to
+				 * the next power of 2.
+				 */
+				blksz = 1 << highbit64(zp->z_blksz);
+			} else {
+				blksz = zfsvfs->z_max_blksz;
+			}
+			blksz = MIN(blksz, P2ROUNDUP(end_size,
+			    SPA_MINBLOCKSIZE));
+			blksz = MAX(blksz, zp->z_blksz);
+		} else {
+			blksz = zp->z_blksz;
+		}
+
 		arc_buf_t *abuf = NULL;
-		if (n >= max_blksz && woff >= zp->z_size &&
-		    P2PHASE(woff, max_blksz) == 0 &&
-		    zp->z_blksz == max_blksz) {
+		ssize_t nbytes = n;
+		if (n >= blksz && woff >= zp->z_size &&
+		    P2PHASE(woff, blksz) == 0 &&
+		    (blksz >= SPA_OLD_MAXBLOCKSIZE || n < 4 * blksz)) {
 			/*
 			 * This write covers a full block.  "Borrow" a buffer
 			 * from the dmu so that we can fill it before we enter
@@ -555,18 +588,26 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 			 * holding up the transaction if the data copy hangs
 			 * up on a pagefault (e.g., from an NFS server mapping).
 			 */
-			size_t cbytes;
-
 			abuf = dmu_request_arcbuf(sa_get_db(zp->z_sa_hdl),
-			    max_blksz);
+			    blksz);
 			ASSERT(abuf != NULL);
-			ASSERT(arc_buf_size(abuf) == max_blksz);
-			if ((error = zfs_uiocopy(abuf->b_data, max_blksz,
-			    UIO_WRITE, uio, &cbytes))) {
+			ASSERT(arc_buf_size(abuf) == blksz);
+			if ((error = zfs_uiocopy(abuf->b_data, blksz,
+			    UIO_WRITE, uio, &nbytes))) {
 				dmu_return_arcbuf(abuf);
 				break;
 			}
-			ASSERT3S(cbytes, ==, max_blksz);
+			ASSERT3S(nbytes, ==, blksz);
+		} else {
+			nbytes = MIN(n, (DMU_MAX_ACCESS >> 1) -
+			    P2PHASE(woff, blksz));
+			if (pfbytes < nbytes) {
+				if (zfs_uio_prefaultpages(nbytes, uio)) {
+					error = SET_ERROR(EFAULT);
+					break;
+				}
+				pfbytes = nbytes;
+			}
 		}
 
 		/*
@@ -576,8 +617,7 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 		dmu_tx_hold_sa(tx, zp->z_sa_hdl, B_FALSE);
 		dmu_buf_impl_t *db = (dmu_buf_impl_t *)sa_get_db(zp->z_sa_hdl);
 		DB_DNODE_ENTER(db);
-		dmu_tx_hold_write_by_dnode(tx, DB_DNODE(db), woff,
-		    MIN(n, max_blksz));
+		dmu_tx_hold_write_by_dnode(tx, DB_DNODE(db), woff, nbytes);
 		DB_DNODE_EXIT(db);
 		zfs_sa_upgrade_txholds(tx, zp);
 		error = dmu_tx_assign(tx, TXG_WAIT);
@@ -600,30 +640,9 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 		 * shrink down lr_length to the appropriate size.
 		 */
 		if (lr->lr_length == UINT64_MAX) {
-			uint64_t new_blksz;
-
-			if (zp->z_blksz > max_blksz) {
-				/*
-				 * File's blocksize is already larger than the
-				 * "recordsize" property.  Only let it grow to
-				 * the next power of 2.
-				 */
-				ASSERT(!ISP2(zp->z_blksz));
-				new_blksz = MIN(end_size,
-				    1 << highbit64(zp->z_blksz));
-			} else {
-				new_blksz = MIN(end_size, max_blksz);
-			}
-			zfs_grow_blocksize(zp, new_blksz, tx);
+			zfs_grow_blocksize(zp, blksz, tx);
 			zfs_rangelock_reduce(lr, woff, n);
 		}
-
-		/*
-		 * XXX - should we really limit each write to z_max_blksz?
-		 * Perhaps we should use SPA_MAXBLOCKSIZE chunks?
-		 */
-		const ssize_t nbytes =
-		    MIN(n, max_blksz - P2PHASE(woff, max_blksz));
 
 		ssize_t tx_bytes;
 		if (abuf == NULL) {
@@ -644,12 +663,8 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 				 * zfs_uio_prefaultpages, or prefaultpages may
 				 * error, and we may break the loop early.
 				 */
-				if (tx_bytes != zfs_uio_resid(uio))
-					n -= tx_bytes - zfs_uio_resid(uio);
-				if (zfs_uio_prefaultpages(MIN(n, max_blksz),
-				    uio)) {
-					break;
-				}
+				n -= tx_bytes - zfs_uio_resid(uio);
+				pfbytes -= tx_bytes - zfs_uio_resid(uio);
 				continue;
 			}
 #endif
@@ -665,15 +680,6 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 			}
 			tx_bytes -= zfs_uio_resid(uio);
 		} else {
-			/* Implied by abuf != NULL: */
-			ASSERT3S(n, >=, max_blksz);
-			ASSERT0(P2PHASE(woff, max_blksz));
-			/*
-			 * We can simplify nbytes to MIN(n, max_blksz) since
-			 * P2PHASE(woff, max_blksz) is 0, and knowing
-			 * n >= max_blksz lets us simplify further:
-			 */
-			ASSERT3S(nbytes, ==, max_blksz);
 			/*
 			 * Thus, we're writing a full block at a block-aligned
 			 * offset and extending the file past EOF.
@@ -749,7 +755,7 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 		 * zfs_clear_setid_bits_if_necessary must precede any of
 		 * the TX_WRITE records logged here.
 		 */
-		zfs_log_write(zilog, tx, TX_WRITE, zp, woff, tx_bytes, ioflag,
+		zfs_log_write(zilog, tx, TX_WRITE, zp, woff, tx_bytes, commit,
 		    NULL, NULL);
 
 		dmu_tx_commit(tx);
@@ -758,13 +764,7 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 			break;
 		ASSERT3S(tx_bytes, ==, nbytes);
 		n -= nbytes;
-
-		if (n > 0) {
-			if (zfs_uio_prefaultpages(MIN(n, max_blksz), uio)) {
-				error = SET_ERROR(EFAULT);
-				break;
-			}
-		}
+		pfbytes -= nbytes;
 	}
 
 	zfs_znode_update_vfs(zp);
@@ -781,8 +781,7 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 		return (error);
 	}
 
-	if (ioflag & (O_SYNC | O_DSYNC) ||
-	    zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
+	if (commit)
 		zil_commit(zilog, zp->z_id);
 
 	const int64_t nwritten = start_resid - zfs_uio_resid(uio);
@@ -814,11 +813,11 @@ zfs_setsecattr(znode_t *zp, vsecattr_t *vsecp, int flag, cred_t *cr)
 	zfsvfs_t *zfsvfs = ZTOZSB(zp);
 	int error;
 	boolean_t skipaclchk = (flag & ATTR_NOACLCHECK) ? B_TRUE : B_FALSE;
-	zilog_t	*zilog = zfsvfs->z_log;
+	zilog_t	*zilog;
 
 	if ((error = zfs_enter_verify_zp(zfsvfs, zp, FTAG)) != 0)
 		return (error);
-
+	zilog = zfsvfs->z_log;
 	error = zfs_setacl(zp, vsecp, skipaclchk, cr);
 
 	if (zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
@@ -853,7 +852,6 @@ zfs_get_data(void *arg, uint64_t gen, lr_write_t *lr, char *buf,
 	uint64_t zp_gen;
 
 	ASSERT3P(lwb, !=, NULL);
-	ASSERT3P(zio, !=, NULL);
 	ASSERT3U(size, !=, 0);
 
 	/*
@@ -903,6 +901,7 @@ zfs_get_data(void *arg, uint64_t gen, lr_write_t *lr, char *buf,
 		}
 		ASSERT(error == 0 || error == ENOENT);
 	} else { /* indirect write */
+		ASSERT3P(zio, !=, NULL);
 		/*
 		 * Have to lock the whole block to ensure when it's
 		 * written out and its checksum is being calculated
@@ -931,8 +930,8 @@ zfs_get_data(void *arg, uint64_t gen, lr_write_t *lr, char *buf,
 		}
 #endif
 		if (error == 0)
-			error = dmu_buf_hold(os, object, offset, zgd, &db,
-			    DMU_READ_NO_PREFETCH);
+			error = dmu_buf_hold_noread(os, object, offset, zgd,
+			    &db);
 
 		if (error == 0) {
 			blkptr_t *bp = &lr->lr_blkptr;
@@ -1042,6 +1041,10 @@ zfs_exit_two(zfsvfs_t *zfsvfs1, zfsvfs_t *zfsvfs2, const char *tag)
  *
  * On success, the function return the number of bytes copied in *lenp.
  * Note, it doesn't return how much bytes are left to be copied.
+ * On errors which are caused by any file system limitations or
+ * brt limitations `EINVAL` is returned. In the most cases a user
+ * requested bad parameters, it could be possible to clone the file but
+ * some parameters don't match the requirements.
  */
 int
 zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
@@ -1064,6 +1067,7 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 	size_t		maxblocks, nbps;
 	uint_t		inblksz;
 	uint64_t	clear_setid_bits_txg = 0;
+	uint64_t	last_synced_txg = 0;
 
 	inoff = *inoffp;
 	outoff = *outoffp;
@@ -1092,7 +1096,36 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 		return (SET_ERROR(EXDEV));
 	}
 
+	/*
+	 * outos and inos belongs to the same storage pool.
+	 * see a few lines above, only one check.
+	 */
+	if (!spa_feature_is_enabled(dmu_objset_spa(outos),
+	    SPA_FEATURE_BLOCK_CLONING)) {
+		zfs_exit_two(inzfsvfs, outzfsvfs, FTAG);
+		return (SET_ERROR(EOPNOTSUPP));
+	}
+
 	ASSERT(!outzfsvfs->z_replay);
+
+	/*
+	 * Block cloning from an unencrypted dataset into an encrypted
+	 * dataset and vice versa is not supported.
+	 */
+	if (inos->os_encrypted != outos->os_encrypted) {
+		zfs_exit_two(inzfsvfs, outzfsvfs, FTAG);
+		return (SET_ERROR(EXDEV));
+	}
+
+	/*
+	 * Cloning across encrypted datasets is possible only if they
+	 * share the same master key.
+	 */
+	if (inos != outos && inos->os_encrypted &&
+	    !dmu_objset_crypto_key_equal(inos, outos)) {
+		zfs_exit_two(inzfsvfs, outzfsvfs, FTAG);
+		return (SET_ERROR(EXDEV));
+	}
 
 	error = zfs_verify_zp(inzp);
 	if (error == 0)
@@ -1100,12 +1133,6 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 	if (error != 0) {
 		zfs_exit_two(inzfsvfs, outzfsvfs, FTAG);
 		return (error);
-	}
-
-	if (!spa_feature_is_enabled(dmu_objset_spa(outos),
-	    SPA_FEATURE_BLOCK_CLONING)) {
-		zfs_exit_two(inzfsvfs, outzfsvfs, FTAG);
-		return (SET_ERROR(EXDEV));
 	}
 
 	/*
@@ -1178,10 +1205,28 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 	inblksz = inzp->z_blksz;
 
 	/*
-	 * We cannot clone into files with different block size.
+	 * We cannot clone into a file with different block size if we can't
+	 * grow it (block size is already bigger, has more than one block, or
+	 * not locked for growth).  There are other possible reasons for the
+	 * grow to fail, but we cover what we can before opening transaction
+	 * and the rest detect after we try to do it.
 	 */
-	if (inblksz != outzp->z_blksz && outzp->z_size > inblksz) {
-		error = SET_ERROR(EXDEV);
+	if (inblksz < outzp->z_blksz) {
+		error = SET_ERROR(EINVAL);
+		goto unlock;
+	}
+	if (inblksz != outzp->z_blksz && (outzp->z_size > outzp->z_blksz ||
+	    outlr->lr_length != UINT64_MAX)) {
+		error = SET_ERROR(EINVAL);
+		goto unlock;
+	}
+
+	/*
+	 * Block size must be power-of-2 if destination offset != 0.
+	 * There can be no multiple blocks of non-power-of-2 size.
+	 */
+	if (outoff != 0 && !ISP2(inblksz)) {
+		error = SET_ERROR(EINVAL);
 		goto unlock;
 	}
 
@@ -1189,7 +1234,7 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 	 * Offsets and len must be at block boundries.
 	 */
 	if ((inoff % inblksz) != 0 || (outoff % inblksz) != 0) {
-		error = SET_ERROR(EXDEV);
+		error = SET_ERROR(EINVAL);
 		goto unlock;
 	}
 	/*
@@ -1197,7 +1242,20 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 	 */
 	if ((len % inblksz) != 0 &&
 	    (len < inzp->z_size - inoff || len < outzp->z_size - outoff)) {
-		error = SET_ERROR(EXDEV);
+		error = SET_ERROR(EINVAL);
+		goto unlock;
+	}
+
+	/*
+	 * If we are copying only one block and it is smaller than recordsize
+	 * property, do not allow destination to grow beyond one block if it
+	 * is not there yet.  Otherwise the destination will get stuck with
+	 * that block size forever, that can be as small as 512 bytes, no
+	 * matter how big the destination grow later.
+	 */
+	if (len <= inblksz && inblksz < outzfsvfs->z_max_blksz &&
+	    outzp->z_size <= inblksz && outoff + len > inblksz) {
+		error = SET_ERROR(EINVAL);
 		goto unlock;
 	}
 
@@ -1226,7 +1284,7 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 	gid = KGID_TO_SGID(ZTOGID(outzp));
 	projid = outzp->z_projid;
 
-	bps = kmem_alloc(sizeof (bps[0]) * maxblocks, KM_SLEEP);
+	bps = vmem_alloc(sizeof (bps[0]) * maxblocks, KM_SLEEP);
 
 	/*
 	 * Clone the file in reasonable size chunks.  Each chunk is cloned
@@ -1248,32 +1306,24 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 		}
 
 		nbps = maxblocks;
+		last_synced_txg = spa_last_synced_txg(dmu_objset_spa(inos));
 		error = dmu_read_l0_bps(inos, inzp->z_id, inoff, size, bps,
 		    &nbps);
 		if (error != 0) {
 			/*
-			 * If we are tyring to clone a block that was created
-			 * in the current transaction group. Return an error,
-			 * so the caller can fallback to just copying the data.
+			 * If we are trying to clone a block that was created
+			 * in the current transaction group, the error will be
+			 * EAGAIN here.  Based on zfs_bclone_wait_dirty either
+			 * return a shortened range to the caller so it can
+			 * fallback, or wait for the next TXG and check again.
 			 */
-			if (error == EAGAIN) {
-				error = SET_ERROR(EXDEV);
+			if (error == EAGAIN && zfs_bclone_wait_dirty) {
+				txg_wait_synced(dmu_objset_pool(inos),
+				    last_synced_txg + 1);
+				continue;
 			}
+
 			break;
-		}
-		/*
-		 * Encrypted data is fine as long as it comes from the same
-		 * dataset.
-		 * TODO: We want to extend it in the future to allow cloning to
-		 * datasets with the same keys, like clones or to be able to
-		 * clone a file from a snapshot of an encrypted dataset into the
-		 * dataset itself.
-		 */
-		if (BP_IS_PROTECTED(&bps[0])) {
-			if (inzfsvfs != outzfsvfs) {
-				error = SET_ERROR(EXDEV);
-				break;
-			}
 		}
 
 		/*
@@ -1293,12 +1343,24 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 		}
 
 		/*
-		 * Copy source znode's block size. This only happens on the
-		 * first iteration since zfs_rangelock_reduce() will shrink down
-		 * lr_len to the appropriate size.
+		 * Copy source znode's block size. This is done only if the
+		 * whole znode is locked (see zfs_rangelock_cb()) and only
+		 * on the first iteration since zfs_rangelock_reduce() will
+		 * shrink down lr_length to the appropriate size.
 		 */
 		if (outlr->lr_length == UINT64_MAX) {
 			zfs_grow_blocksize(outzp, inblksz, tx);
+
+			/*
+			 * Block growth may fail for many reasons we can not
+			 * predict here.  If it happen the cloning is doomed.
+			 */
+			if (inblksz != outzp->z_blksz) {
+				error = SET_ERROR(EINVAL);
+				dmu_tx_abort(tx);
+				break;
+			}
+
 			/*
 			 * Round range lock up to the block boundary, so we
 			 * prevent appends until we are done.
@@ -1308,10 +1370,14 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 		}
 
 		error = dmu_brt_clone(outos, outzp->z_id, outoff, size, tx,
-		    bps, nbps, B_FALSE);
+		    bps, nbps);
 		if (error != 0) {
 			dmu_tx_commit(tx);
 			break;
+		}
+
+		if (zn_has_cached_data(outzp, outoff, outoff + size - 1)) {
+			update_pages(outzp, outoff, size, outos);
 		}
 
 		zfs_clear_setid_bits_if_necessary(outzfsvfs, outzp, cr,
@@ -1344,7 +1410,7 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 		done += size;
 	}
 
-	kmem_free(bps, sizeof (bps[0]) * maxblocks);
+	vmem_free(bps, sizeof (bps[0]) * maxblocks);
 	zfs_znode_update_vfs(outzp);
 
 unlock:
@@ -1366,6 +1432,12 @@ unlock:
 		*inoffp += done;
 		*outoffp += done;
 		*lenp = done;
+	} else {
+		/*
+		 * If we made no progress, there must be a good reason.
+		 * EOF is handled explicitly above, before the loop.
+		 */
+		ASSERT3S(error, !=, 0);
 	}
 
 	zfs_exit_two(inzfsvfs, outzfsvfs, FTAG);
@@ -1436,7 +1508,7 @@ zfs_clone_range_replay(znode_t *zp, uint64_t off, uint64_t len, uint64_t blksz,
 	if (zp->z_blksz < blksz)
 		zfs_grow_blocksize(zp, blksz, tx);
 
-	dmu_brt_clone(zfsvfs->z_os, zp->z_id, off, len, tx, bps, nbps, B_TRUE);
+	dmu_brt_clone(zfsvfs->z_os, zp->z_id, off, len, tx, bps, nbps);
 
 	zfs_tstamp_update_setup(zp, CONTENT_MODIFIED, mtime, ctime);
 
@@ -1472,3 +1544,9 @@ EXPORT_SYMBOL(zfs_clone_range_replay);
 
 ZFS_MODULE_PARAM(zfs_vnops, zfs_vnops_, read_chunk_size, U64, ZMOD_RW,
 	"Bytes to read per chunk");
+
+ZFS_MODULE_PARAM(zfs, zfs_, bclone_enabled, INT, ZMOD_RW,
+	"Enable block cloning");
+
+ZFS_MODULE_PARAM(zfs, zfs_, bclone_wait_dirty, INT, ZMOD_RW,
+	"Wait for dirty blocks when cloning");

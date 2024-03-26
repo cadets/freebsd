@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 #
 # Warning flags for compiling the kernel and components of the kernel:
@@ -7,7 +6,7 @@ CWARNFLAGS?=	-Wall -Wstrict-prototypes \
 		-Wmissing-prototypes -Wpointer-arith -Wcast-qual \
 		-Wundef -Wno-pointer-sign ${FORMAT_EXTENSIONS} \
 		-Wmissing-include-dirs -fdiagnostics-show-option \
-		-Wno-unknown-pragmas \
+		-Wno-unknown-pragmas -Wswitch \
 		${CWARNEXTRA}
 #
 # The following flags are next up for working on:
@@ -77,6 +76,7 @@ CWARNEXTRA+=	-Wno-error=packed-not-aligned
 .endif
 .if ${COMPILER_VERSION} >= 90100
 CWARNEXTRA+=	-Wno-address-of-packed-member			\
+		-Wno-alloc-size-larger-than			\
 		-Wno-error=alloca-larger-than=
 .if ${COMPILER_VERSION} >= 120100
 CWARNEXTRA+=	-Wno-error=nonnull				\
@@ -141,6 +141,8 @@ INLINE_LIMIT?=	8000
 CFLAGS += -mgeneral-regs-only
 # Reserve x18 for pcpu data
 CFLAGS += -ffixed-x18
+# Build with BTI+PAC
+CFLAGS += -mbranch-protection=standard
 INLINE_LIMIT?=	8000
 .endif
 
@@ -243,21 +245,23 @@ CFLAGS+=	-mretpoline
 #
 # Initialize stack variables on function entry
 #
-.if ${MK_INIT_ALL_ZERO} == "yes"
+.if ${OPT_INIT_ALL} != "none"
 .if ${COMPILER_FEATURES:Minit-all}
-CFLAGS+= -ftrivial-auto-var-init=zero
-.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} < 160000
+CFLAGS+= -ftrivial-auto-var-init=${OPT_INIT_ALL}
+.if ${OPT_INIT_ALL} == "zero" && ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} < 160000
 CFLAGS+= -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang
 .endif
 .else
-.warning InitAll (zeros) requested but not supported by compiler
+.warning INIT_ALL (${OPT_INIT_ALL}) requested but not supported by compiler
 .endif
-.elif ${MK_INIT_ALL_PATTERN} == "yes"
-.if ${COMPILER_FEATURES:Minit-all}
-CFLAGS+= -ftrivial-auto-var-init=pattern
-.else
-.warning InitAll (pattern) requested but not support by compiler
 .endif
+
+#
+# Some newer toolchains default to DWARF 5, which isn't supported by some build
+# tools yet.
+#
+.if (${CFLAGS:M-g} != "" || ${CFLAGS:M-g[0-3]} != "") && ${CFLAGS:M-gdwarf*} == ""
+CFLAGS+=	-gdwarf-4
 .endif
 
 CFLAGS+= ${CWARNFLAGS:M*} ${CWARNFLAGS.${.IMPSRC:T}}
@@ -278,7 +282,7 @@ PHONY_NOTMAIN = afterdepend afterinstall all beforedepend beforeinstall \
 .PHONY: ${PHONY_NOTMAIN}
 .NOTMAIN: ${PHONY_NOTMAIN}
 
-CSTD=		c99
+CSTD?=		gnu99
 
 .if ${CSTD} == "k&r"
 CFLAGS+=        -traditional

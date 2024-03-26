@@ -26,10 +26,6 @@
  * SUCH DAMAGE.
  */
 
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/elf.h>
 #include <sys/errno.h>
 #include <sys/proc.h>
@@ -54,7 +50,7 @@ uint32_t kern_tsc_selector = 0;
 static int
 write(int lfd, const void *lbuf, size_t lsize)
 {
-	register long svc asm("x8") = LINUX_SYS_write;
+	register long svc asm("x8") = LINUX_SYS_linux_write;
 	register int fd asm("x0") = lfd;
 	register const char *buf asm("x1") = lbuf;
 	register long size asm("x2") = lsize;

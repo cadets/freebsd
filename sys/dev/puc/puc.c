@@ -26,9 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -74,7 +71,7 @@ const char puc_driver_name[] = "puc";
 static MALLOC_DEFINE(M_PUC, "PUC", "PUC driver");
 
 SYSCTL_NODE(_hw, OID_AUTO, puc, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
-    "puc(9) driver configuration");
+    "puc(4) driver configuration");
 
 struct puc_bar *
 puc_get_bar(struct puc_softc *sc, int rid)
@@ -529,8 +526,7 @@ puc_bus_alloc_resource(device_t dev, device_t child, int type, int *rid,
 }
 
 int
-puc_bus_release_resource(device_t dev, device_t child, int type, int rid,
-    struct resource *res)
+puc_bus_release_resource(device_t dev, device_t child, struct resource *res)
 {
 	struct puc_port *port;
 	device_t originator;
@@ -545,18 +541,13 @@ puc_bus_release_resource(device_t dev, device_t child, int type, int rid,
 	port = device_get_ivars(child);
 	KASSERT(port != NULL, ("%s %d", __func__, __LINE__));
 
-	if (rid != 0 || res == NULL)
+	if (res == NULL)
 		return (EINVAL);
 
-	if (type == port->p_bar->b_type) {
-		if (res != port->p_rres)
-			return (EINVAL);
-	} else if (type == SYS_RES_IRQ) {
-		if (res != port->p_ires)
-			return (EINVAL);
+	if (res == port->p_ires) {
 		if (port->p_hasintr)
 			return (EBUSY);
-	} else
+	} else if (res != port->p_rres)
 		return (EINVAL);
 
 	if (rman_get_device(res) != originator)

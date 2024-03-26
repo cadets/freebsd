@@ -2,7 +2,6 @@
  * System call prototypes.
  *
  * DO NOT EDIT-- this file is automatically @generated.
- * $FreeBSD$
  */
 
 #ifndef _FREEBSD32_SYSPROTO_H_
@@ -90,7 +89,7 @@ struct freebsd32_getitimer_args {
 struct freebsd32_fcntl_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
 	char cmd_l_[PADL_(int)]; int cmd; char cmd_r_[PADR_(int)];
-	char arg_l_[PADL_(int32_t)]; int32_t arg; char arg_r_[PADR_(int32_t)];
+	char arg_l_[PADL_(intptr_t)]; intptr_t arg; char arg_r_[PADR_(intptr_t)];
 };
 struct freebsd32_select_args {
 	char nd_l_[PADL_(int)]; int nd; char nd_r_[PADR_(int)];
@@ -109,12 +108,12 @@ struct freebsd32_getrusage_args {
 };
 struct freebsd32_readv_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
-	char iovp_l_[PADL_(struct iovec32 *)]; struct iovec32 * iovp; char iovp_r_[PADR_(struct iovec32 *)];
+	char iovp_l_[PADL_(const struct iovec32 *)]; const struct iovec32 * iovp; char iovp_r_[PADR_(const struct iovec32 *)];
 	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
 };
 struct freebsd32_writev_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
-	char iovp_l_[PADL_(struct iovec32 *)]; struct iovec32 * iovp; char iovp_r_[PADR_(struct iovec32 *)];
+	char iovp_l_[PADL_(const struct iovec32 *)]; const struct iovec32 * iovp; char iovp_r_[PADR_(const struct iovec32 *)];
 	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
 };
 struct freebsd32_settimeofday_args {
@@ -295,12 +294,12 @@ struct freebsd32_jail_args {
 };
 struct freebsd32_sigtimedwait_args {
 	char set_l_[PADL_(const sigset_t *)]; const sigset_t * set; char set_r_[PADR_(const sigset_t *)];
-	char info_l_[PADL_(struct siginfo32 *)]; struct siginfo32 * info; char info_r_[PADR_(struct siginfo32 *)];
+	char info_l_[PADL_(struct __siginfo32 *)]; struct __siginfo32 * info; char info_r_[PADR_(struct __siginfo32 *)];
 	char timeout_l_[PADL_(const struct timespec32 *)]; const struct timespec32 * timeout; char timeout_r_[PADR_(const struct timespec32 *)];
 };
 struct freebsd32_sigwaitinfo_args {
 	char set_l_[PADL_(const sigset_t *)]; const sigset_t * set; char set_r_[PADR_(const sigset_t *)];
-	char info_l_[PADL_(struct siginfo32 *)]; struct siginfo32 * info; char info_r_[PADR_(struct siginfo32 *)];
+	char info_l_[PADL_(struct __siginfo32 *)]; struct __siginfo32 * info; char info_r_[PADR_(struct __siginfo32 *)];
 };
 struct freebsd32_aio_waitcomplete_args {
 	char aiocbp_l_[PADL_(uint32_t *)]; uint32_t * aiocbp; char aiocbp_r_[PADR_(uint32_t *)];
@@ -575,7 +574,7 @@ struct freebsd32_wait6_args {
 	char status_l_[PADL_(int *)]; int * status; char status_r_[PADR_(int *)];
 	char options_l_[PADL_(int)]; int options; char options_r_[PADR_(int)];
 	char wrusage_l_[PADL_(struct __wrusage32 *)]; struct __wrusage32 * wrusage; char wrusage_r_[PADR_(struct __wrusage32 *)];
-	char info_l_[PADL_(struct siginfo32 *)]; struct siginfo32 * info; char info_r_[PADR_(struct siginfo32 *)];
+	char info_l_[PADL_(struct __siginfo32 *)]; struct __siginfo32 * info; char info_r_[PADR_(struct __siginfo32 *)];
 };
 struct freebsd32_cap_ioctls_limit_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
@@ -684,6 +683,16 @@ struct freebsd32_aio_writev_args {
 };
 struct freebsd32_aio_readv_args {
 	char aiocbp_l_[PADL_(struct aiocb32 *)]; struct aiocb32 * aiocbp; char aiocbp_r_[PADR_(struct aiocb32 *)];
+};
+struct freebsd32_timerfd_gettime_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char curr_value_l_[PADL_(struct itimerspec32 *)]; struct itimerspec32 * curr_value; char curr_value_r_[PADR_(struct itimerspec32 *)];
+};
+struct freebsd32_timerfd_settime_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char new_value_l_[PADL_(const struct itimerspec32 *)]; const struct itimerspec32 * new_value; char new_value_r_[PADR_(const struct itimerspec32 *)];
+	char old_value_l_[PADL_(struct itimerspec32 *)]; struct itimerspec32 * old_value; char old_value_r_[PADR_(struct itimerspec32 *)];
 };
 int	freebsd32_wait4(struct thread *, struct freebsd32_wait4_args *);
 int	freebsd32_ptrace(struct thread *, struct freebsd32_ptrace_args *);
@@ -800,6 +809,8 @@ int	freebsd32_cpuset_setdomain(struct thread *, struct freebsd32_cpuset_setdomai
 int	freebsd32___sysctlbyname(struct thread *, struct freebsd32___sysctlbyname_args *);
 int	freebsd32_aio_writev(struct thread *, struct freebsd32_aio_writev_args *);
 int	freebsd32_aio_readv(struct thread *, struct freebsd32_aio_readv_args *);
+int	freebsd32_timerfd_gettime(struct thread *, struct freebsd32_timerfd_gettime_args *);
+int	freebsd32_timerfd_settime(struct thread *, struct freebsd32_timerfd_settime_args *);
 
 #ifdef COMPAT_43
 
@@ -1131,6 +1142,12 @@ int	freebsd11_freebsd32_fstatat(struct thread *, struct freebsd11_freebsd32_fsta
 
 #endif /* COMPAT_FREEBSD13 */
 
+
+#ifdef COMPAT_FREEBSD14
+
+
+#endif /* COMPAT_FREEBSD14 */
+
 #define	FREEBSD32_SYS_AUE_freebsd32_wait4	AUE_WAIT4
 #define	FREEBSD32_SYS_AUE_freebsd4_freebsd32_getfsstat	AUE_GETFSSTAT
 #define	FREEBSD32_SYS_AUE_ofreebsd32_lseek	AUE_LSEEK
@@ -1293,6 +1310,8 @@ int	freebsd11_freebsd32_fstatat(struct thread *, struct freebsd11_freebsd32_fsta
 #define	FREEBSD32_SYS_AUE_freebsd32___sysctlbyname	AUE_SYSCTL
 #define	FREEBSD32_SYS_AUE_freebsd32_aio_writev	AUE_AIO_WRITEV
 #define	FREEBSD32_SYS_AUE_freebsd32_aio_readv	AUE_AIO_READV
+#define	FREEBSD32_SYS_AUE_freebsd32_timerfd_gettime	AUE_TIMERFD
+#define	FREEBSD32_SYS_AUE_freebsd32_timerfd_settime	AUE_TIMERFD
 
 #undef PAD_
 #undef PADL_

@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 /*	$KAME: key.c,v 1.191 2001/06/27 10:46:49 sakane Exp $	*/
 
 /*-
@@ -583,7 +582,7 @@ struct sadb_msghdr {
 	int extlen[SADB_EXT_MAX + 1];
 };
 
-static struct supported_ealgs {
+static const struct supported_ealgs {
 	int sadb_alg;
 	const struct enc_xform *xform;
 } supported_ealgs[] = {
@@ -595,7 +594,7 @@ static struct supported_ealgs {
 	{ SADB_X_EALG_CHACHA20POLY1305,	&enc_xform_chacha20_poly1305 },
 };
 
-static struct supported_aalgs {
+static const struct supported_aalgs {
 	int sadb_alg;
 	const struct auth_hash *xform;
 } supported_aalgs[] = {
@@ -610,7 +609,7 @@ static struct supported_aalgs {
 	{ SADB_X_AALG_CHACHA20POLY1305,	&auth_hash_poly1305 },
 };
 
-static struct supported_calgs {
+static const struct supported_calgs {
 	int sadb_alg;
 	const struct comp_algo *xform;
 } supported_calgs[] = {
@@ -5753,6 +5752,7 @@ key_setnatt(struct secasvar *sav, const struct sadb_msghdr *mhp)
 	struct sockaddr *sa;
 	uint32_t addr;
 	uint16_t cksum;
+	int i;
 
 	IPSEC_ASSERT(sav->natt == NULL, ("natt is already initialized"));
 	/*
@@ -5839,51 +5839,116 @@ key_setnatt(struct secasvar *sav, const struct sadb_msghdr *mhp)
 	if (sav->sah->saidx.mode != IPSEC_MODE_TUNNEL) {
 		cksum = 0;
 		if (oai != NULL) {
-			/* Currently we support only AF_INET */
 			sa = (struct sockaddr *)(oai + 1);
-			if (sa->sa_family != AF_INET ||
-			    sa->sa_len != sizeof(struct sockaddr_in)) {
+			switch (sa->sa_family) {
+#ifdef AF_INET
+			case AF_INET:
+				if (sa->sa_len != sizeof(struct sockaddr_in)) {
+					ipseclog((LOG_DEBUG,
+					    "%s: wrong NAT-OAi header.\n",
+					    __func__));
+					return (EINVAL);
+				}
+				/* Ignore address if it the same */
+				if (((struct sockaddr_in *)sa)->sin_addr.s_addr !=
+				    sav->sah->saidx.src.sin.sin_addr.s_addr) {
+					bcopy(sa, &sav->natt->oai.sa, sa->sa_len);
+					sav->natt->flags |= IPSEC_NATT_F_OAI;
+					/* Calculate checksum delta */
+					addr = sav->sah->saidx.src.sin.sin_addr.s_addr;
+					cksum = in_addword(cksum, ~addr >> 16);
+					cksum = in_addword(cksum, ~addr & 0xffff);
+					addr = sav->natt->oai.sin.sin_addr.s_addr;
+					cksum = in_addword(cksum, addr >> 16);
+					cksum = in_addword(cksum, addr & 0xffff);
+				}
+				break;
+#endif
+#ifdef AF_INET6
+			case AF_INET6:
+				if (sa->sa_len != sizeof(struct sockaddr_in6)) {
+					ipseclog((LOG_DEBUG,
+					    "%s: wrong NAT-OAi header.\n",
+					    __func__));
+					return (EINVAL);
+				}
+				/* Ignore address if it the same */
+				if (memcmp(&((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr,
+				    &sav->sah->saidx.src.sin6.sin6_addr.s6_addr,
+				    sizeof(struct in6_addr)) != 0) {
+					bcopy(sa, &sav->natt->oai.sa, sa->sa_len);
+					sav->natt->flags |= IPSEC_NATT_F_OAI;
+					/* Calculate checksum delta */
+					for (i = 0; i < 8; i++) {
+						cksum = in_addword(cksum,
+						  ~sav->sah->saidx.src.sin6.sin6_addr.s6_addr16[i]);
+						cksum = in_addword(cksum,
+						   sav->natt->oai.sin6.sin6_addr.s6_addr16[i]);
+					}
+				}
+				break;
+#endif
+			default:
 				ipseclog((LOG_DEBUG,
 				    "%s: wrong NAT-OAi header.\n",
 				    __func__));
 				return (EINVAL);
 			}
-			/* Ignore address if it the same */
-			if (((struct sockaddr_in *)sa)->sin_addr.s_addr !=
-			    sav->sah->saidx.src.sin.sin_addr.s_addr) {
-				bcopy(sa, &sav->natt->oai.sa, sa->sa_len);
-				sav->natt->flags |= IPSEC_NATT_F_OAI;
-				/* Calculate checksum delta */
-				addr = sav->sah->saidx.src.sin.sin_addr.s_addr;
-				cksum = in_addword(cksum, ~addr >> 16);
-				cksum = in_addword(cksum, ~addr & 0xffff);
-				addr = sav->natt->oai.sin.sin_addr.s_addr;
-				cksum = in_addword(cksum, addr >> 16);
-				cksum = in_addword(cksum, addr & 0xffff);
-			}
 		}
 		if (oar != NULL) {
-			/* Currently we support only AF_INET */
 			sa = (struct sockaddr *)(oar + 1);
-			if (sa->sa_family != AF_INET ||
-			    sa->sa_len != sizeof(struct sockaddr_in)) {
+			switch (sa->sa_family) {
+#ifdef AF_INET
+			case AF_INET:
+				if (sa->sa_len != sizeof(struct sockaddr_in)) {
+					ipseclog((LOG_DEBUG,
+					    "%s: wrong NAT-OAr header.\n",
+					    __func__));
+					return (EINVAL);
+				}
+				/* Ignore address if it the same */
+				if (((struct sockaddr_in *)sa)->sin_addr.s_addr !=
+				    sav->sah->saidx.dst.sin.sin_addr.s_addr) {
+					bcopy(sa, &sav->natt->oar.sa, sa->sa_len);
+					sav->natt->flags |= IPSEC_NATT_F_OAR;
+					/* Calculate checksum delta */
+					addr = sav->sah->saidx.dst.sin.sin_addr.s_addr;
+					cksum = in_addword(cksum, ~addr >> 16);
+					cksum = in_addword(cksum, ~addr & 0xffff);
+					addr = sav->natt->oar.sin.sin_addr.s_addr;
+					cksum = in_addword(cksum, addr >> 16);
+					cksum = in_addword(cksum, addr & 0xffff);
+				}
+				break;
+#endif
+#ifdef AF_INET6
+			case AF_INET6:
+				if (sa->sa_len != sizeof(struct sockaddr_in6)) {
+					ipseclog((LOG_DEBUG,
+					    "%s: wrong NAT-OAr header.\n",
+					    __func__));
+					return (EINVAL);
+				}
+				/* Ignore address if it the same */
+				if (memcmp(&((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr,
+				           &sav->sah->saidx.dst.sin6.sin6_addr.s6_addr, 16) != 0) {
+					bcopy(sa, &sav->natt->oar.sa, sa->sa_len);
+					sav->natt->flags |= IPSEC_NATT_F_OAR;
+					/* Calculate checksum delta */
+					for (i = 0; i < 8; i++) {
+						cksum = in_addword(cksum,
+						   ~sav->sah->saidx.dst.sin6.sin6_addr.s6_addr16[i]);
+						cksum = in_addword(cksum,
+						   sav->natt->oar.sin6.sin6_addr.s6_addr16[i]);
+					}
+				}
+				break;
+#endif
+			default:
 				ipseclog((LOG_DEBUG,
 				    "%s: wrong NAT-OAr header.\n",
 				    __func__));
 				return (EINVAL);
-			}
-			/* Ignore address if it the same */
-			if (((struct sockaddr_in *)sa)->sin_addr.s_addr !=
-			    sav->sah->saidx.dst.sin.sin_addr.s_addr) {
-				bcopy(sa, &sav->natt->oar.sa, sa->sa_len);
-				sav->natt->flags |= IPSEC_NATT_F_OAR;
-				/* Calculate checksum delta */
-				addr = sav->sah->saidx.dst.sin.sin_addr.s_addr;
-				cksum = in_addword(cksum, ~addr >> 16);
-				cksum = in_addword(cksum, ~addr & 0xffff);
-				addr = sav->natt->oar.sin.sin_addr.s_addr;
-				cksum = in_addword(cksum, addr >> 16);
-				cksum = in_addword(cksum, addr & 0xffff);
 			}
 		}
 		sav->natt->cksum = cksum;

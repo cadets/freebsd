@@ -49,9 +49,6 @@
  * specified device.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -86,6 +83,7 @@ typedef enum {
 	VENDOR_SAMSUNG,
 	VENDOR_SEAGATE,
 	VENDOR_SMART,
+	VENDOR_TOSHIBA,
 	VENDOR_ATA,
 	VENDOR_UNKNOWN
 } fw_vendor_t;
@@ -167,8 +165,8 @@ struct fw_vendor {
 	const char *pattern;
 	int dev_type;
 	int max_pkt_size;
-	u_int8_t cdb_byte2;
-	u_int8_t cdb_byte2_last;
+	uint8_t cdb_byte2;
+	uint8_t cdb_byte2_last;
 	int inc_cdb_buffer_id;
 	int inc_cdb_offset;
 	fw_tur_status tur_status;
@@ -214,6 +212,8 @@ static struct fw_vendor vendors_list[] = {
 	{VENDOR_SEAGATE,	"SEAGATE",	T_ANY,
 	0x8000, 0x07, 0x07, 0, 1, FW_TUR_READY, WB_TIMEOUT, FW_TIMEOUT_DEFAULT},
 	{VENDOR_SMART,		"SmrtStor",	T_DIRECT,
+	0x8000, 0x07, 0x07, 0, 1, FW_TUR_READY, WB_TIMEOUT, FW_TIMEOUT_DEFAULT},
+	{VENDOR_TOSHIBA,	"TOSHIBA",	T_DIRECT,
 	0x8000, 0x07, 0x07, 0, 1, FW_TUR_READY, WB_TIMEOUT, FW_TIMEOUT_DEFAULT},
 	{VENDOR_HGST,	 	"WD",		T_DIRECT,
 	0x1000, 0x07, 0x07, 1, 0, FW_TUR_READY, WB_TIMEOUT, FW_TIMEOUT_DEFAULT},
@@ -474,7 +474,7 @@ fw_validate_ibm(struct cam_device *dev, int retry_count, int timeout, int fd,
 		     /*retries*/ retry_count,
 		     /*cbfcnp*/ NULL,
 		     /* tag_action */ MSG_SIMPLE_Q_TAG,
-		     /* inq_buf */ (u_int8_t *)&vpd_page,
+		     /* inq_buf */ (uint8_t *)&vpd_page,
 		     /* inq_len */ sizeof(vpd_page),
 		     /* evpd */ 1,
 		     /* page_code */ SVPD_IBM_FW_DESIGNATION,
@@ -832,9 +832,9 @@ fw_download_img(struct cam_device *cam_dev, struct fw_vendor *vp,
 	union ccb *ccb = NULL;
 	int pkt_count = 0;
 	int max_pkt_size;
-	u_int32_t pkt_size = 0;
+	uint32_t pkt_size = 0;
 	char *pkt_ptr = buf;
-	u_int32_t offset;
+	uint32_t offset;
 	int last_pkt = 0;
 	int retval = 0;
 

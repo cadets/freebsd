@@ -1,4 +1,3 @@
-# $FreeBSD$
 #
 # module_name	symbol_name
 all	_ahstat
@@ -32,6 +31,7 @@ all	_nws_array
 all	_nws_count
 all	_pfkeystat
 all	_pfsyncstats
+all	_pflowstats
 all	_pim6stat
 all	_pimstat
 all	_rip6stat

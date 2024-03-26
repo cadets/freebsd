@@ -53,8 +53,6 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 #ifndef _OPENFIRM_H_
 #define	_OPENFIRM_H_
@@ -62,7 +60,6 @@
  * Prototypes for Open Firmware Interface Routines
  */
 
-#include <sys/cdefs.h>
 #include <sys/types.h>
 
 typedef uint32_t		ihandle_t;

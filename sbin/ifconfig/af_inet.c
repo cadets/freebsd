@@ -29,11 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char rcsid[] =
-  "$FreeBSD$";
-#endif /* not lint */
-
 #include <sys/param.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -105,20 +100,20 @@ in_status(if_ctx *ctx __unused, const struct ifaddrs *ifa)
 {
 	struct sockaddr_in *sin, null_sin = {};
 
-	sin = (struct sockaddr_in *)ifa->ifa_addr;
+	sin = satosin(ifa->ifa_addr);
 	if (sin == NULL)
 		return;
 
 	print_addr(sin);
 
 	if (ifa->ifa_flags & IFF_POINTOPOINT) {
-		sin = (struct sockaddr_in *)ifa->ifa_dstaddr;
+		sin = satosin(ifa->ifa_dstaddr);
 		if (sin == NULL)
 			sin = &null_sin;
 		printf(" --> %s", inet_ntoa(sin->sin_addr));
 	}
 
-	sin = (struct sockaddr_in *)ifa->ifa_netmask;
+	sin = satosin(ifa->ifa_netmask);
 	if (sin == NULL)
 		sin = &null_sin;
 	if (f_inet != NULL && strcmp(f_inet, "cidr") == 0) {
@@ -139,12 +134,12 @@ in_status(if_ctx *ctx __unused, const struct ifaddrs *ifa)
 		printf(" netmask 0x%lx", (unsigned long)ntohl(sin->sin_addr.s_addr));
 
 	if (ifa->ifa_flags & IFF_BROADCAST) {
-		sin = (struct sockaddr_in *)ifa->ifa_broadaddr;
+		sin = satosin(ifa->ifa_broadaddr);
 		if (sin != NULL && sin->sin_addr.s_addr != 0)
 			printf(" broadcast %s", inet_ntoa(sin->sin_addr));
 	}
 
-	print_vhid(ifa, " ");
+	print_vhid(ifa);
 
 	putchar('\n');
 }
@@ -202,7 +197,7 @@ static struct sockaddr_in *sintab[] = {
 };
 
 static void
-in_copyaddr(if_ctx *ctx, int to, int from)
+in_copyaddr(if_ctx *ctx __unused, int to, int from)
 {
 	memcpy(sintab[to], sintab[from], sizeof(struct sockaddr_in));
 }
@@ -263,7 +258,7 @@ static struct in_px *sintab_nl[] = {
 };
 
 static void
-in_copyaddr(if_ctx *ctx, int to, int from)
+in_copyaddr(if_ctx *ctx __unused, int to, int from)
 {
 	sintab_nl[to]->addr = sintab_nl[from]->addr;
 	sintab_nl[to]->addrset = sintab_nl[from]->addrset;
@@ -347,7 +342,7 @@ in_delete_first_nl(if_ctx *ctx)
 	struct snl_state *ss = ctx->io_ss;
 	bool found = false;
 
-	uint32_t ifindex = if_nametoindex_nl(ss, name);
+	uint32_t ifindex = if_nametoindex_nl(ss, ctx->ifname);
 	if (ifindex == 0) {
 		/* No interface with the desired name, nothing to delete */
 		return (EADDRNOTAVAIL);
@@ -360,7 +355,7 @@ in_delete_first_nl(if_ctx *ctx)
 	ifahdr->ifa_family = AF_INET;
 	ifahdr->ifa_index = ifindex;
 
-	if (!snl_finalize_msg(&nw) || !snl_send_message(ss, hdr))
+	if (! (hdr = snl_finalize_msg(&nw)) || !snl_send_message(ss, hdr))
 		return (EINVAL);
 
 	nlmsg_seq = hdr->nlmsg_seq;
@@ -391,7 +386,7 @@ in_delete_first_nl(if_ctx *ctx)
 	ifahdr->ifa_index = ifindex;
 	snl_add_msg_attr_ip4(&nw, IFA_LOCAL, &addr);
 
-	if (!snl_finalize_msg(&nw) || !snl_send_message(ss, hdr))
+	if (! (hdr = snl_finalize_msg(&nw)) || !snl_send_message(ss, hdr))
 		return (EINVAL);
 	memset(&e, 0, sizeof(e));
 	snl_read_reply_code(ss, hdr->nlmsg_seq, &e);
@@ -417,7 +412,7 @@ in_exec_nl(if_ctx *ctx, unsigned long action, void *data)
 
 	ifahdr->ifa_family = AF_INET;
 	ifahdr->ifa_prefixlen = pdata->addr.plen;
-	ifahdr->ifa_index = if_nametoindex_nl(ctx->io_ss, name);
+	ifahdr->ifa_index = if_nametoindex_nl(ctx->io_ss, ctx->ifname);
 
 	snl_add_msg_attr_ip4(&nw, IFA_LOCAL, &pdata->addr.addr);
 	if (action == NL_RTM_NEWADDR && pdata->dst_addr.addrset)
@@ -431,7 +426,7 @@ in_exec_nl(if_ctx *ctx, unsigned long action, void *data)
 		snl_add_msg_attr_u32(&nw, IFAF_VHID, pdata->vhid);
 	snl_end_attr_nested(&nw, off);
 
-	if (!snl_finalize_msg(&nw) || !snl_send_message(ctx->io_ss, hdr))
+	if (! (hdr = snl_finalize_msg(&nw)) || !snl_send_message(ctx->io_ss, hdr))
 		return (0);
 
 	struct snl_errmsg_data e = {};
@@ -490,7 +485,7 @@ in_postproc(if_ctx *ctx __unused, int newaddr, int ifflags)
 }
 
 static void
-in_status_tunnel(int s)
+in_status_tunnel(if_ctx *ctx)
 {
 	char src[NI_MAXHOST];
 	char dst[NI_MAXHOST];
@@ -498,16 +493,16 @@ in_status_tunnel(int s)
 	const struct sockaddr *sa = (const struct sockaddr *) &ifr.ifr_addr;
 
 	memset(&ifr, 0, sizeof(ifr));
-	strlcpy(ifr.ifr_name, name, IFNAMSIZ);
+	strlcpy(ifr.ifr_name, ctx->ifname, IFNAMSIZ);
 
-	if (ioctl(s, SIOCGIFPSRCADDR, (caddr_t)&ifr) < 0)
+	if (ioctl_ctx(ctx, SIOCGIFPSRCADDR, (caddr_t)&ifr) < 0)
 		return;
 	if (sa->sa_family != AF_INET)
 		return;
 	if (getnameinfo(sa, sa->sa_len, src, sizeof(src), 0, 0, NI_NUMERICHOST) != 0)
 		src[0] = '\0';
 
-	if (ioctl(s, SIOCGIFPDSTADDR, (caddr_t)&ifr) < 0)
+	if (ioctl_ctx(ctx, SIOCGIFPDSTADDR, (caddr_t)&ifr) < 0)
 		return;
 	if (sa->sa_family != AF_INET)
 		return;
@@ -518,16 +513,16 @@ in_status_tunnel(int s)
 }
 
 static void
-in_set_tunnel(int s, struct addrinfo *srcres, struct addrinfo *dstres)
+in_set_tunnel(if_ctx *ctx, struct addrinfo *srcres, struct addrinfo *dstres)
 {
 	struct in_aliasreq addreq;
 
 	memset(&addreq, 0, sizeof(addreq));
-	strlcpy(addreq.ifra_name, name, IFNAMSIZ);
+	strlcpy(addreq.ifra_name, ctx->ifname, IFNAMSIZ);
 	memcpy(&addreq.ifra_addr, srcres->ai_addr, srcres->ai_addr->sa_len);
 	memcpy(&addreq.ifra_dstaddr, dstres->ai_addr, dstres->ai_addr->sa_len);
 
-	if (ioctl(s, SIOCSIFPHYADDR, &addreq) < 0)
+	if (ioctl_ctx(ctx, SIOCSIFPHYADDR, &addreq) < 0)
 		warn("SIOCSIFPHYADDR");
 }
 

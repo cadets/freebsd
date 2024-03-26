@@ -1240,12 +1240,18 @@ zfs_prune_aliases(zfsvfs_t *zfsvfs, unsigned long nr_to_scan)
  * and inode caches.  This can occur when the ARC needs to free meta data
  * blocks but can't because they are all pinned by entries in these caches.
  */
+#if defined(HAVE_SUPER_BLOCK_S_SHRINK)
+#define	S_SHRINK(sb)	(&(sb)->s_shrink)
+#elif defined(HAVE_SUPER_BLOCK_S_SHRINK_PTR)
+#define	S_SHRINK(sb)	((sb)->s_shrink)
+#endif
+
 int
 zfs_prune(struct super_block *sb, unsigned long nr_to_scan, int *objects)
 {
 	zfsvfs_t *zfsvfs = sb->s_fs_info;
 	int error = 0;
-	struct shrinker *shrinker = &sb->s_shrink;
+	struct shrinker *shrinker = S_SHRINK(sb);
 	struct shrink_control sc = {
 		.nr_to_scan = nr_to_scan,
 		.gfp_mask = GFP_KERNEL,
@@ -1257,7 +1263,7 @@ zfs_prune(struct super_block *sb, unsigned long nr_to_scan, int *objects)
 #if defined(HAVE_SPLIT_SHRINKER_CALLBACK) && \
 	defined(SHRINK_CONTROL_HAS_NID) && \
 	defined(SHRINKER_NUMA_AWARE)
-	if (sb->s_shrink.flags & SHRINKER_NUMA_AWARE) {
+	if (shrinker->flags & SHRINKER_NUMA_AWARE) {
 		*objects = 0;
 		for_each_online_node(sc.nid) {
 			*objects += (*shrinker->scan_objects)(shrinker, &sc);
@@ -1330,12 +1336,11 @@ zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
 		 * may add the parents of dir-based xattrs to the taskq
 		 * so we want to wait for these.
 		 *
-		 * We can safely read z_nr_znodes without locking because the
-		 * VFS has already blocked operations which add to the
-		 * z_all_znodes list and thus increment z_nr_znodes.
+		 * We can safely check z_all_znodes for being empty because the
+		 * VFS has already blocked operations which add to it.
 		 */
 		int round = 0;
-		while (zfsvfs->z_nr_znodes > 0) {
+		while (!list_is_empty(&zfsvfs->z_all_znodes)) {
 			taskq_wait_outstanding(dsl_pool_zrele_taskq(
 			    dmu_objset_pool(zfsvfs->z_os)), 0);
 			if (++round > 1 && !unmounting)
@@ -1489,7 +1494,7 @@ zfs_domount(struct super_block *sb, zfs_mnt_t *zm, int silent)
 	 * read-only flag, pretend it was set, as done for snapshots.
 	 */
 	if (!canwrite)
-		vfs->vfs_readonly = true;
+		vfs->vfs_readonly = B_TRUE;
 
 	error = zfsvfs_create(osname, vfs->vfs_readonly, &zfsvfs);
 	if (error) {
@@ -1662,6 +1667,7 @@ zfs_umount(struct super_block *sb)
 	}
 
 	zfsvfs_free(zfsvfs);
+	sb->s_fs_info = NULL;
 	return (0);
 }
 
@@ -2053,91 +2059,6 @@ zfs_set_version(zfsvfs_t *zfsvfs, uint64_t newvers)
 }
 
 /*
- * Read a property stored within the master node.
- */
-int
-zfs_get_zplprop(objset_t *os, zfs_prop_t prop, uint64_t *value)
-{
-	uint64_t *cached_copy = NULL;
-
-	/*
-	 * Figure out where in the objset_t the cached copy would live, if it
-	 * is available for the requested property.
-	 */
-	if (os != NULL) {
-		switch (prop) {
-		case ZFS_PROP_VERSION:
-			cached_copy = &os->os_version;
-			break;
-		case ZFS_PROP_NORMALIZE:
-			cached_copy = &os->os_normalization;
-			break;
-		case ZFS_PROP_UTF8ONLY:
-			cached_copy = &os->os_utf8only;
-			break;
-		case ZFS_PROP_CASE:
-			cached_copy = &os->os_casesensitivity;
-			break;
-		default:
-			break;
-		}
-	}
-	if (cached_copy != NULL && *cached_copy != OBJSET_PROP_UNINITIALIZED) {
-		*value = *cached_copy;
-		return (0);
-	}
-
-	/*
-	 * If the property wasn't cached, look up the file system's value for
-	 * the property. For the version property, we look up a slightly
-	 * different string.
-	 */
-	const char *pname;
-	int error = ENOENT;
-	if (prop == ZFS_PROP_VERSION)
-		pname = ZPL_VERSION_STR;
-	else
-		pname = zfs_prop_to_name(prop);
-
-	if (os != NULL) {
-		ASSERT3U(os->os_phys->os_type, ==, DMU_OST_ZFS);
-		error = zap_lookup(os, MASTER_NODE_OBJ, pname, 8, 1, value);
-	}
-
-	if (error == ENOENT) {
-		/* No value set, use the default value */
-		switch (prop) {
-		case ZFS_PROP_VERSION:
-			*value = ZPL_VERSION;
-			break;
-		case ZFS_PROP_NORMALIZE:
-		case ZFS_PROP_UTF8ONLY:
-			*value = 0;
-			break;
-		case ZFS_PROP_CASE:
-			*value = ZFS_CASE_SENSITIVE;
-			break;
-		case ZFS_PROP_ACLTYPE:
-			*value = ZFS_ACLTYPE_OFF;
-			break;
-		default:
-			return (error);
-		}
-		error = 0;
-	}
-
-	/*
-	 * If one of the methods for getting the property value above worked,
-	 * copy it into the objset_t's cache.
-	 */
-	if (error == 0 && cached_copy != NULL) {
-		*cached_copy = *value;
-	}
-
-	return (error);
-}
-
-/*
  * Return true if the corresponding vfs's unmounted flag is set.
  * Otherwise return false.
  * If this function returns true we know VFS unmount has been initiated.
@@ -2176,6 +2097,9 @@ zfs_init(void)
 	zfs_znode_init();
 	dmu_objset_register_type(DMU_OST_ZFS, zpl_get_file_info);
 	register_filesystem(&zpl_fs_type);
+#ifdef HAVE_VFS_FILE_OPERATIONS_EXTEND
+	register_fo_extend(&zpl_file_operations);
+#endif
 }
 
 void
@@ -2186,6 +2110,9 @@ zfs_fini(void)
 	 */
 	taskq_wait(system_delay_taskq);
 	taskq_wait(system_taskq);
+#ifdef HAVE_VFS_FILE_OPERATIONS_EXTEND
+	unregister_fo_extend(&zpl_file_operations);
+#endif
 	unregister_filesystem(&zpl_fs_type);
 	zfs_znode_fini();
 	zfsctl_fini();

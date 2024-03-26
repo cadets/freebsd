@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 .PATH: ${SRCTOP}/sys/compat/linux ${SRCTOP}/sys/${MACHINE}/linux
 .if ${MACHINE_CPUARCH} == "amd64"
@@ -29,6 +28,7 @@ SRCS=	linux_dummy_machdep.c \
 	linux_time.c \
 	linux_vdso.c \
 	linux_timer.c \
+	linux_xattr.c \
 	opt_ktrace.h \
 	opt_inet6.h \
 	opt_posix.h \
@@ -101,7 +101,8 @@ linux_support.o: linux_support.S assym.inc linux_assym.h
 	    ${.ALLSRC:M*.S:u} -o ${.TARGET}
 
 linux_genassym.o: offset.inc
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} -fcommon ${.IMPSRC}
+	${CC} -c ${CFLAGS:N-flto*:N-fno-common:N-fsanitize*:N-fno-sanitize*} \
+	    -fcommon ${.IMPSRC}
 
 .if !defined(KERNBUILDDIR)
 .warning Building Linuxulator outside of a kernel does not make sense

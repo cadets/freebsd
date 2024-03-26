@@ -29,9 +29,6 @@
  * Test for historical qsort_r(3) routine.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <stdio.h>
 #include <stdlib.h>
 

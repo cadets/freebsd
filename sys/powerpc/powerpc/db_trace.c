@@ -1,4 +1,3 @@
-/*	$FreeBSD$ */
 /*	$NetBSD: db_trace.c,v 1.20 2002/05/13 20:30:09 matt Exp $	*/
 /*	$OpenBSD: db_trace.c,v 1.3 1997/03/21 02:10:48 niklas Exp $	*/
 
@@ -133,8 +132,8 @@ static int
 db_backtrace(struct thread *td, db_addr_t fp, int count)
 {
 	db_addr_t stackframe, lr, *args;
-	boolean_t kernel_only = TRUE;
-	boolean_t full = FALSE;
+	bool kernel_only = true;
+	bool full = false;
 
 #if 0
 	{
@@ -143,11 +142,11 @@ db_backtrace(struct thread *td, db_addr_t fp, int count)
 
 		while ((c = *cp++) != 0) {
 			if (c == 't')
-				trace_thread = TRUE;
+				trace_thread = true;
 			if (c == 'u')
-				kernel_only = FALSE;
+				kernel_only = false;
 			if (c == 'f')
-				full = TRUE;
+				full = true;
 		}
 	}
 #endif

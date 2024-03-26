@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: GPL-2.0 or Linux-OpenIB
  *
- * Copyright (c) 2017 - 2022 Intel Corporation
+ * Copyright (c) 2017 - 2023 Intel Corporation
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -31,7 +31,6 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-/*$FreeBSD$*/
 
 #ifndef ICRDMA_HW_H
 #define ICRDMA_HW_H
@@ -124,6 +123,7 @@ enum icrdma_device_caps_const {
 	ICRDMA_MAX_IRD_SIZE			= 32,
 	ICRDMA_MAX_ORD_SIZE			= 32,
 	ICRDMA_MIN_WQ_SIZE			= 8 /* WQEs */,
+	ICRDMA_MAX_PUSH_PAGE_COUNT		= 256,
 
 };
 

@@ -26,8 +26,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 extern "C" {
@@ -523,6 +521,7 @@ MockFS::MockFS(int max_readahead, bool allow_other, bool default_permissions,
 	if (nmount(iov, iovlen, 0))
 		throw(std::system_error(errno, std::system_category(),
 			"Couldn't mount filesystem"));
+	free_iovec(&iov, &iovlen);
 
 	// Setup default handler
 	ON_CALL(*this, process(_, _))

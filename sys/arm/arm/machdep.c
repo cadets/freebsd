@@ -49,9 +49,6 @@
 #include "opt_platform.h"
 #include "opt_sched.h"
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/buf.h>
 #include <sys/bus.h>
@@ -136,6 +133,14 @@ vm_offset_t abtstack;
 static delay_func *delay_impl;
 static void *delay_arg;
 #endif
+
+#if defined(SOCDEV_PA)
+#if !defined(SOCDEV_VA)
+#error SOCDEV_PA defined, but not SOCDEV_VA
+#endif
+uintptr_t socdev_va = SOCDEV_VA;
+#endif
+
 
 struct kva_md_info kmi;
 /*

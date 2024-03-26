@@ -1,6 +1,8 @@
-# $FreeBSD$
 
 PROG_CXX=	llvm-tblgen
+MAN=
+
+CFLAGS+=	-I${.OBJDIR}
 
 SRCDIR=		llvm/utils/TableGen
 SRCS+=		AsmMatcherEmitter.cpp
@@ -12,7 +14,9 @@ SRCS+=		CallingConvEmitter.cpp
 SRCS+=		CodeEmitterGen.cpp
 SRCS+=		CodeGenDAGPatterns.cpp
 SRCS+=		CodeGenHwModes.cpp
+SRCS+=		CodeGenInstAlias.cpp
 SRCS+=		CodeGenInstruction.cpp
+SRCS+=		CodeGenIntrinsics.cpp
 SRCS+=		CodeGenMapTable.cpp
 SRCS+=		CodeGenRegisters.cpp
 SRCS+=		CodeGenSchedule.cpp
@@ -40,7 +44,10 @@ SRCS+=		GlobalISel/GIMatchDagOperands.cpp
 SRCS+=		GlobalISel/GIMatchDagPredicate.cpp
 SRCS+=		GlobalISel/GIMatchDagPredicateDependencyEdge.cpp
 SRCS+=		GlobalISel/GIMatchTree.cpp
+SRCS+=		GlobalISelCombinerMatchTableEmitter.cpp
 SRCS+=		GlobalISelEmitter.cpp
+SRCS+=		GlobalISelMatchTable.cpp
+SRCS+=		GlobalISelMatchTableExecutorEmitter.cpp
 SRCS+=		InfoByHwMode.cpp
 SRCS+=		InstrDocsEmitter.cpp
 SRCS+=		InstrInfoEmitter.cpp
@@ -50,6 +57,7 @@ SRCS+=		OptParserEmitter.cpp
 SRCS+=		OptRSTEmitter.cpp
 SRCS+=		PredicateExpander.cpp
 SRCS+=		PseudoLoweringEmitter.cpp
+SRCS+=		RISCVTargetDefEmitter.cpp
 SRCS+=		RegisterBankEmitter.cpp
 SRCS+=		RegisterInfoEmitter.cpp
 SRCS+=		SDNodeProperties.cpp
@@ -66,5 +74,18 @@ SRCS+=		X86FoldTablesEmitter.cpp
 SRCS+=		X86MnemonicTables.cpp
 SRCS+=		X86ModRMFilters.cpp
 SRCS+=		X86RecognizableInstr.cpp
+
+.include "${SRCTOP}/lib/clang/llvm.pre.mk"
+
+llvm/CodeGen/GenVT.inc: ${LLVM_SRCS}/include/llvm/CodeGen/ValueTypes.td
+	${LLVM_MIN_TBLGEN} -gen-vt \
+	    -I ${LLVM_SRCS}/include -d ${.TARGET}.d -o ${.TARGET} \
+	    ${LLVM_SRCS}/include/llvm/CodeGen/ValueTypes.td
+TGHDRS+=	llvm/CodeGen/GenVT.inc
+
+DEPENDFILES+=	${TGHDRS:C/$/.d/}
+DPSRCS+=	${TGHDRS}
+CLEANFILES+=	${TGHDRS} ${TGHDRS:C/$/.d/}
+CLEANFILES+=	${GENSRCS} ${GENSRCS:C/$/.d/}
 
 .include "../llvm.prog.mk"

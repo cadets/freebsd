@@ -37,9 +37,6 @@
  * documented in an attempt to explain how everything fits together.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/hhook.h>

@@ -34,8 +34,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_platform.h"
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -428,7 +426,7 @@ excise_msi_region(struct mem_region *avail, int asz)
 static int
 excise_fdt_reserved(struct mem_region *avail, int asz)
 {
-	struct mem_region fdtmap[32];
+	struct mem_region fdtmap[64];
 	ssize_t fdtmapsize;
 	phandle_t chosen;
 	int j, fdtentries;

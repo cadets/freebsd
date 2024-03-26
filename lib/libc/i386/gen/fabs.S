@@ -30,12 +30,7 @@
  * SUCH DAMAGE.
  */
 
-#if defined(LIBC_SCCS) && !defined(lint)
-	.asciz "@(#)fabs.s	5.2 (Berkeley) 12/17/90"
-#endif /* LIBC_SCCS and not lint */
 #include <machine/asm.h>
-__FBSDID("$FreeBSD$");
-
 ENTRY(fabs)
 	fldl	4(%esp)
 	fabs

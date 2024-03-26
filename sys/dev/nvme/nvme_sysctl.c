@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_nvme.h"
 
 #include <sys/param.h>
@@ -38,7 +36,7 @@ __FBSDID("$FreeBSD$");
 #include "nvme_private.h"
 
 #ifndef NVME_USE_NVD
-#define NVME_USE_NVD 1
+#define NVME_USE_NVD 0
 #endif
 
 int nvme_use_nvd = NVME_USE_NVD;
@@ -65,14 +63,14 @@ nvme_dump_queue(struct nvme_qpair *qpair)
 	for (i = 0; i < qpair->num_entries; i++) {
 		cpl = &qpair->cpl[i];
 		printf("%05d: ", i);
-		nvme_dump_completion(cpl);
+		nvme_qpair_print_completion(qpair, cpl);
 	}
 
 	printf("Submission queue:\n");
 	for (i = 0; i < qpair->num_entries; i++) {
 		cmd = &qpair->cmd[i];
 		printf("%05d: ", i);
-		nvme_dump_command(cmd);
+		nvme_qpair_print_command(qpair, cmd);
 	}
 }
 
@@ -134,8 +132,8 @@ nvme_sysctl_int_coal_threshold(SYSCTL_HANDLER_ARGS)
 static int
 nvme_sysctl_timeout_period(SYSCTL_HANDLER_ARGS)
 {
-	struct nvme_controller *ctrlr = arg1;
-	uint32_t newval = ctrlr->timeout_period;
+	uint32_t *ptr = arg1;
+	uint32_t newval = *ptr;
 	int error = sysctl_handle_int(oidp, &newval, 0, req);
 
 	if (error || (req->newptr == NULL))
@@ -145,7 +143,7 @@ nvme_sysctl_timeout_period(SYSCTL_HANDLER_ARGS)
 	    newval < NVME_MIN_TIMEOUT_PERIOD) {
 		return (EINVAL);
 	} else {
-		ctrlr->timeout_period = newval;
+		*ptr = newval;
 	}
 
 	return (0);
@@ -165,6 +163,7 @@ nvme_qpair_reset_stats(struct nvme_qpair *qpair)
 	qpair->num_retries = 0;
 	qpair->num_failures = 0;
 	qpair->num_ignored = 0;
+	qpair->num_recovery_nolock = 0;
 }
 
 static int
@@ -243,6 +242,21 @@ nvme_sysctl_num_ignored(SYSCTL_HANDLER_ARGS)
 }
 
 static int
+nvme_sysctl_num_recovery_nolock(SYSCTL_HANDLER_ARGS)
+{
+	struct nvme_controller 	*ctrlr = arg1;
+	int64_t			num;
+	int			i;
+
+	num = ctrlr->adminq.num_recovery_nolock;
+
+	for (i = 0; i < ctrlr->num_io_queues; i++)
+		num += ctrlr->ioq[i].num_recovery_nolock;
+
+	return (sysctl_handle_64(oidp, &num, 0, req));
+}
+
+static int
 nvme_sysctl_reset_stats(SYSCTL_HANDLER_ARGS)
 {
 	struct nvme_controller 	*ctrlr = arg1;
@@ -300,6 +314,9 @@ nvme_sysctl_initialize_queue(struct nvme_qpair *qpair,
 	SYSCTL_ADD_QUAD(ctrlr_ctx, que_list, OID_AUTO, "num_ignored",
 	    CTLFLAG_RD, &qpair->num_ignored,
 	    "Number of interrupts posted, but were administratively ignored");
+	SYSCTL_ADD_QUAD(ctrlr_ctx, que_list, OID_AUTO, "num_recovery_nolock",
+	    CTLFLAG_RD, &qpair->num_recovery_nolock,
+	    "Number of times that we failed to lock recovery in the ISR");
 
 	SYSCTL_ADD_PROC(ctrlr_ctx, que_list, OID_AUTO,
 	    "dump_debug", CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_MPSAFE,
@@ -336,9 +353,14 @@ nvme_sysctl_initialize_ctrlr(struct nvme_controller *ctrlr)
 	    "Interrupt coalescing threshold");
 
 	SYSCTL_ADD_PROC(ctrlr_ctx, ctrlr_list, OID_AUTO,
+	    "admin_timeout_period", CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_MPSAFE,
+	    &ctrlr->admin_timeout_period, 0, nvme_sysctl_timeout_period, "IU",
+	    "Timeout period for Admin queue (in seconds)");
+
+	SYSCTL_ADD_PROC(ctrlr_ctx, ctrlr_list, OID_AUTO,
 	    "timeout_period", CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_MPSAFE,
-	    ctrlr, 0, nvme_sysctl_timeout_period, "IU",
-	    "Timeout period (in seconds)");
+	    &ctrlr->timeout_period, 0, nvme_sysctl_timeout_period, "IU",
+	    "Timeout period for I/O queues (in seconds)");
 
 	SYSCTL_ADD_PROC(ctrlr_ctx, ctrlr_list, OID_AUTO,
 	    "num_cmds", CTLTYPE_S64 | CTLFLAG_RD | CTLFLAG_MPSAFE,
@@ -367,6 +389,11 @@ nvme_sysctl_initialize_ctrlr(struct nvme_controller *ctrlr)
 	    "num_ignored", CTLTYPE_S64 | CTLFLAG_RD | CTLFLAG_MPSAFE,
 	    ctrlr, 0, nvme_sysctl_num_ignored, "IU",
 	    "Number of interrupts ignored administratively");
+
+	SYSCTL_ADD_PROC(ctrlr_ctx, ctrlr_list, OID_AUTO,
+	    "num_recovery_nolock", CTLTYPE_S64 | CTLFLAG_RD | CTLFLAG_MPSAFE,
+	    ctrlr, 0, nvme_sysctl_num_recovery_nolock, "IU",
+	    "Number of times that we failed to lock recovery in the ISR");
 
 	SYSCTL_ADD_PROC(ctrlr_ctx, ctrlr_list, OID_AUTO,
 	    "reset_stats", CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_MPSAFE, ctrlr,

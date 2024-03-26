@@ -14,9 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <math.h>
 
 #include "math_private.h"
@@ -115,9 +112,6 @@ __p1evll(long double x, long double *PP, int n)
  * pow domain      x<0 and y noninteger  0.0
  *
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <float.h>
 #include <math.h>

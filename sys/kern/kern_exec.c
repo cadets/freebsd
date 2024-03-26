@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_capsicum.h"
 #include "opt_hwpmc_hooks.h"
 #include "opt_ktrace.h"
@@ -390,7 +388,6 @@ do_execve(struct thread *td, struct image_args *args, struct mac *mac_p,
 	uintptr_t stack_base;
 	struct image_params image_params, *imgp;
 	struct vattr attr;
-	int (*img_first)(struct image_params *);
 	struct pargs *oldargs = NULL, *newargs = NULL;
 	struct sigacts *oldsigacts = NULL, *newsigacts = NULL;
 #ifdef KTRACE
@@ -645,24 +642,14 @@ interpret:
 	/* The new credentials are installed into the process later. */
 
 	/*
-	 *	If the current process has a special image activator it
-	 *	wants to try first, call it.   For example, emulating shell
-	 *	scripts differently.
-	 */
-	error = -1;
-	if ((img_first = imgp->proc->p_sysent->sv_imgact_try) != NULL)
-		error = img_first(imgp);
-
-	/*
 	 *	Loop through the list of image activators, calling each one.
 	 *	An activator returns -1 if there is no match, 0 on success,
 	 *	and an error otherwise.
 	 */
+	error = -1;
 	for (i = 0; error == -1 && execsw[i]; ++i) {
-		if (execsw[i]->ex_imgact == NULL ||
-		    execsw[i]->ex_imgact == img_first) {
+		if (execsw[i]->ex_imgact == NULL)
 			continue;
-		}
 		error = (*execsw[i]->ex_imgact)(imgp);
 	}
 
@@ -818,6 +805,8 @@ interpret:
 		p->p_flag2 &= ~P2_NOTRACE;
 	if ((p->p_flag2 & P2_STKGAP_DISABLE_EXEC) == 0)
 		p->p_flag2 &= ~P2_STKGAP_DISABLE;
+	p->p_flag2 &= ~(P2_MEMBAR_PRIVE | P2_MEMBAR_PRIVE_SYNCORE |
+	    P2_MEMBAR_GLOBE);
 	if (p->p_flag & P_PPWAIT) {
 		p->p_flag &= ~(P_PPWAIT | P_PPTRACE);
 		cv_broadcast(&p->p_pwait);
@@ -930,7 +919,8 @@ interpret:
 	if (PMC_SYSTEM_SAMPLING_ACTIVE() || PMC_PROC_IS_USING_PMCS(p)) {
 		VOP_UNLOCK(imgp->vp);
 		pe.pm_credentialschanged = credential_changing;
-		pe.pm_entryaddr = imgp->entry_addr;
+		pe.pm_baseaddr = imgp->reloc_base;
+		pe.pm_dynaddr = imgp->et_dyn_addr;
 
 		PMC_CALL_HOOK_X(td, PMC_FN_PROCESS_EXEC, (void *) &pe);
 		vn_lock(imgp->vp, LK_SHARED | LK_RETRY);

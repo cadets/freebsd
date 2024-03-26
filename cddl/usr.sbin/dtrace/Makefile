@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 .include <src.opts.mk>
 
@@ -45,6 +44,10 @@ LDFLAGS+=	-fsanitize=thread
 #YFLAGS+=	-d
 
 LIBADD=	dtrace ctf elf proc pthread spl xo
+.if ${MK_DTRACE_ASAN} != "no"
+CFLAGS+=	-fsanitize=address -fsanitize=undefined
+LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+.endif
 
 .if ${MK_DTRACE_TESTS} != "no"
 SUBDIR+=	tests

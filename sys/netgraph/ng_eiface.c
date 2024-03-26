@@ -26,8 +26,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/param.h>
@@ -259,7 +257,9 @@ ng_eiface_start2(node_p node, hook_p hook, void *arg1, int arg2)
 		 * freed.
 		 */
 		NG_OUTBOUND_THREAD_REF();
+		CURVNET_SET_QUIET(priv->node->nd_vnet);
 		NG_SEND_DATA_ONLY(error, priv->ether, m);
+		CURVNET_RESTORE();
 		NG_OUTBOUND_THREAD_UNREF();
 
 		/* Update stats */

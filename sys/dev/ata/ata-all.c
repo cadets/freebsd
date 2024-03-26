@@ -26,9 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/ata.h>
@@ -73,7 +70,6 @@ static int ata_str2mode(const char *str);
 
 /* global vars */
 MALLOC_DEFINE(M_ATA, "ata_generic", "ATA driver generic layer");
-int (*ata_raid_ioctl_func)(u_long cmd, caddr_t data) = NULL;
 devclass_t ata_devclass;
 int ata_dma_check_80pin = 1;
 
@@ -430,7 +426,7 @@ void
 ata_udelay(int interval)
 {
     /* for now just use DELAY, the timer/sleep subsystems are not there yet */
-    if (1 || interval < (1000000/hz) || ata_delayed_attach)
+    if (1 || interval < (1000000/hz))
 	DELAY(interval);
     else
 	pause("ataslp", interval/(1000000/hz));

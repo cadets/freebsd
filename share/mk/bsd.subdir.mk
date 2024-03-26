@@ -1,6 +1,3 @@
-#	from: @(#)bsd.subdir.mk	5.9 (Berkeley) 2/1/91
-# $FreeBSD$
-#
 # The include file <bsd.subdir.mk> contains the default targets
 # for building subdirectories.
 #
@@ -56,11 +53,6 @@ STANDALONE_SUBDIR_TARGETS+= \
 		clean cleandepend cleandir cleanilinks cleanobj files includes \
 		installconfig installdirs installincludes installfiles print-dir \
 		maninstall manlint obj objlink
-
-# It is safe to install in parallel when staging.
-.if defined(NO_ROOT) || !empty(SYSROOT)
-STANDALONE_SUBDIR_TARGETS+= realinstall
-.endif
 
 .include <bsd.init.mk>
 

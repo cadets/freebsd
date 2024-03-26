@@ -22,12 +22,7 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -88,7 +83,7 @@ ti_usb_phy_attach(device_t dev)
 	sc = device_get_softc(dev);
 	sc->dev = dev;
 
-	/* FIXME: Add dev/extres/phy/ interface */
+	/* FIXME: Add dev/phy/ interface */
 
 	return (bus_generic_attach(dev));
 }

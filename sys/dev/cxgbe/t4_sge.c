@@ -28,8 +28,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_kern_tls.h"
@@ -4100,6 +4098,9 @@ alloc_ofld_rxq(struct vi_info *vi, struct sge_ofld_rxq *ofld_rxq, int idx,
 		ofld_rxq->rx_iscsi_ddp_setup_ok = counter_u64_alloc(M_WAITOK);
 		ofld_rxq->rx_iscsi_ddp_setup_error =
 		    counter_u64_alloc(M_WAITOK);
+		ofld_rxq->ddp_buffer_alloc = counter_u64_alloc(M_WAITOK);
+		ofld_rxq->ddp_buffer_reuse = counter_u64_alloc(M_WAITOK);
+		ofld_rxq->ddp_buffer_free = counter_u64_alloc(M_WAITOK);
 		add_ofld_rxq_sysctls(&vi->ctx, oid, ofld_rxq);
 	}
 
@@ -4134,6 +4135,9 @@ free_ofld_rxq(struct vi_info *vi, struct sge_ofld_rxq *ofld_rxq)
 		MPASS(!(ofld_rxq->iq.flags & IQ_SW_ALLOCATED));
 		counter_u64_free(ofld_rxq->rx_iscsi_ddp_setup_ok);
 		counter_u64_free(ofld_rxq->rx_iscsi_ddp_setup_error);
+		counter_u64_free(ofld_rxq->ddp_buffer_alloc);
+		counter_u64_free(ofld_rxq->ddp_buffer_reuse);
+		counter_u64_free(ofld_rxq->ddp_buffer_free);
 		bzero(ofld_rxq, sizeof(*ofld_rxq));
 	}
 }
@@ -4148,12 +4152,30 @@ add_ofld_rxq_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *oid,
 		return;
 
 	children = SYSCTL_CHILDREN(oid);
+	SYSCTL_ADD_U64(ctx, children, OID_AUTO, "rx_aio_ddp_jobs",
+	    CTLFLAG_RD, &ofld_rxq->rx_aio_ddp_jobs, 0,
+	    "# of aio_read(2) jobs completed via DDP");
+	SYSCTL_ADD_U64(ctx, children, OID_AUTO, "rx_aio_ddp_octets",
+	    CTLFLAG_RD, &ofld_rxq->rx_aio_ddp_octets, 0,
+	    "# of octets placed directly for aio_read(2) jobs");
 	SYSCTL_ADD_ULONG(ctx, children, OID_AUTO,
 	    "rx_toe_tls_records", CTLFLAG_RD, &ofld_rxq->rx_toe_tls_records,
 	    "# of TOE TLS records received");
 	SYSCTL_ADD_ULONG(ctx, children, OID_AUTO,
 	    "rx_toe_tls_octets", CTLFLAG_RD, &ofld_rxq->rx_toe_tls_octets,
 	    "# of payload octets in received TOE TLS records");
+	SYSCTL_ADD_ULONG(ctx, children, OID_AUTO,
+	    "rx_toe_ddp_octets", CTLFLAG_RD, &ofld_rxq->rx_toe_ddp_octets,
+	    "# of payload octets received via TCP DDP");
+	SYSCTL_ADD_COUNTER_U64(ctx, children, OID_AUTO,
+	    "ddp_buffer_alloc", CTLFLAG_RD, &ofld_rxq->ddp_buffer_alloc,
+	    "# of DDP RCV buffers allocated");
+	SYSCTL_ADD_COUNTER_U64(ctx, children, OID_AUTO,
+	    "ddp_buffer_reuse", CTLFLAG_RD, &ofld_rxq->ddp_buffer_reuse,
+	    "# of DDP RCV buffers reused");
+	SYSCTL_ADD_COUNTER_U64(ctx, children, OID_AUTO,
+	    "ddp_buffer_free", CTLFLAG_RD, &ofld_rxq->ddp_buffer_free,
+	    "# of DDP RCV buffers freed");
 
 	oid = SYSCTL_ADD_NODE(ctx, children, OID_AUTO, "iscsi",
 	    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "TOE iSCSI statistics");
@@ -4811,6 +4833,8 @@ alloc_ofld_txq(struct vi_info *vi, struct sge_ofld_txq *ofld_txq, int idx)
 		ofld_txq->tx_iscsi_pdus = counter_u64_alloc(M_WAITOK);
 		ofld_txq->tx_iscsi_octets = counter_u64_alloc(M_WAITOK);
 		ofld_txq->tx_iscsi_iso_wrs = counter_u64_alloc(M_WAITOK);
+		ofld_txq->tx_aio_jobs = counter_u64_alloc(M_WAITOK);
+		ofld_txq->tx_aio_octets = counter_u64_alloc(M_WAITOK);
 		ofld_txq->tx_toe_tls_records = counter_u64_alloc(M_WAITOK);
 		ofld_txq->tx_toe_tls_octets = counter_u64_alloc(M_WAITOK);
 		add_ofld_txq_sysctls(&vi->ctx, oid, ofld_txq);
@@ -4849,6 +4873,8 @@ free_ofld_txq(struct vi_info *vi, struct sge_ofld_txq *ofld_txq)
 		counter_u64_free(ofld_txq->tx_iscsi_pdus);
 		counter_u64_free(ofld_txq->tx_iscsi_octets);
 		counter_u64_free(ofld_txq->tx_iscsi_iso_wrs);
+		counter_u64_free(ofld_txq->tx_aio_jobs);
+		counter_u64_free(ofld_txq->tx_aio_octets);
 		counter_u64_free(ofld_txq->tx_toe_tls_records);
 		counter_u64_free(ofld_txq->tx_toe_tls_octets);
 		free_wrq(sc, &ofld_txq->wrq);
@@ -4876,6 +4902,12 @@ add_ofld_txq_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *oid,
 	SYSCTL_ADD_COUNTER_U64(ctx, children, OID_AUTO, "tx_iscsi_iso_wrs",
 	    CTLFLAG_RD, &ofld_txq->tx_iscsi_iso_wrs,
 	    "# of iSCSI segmentation offload work requests");
+	SYSCTL_ADD_COUNTER_U64(ctx, children, OID_AUTO, "tx_aio_jobs",
+	    CTLFLAG_RD, &ofld_txq->tx_aio_jobs,
+	    "# of zero-copy aio_write(2) jobs transmitted");
+	SYSCTL_ADD_COUNTER_U64(ctx, children, OID_AUTO, "tx_aio_octets",
+	    CTLFLAG_RD, &ofld_txq->tx_aio_octets,
+	    "# of payload octets in transmitted zero-copy aio_write(2) jobs");
 	SYSCTL_ADD_COUNTER_U64(ctx, children, OID_AUTO, "tx_toe_tls_records",
 	    CTLFLAG_RD, &ofld_txq->tx_toe_tls_records,
 	    "# of TOE TLS records transmitted");

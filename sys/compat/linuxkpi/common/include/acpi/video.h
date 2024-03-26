@@ -24,13 +24,12 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _LINUXKPI_ACPI_VIDEO_H_
 #define _LINUXKPI_ACPI_VIDEO_H_
 
+#include <sys/types.h>
 #include <sys/errno.h>
 
 #define	ACPI_VIDEO_CLASS	"video"
@@ -47,6 +46,17 @@ acpi_video_register(void)
 static inline void
 acpi_video_unregister(void)
 {
+}
+
+static inline void
+acpi_video_register_backlight(void)
+{
+}
+
+static inline bool
+acpi_video_backlight_use_native(void)
+{
+	return (true);
 }
 
 #endif	/* _LINUXKPI_ACPI_VIDEO_H_ */

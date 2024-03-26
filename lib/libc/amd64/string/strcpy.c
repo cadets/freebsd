@@ -27,9 +27,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 char *__stpcpy(char * __restrict, const char * __restrict);
 
 char *

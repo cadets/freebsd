@@ -32,20 +32,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1989, 1993, 1995\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#ifndef lint
-#if 0
-static char sccsid[] = "@(#)showmount.c	8.3 (Berkeley) 3/29/95";
-#endif
-static const char rcsid[] =
-  "$FreeBSD$";
-#endif /* not lint */
-
 #include <sys/types.h>
 #include <sys/queue.h>
 #include <sys/file.h>
@@ -97,7 +83,7 @@ static struct exportslist *exportslist;
 static int type = 0;
 
 void print_dump(struct mountlist *);
-static void usage(void);
+static void usage(void) __dead2;
 int xdr_mntdump(XDR *, struct mountlist **);
 int xdr_exportslist(XDR *, struct exportslist **);
 int tcp_callrpc(const char *host, int prognum, int versnum, int procnum,

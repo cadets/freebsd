@@ -25,8 +25,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 #ifndef	_LINUXKPI_LINUX_NET_H_
 #define	_LINUXKPI_LINUX_NET_H_
@@ -47,26 +45,27 @@ sock_create_kern(int family, int type, int proto, struct socket **res)
 }
 
 static inline int
-sock_getname(struct socket *so, struct sockaddr *addr, int *sockaddr_len,
+sock_getname(struct socket *so, struct sockaddr *sa, int *sockaddr_len,
     int peer)
 {
-	struct sockaddr *nam;
 	int error;
 
-	nam = NULL;
+	/*
+	 * XXXGL: we can't use sopeeraddr()/sosockaddr() here since with
+	 * INVARIANTS they would check if supplied sockaddr has enough
+	 * length.  Such notion doesn't even exist in Linux KPI.
+	 */
 	if (peer) {
-		if ((so->so_state & (SS_ISCONNECTED|SS_ISCONFIRMING)) == 0)
+		if ((so->so_state & SS_ISCONNECTED) == 0)
 			return (-ENOTCONN);
 
-		error = so->so_proto->pr_peeraddr(so, &nam);
+		error = so->so_proto->pr_peeraddr(so, sa);
 	} else
-		error = so->so_proto->pr_sockaddr(so, &nam);
+		error = so->so_proto->pr_sockaddr(so, sa);
 	if (error)
 		return (-error);
-	*addr = *nam;
-	*sockaddr_len = addr->sa_len;
+	*sockaddr_len = sa->sa_len;
 
-	free(nam, M_SONAME);
 	return (0);
 }
 

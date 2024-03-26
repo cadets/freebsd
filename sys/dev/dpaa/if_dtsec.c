@@ -24,9 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -60,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <contrib/ncsw/inc/integrations/dpaa_integration_ext.h>
 #include <contrib/ncsw/inc/Peripherals/fm_mac_ext.h>
 #include <contrib/ncsw/inc/Peripherals/fm_port_ext.h>
+#include <contrib/ncsw/inc/flib/fsl_fman_dtsec.h>
 #include <contrib/ncsw/inc/xx_ext.h>
 
 #include "fman.h"
@@ -71,6 +69,7 @@ __FBSDID("$FreeBSD$");
 #define	DTSEC_MAX_FRAME_SIZE	9600
 
 #define	DTSEC_REG_MAXFRM	0x110
+#define	DTSEC_REG_GADDR(i)	(0x0a0 + 4*(i))
 
 /**
  * @group dTSEC private defines.
@@ -340,6 +339,33 @@ dtsec_set_mtu(struct dtsec_softc *sc, unsigned int mtu)
 	return (0);
 }
 
+static u_int
+dtsec_hash_maddr(void *arg, struct sockaddr_dl *sdl, u_int cnt)
+{
+	struct dtsec_softc *sc = arg;
+
+	FM_MAC_AddHashMacAddr(sc->sc_mach, (t_EnetAddr *)LLADDR(sdl));
+
+	return (1);
+}
+
+static void
+dtsec_setup_multicast(struct dtsec_softc *sc)
+{
+	int i;
+
+	if (if_getflags(sc->sc_ifnet) & IFF_ALLMULTI) {
+		for (i = 0; i < 8; i++)
+			bus_write_4(sc->sc_mem, DTSEC_REG_GADDR(i), 0xFFFFFFFF);
+
+		return;
+	}
+
+	fman_dtsec_reset_filter_table(rman_get_virtual(sc->sc_mem),
+	    true, false);
+	if_foreach_llmaddr(sc->sc_ifnet, dtsec_hash_maddr, sc);
+}
+
 static int
 dtsec_if_enable_locked(struct dtsec_softc *sc)
 {
@@ -358,6 +384,8 @@ dtsec_if_enable_locked(struct dtsec_softc *sc)
 	error = FM_PORT_Enable(sc->sc_txph);
 	if (error != E_OK)
 		return (EIO);
+
+	dtsec_setup_multicast(sc);
 
 	if_setdrvflagbits(sc->sc_ifnet, IFF_DRV_RUNNING, 0);
 
@@ -688,7 +716,7 @@ dtsec_attach(device_t dev)
 
 	if_setsoftc(ifp, sc);
 
-	if_setflags(ifp, IFF_SIMPLEX | IFF_BROADCAST);
+	if_setflags(ifp, IFF_SIMPLEX | IFF_BROADCAST | IFF_MULTICAST);
 	if_setinitfn(ifp, dtsec_if_init);
 	if_setstartfn(ifp, dtsec_if_start);
 	if_setioctlfn(ifp, dtsec_if_ioctl);
@@ -706,6 +734,7 @@ dtsec_attach(device_t dev)
 	if_setsendqready(ifp);
 #endif
 
+	if_setcapabilities(ifp, IFCAP_JUMBO_MTU | IFCAP_VLAN_MTU);
 	if_setcapenable(ifp, if_getcapabilities(ifp));
 
 	/* Attach PHY(s) */

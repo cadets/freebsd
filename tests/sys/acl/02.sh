@@ -23,7 +23,6 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD$
 #
 
 # This is a wrapper script to run tools-nfs4.test on UFS filesystem.
@@ -42,6 +41,10 @@ if [ $(sysctl -n kern.features.ufs_acl 2>/dev/null || echo 0) -eq 0 ]; then
 fi
 if [ $(id -u) -ne 0 ]; then
 	echo "1..0 # SKIP you must be root"
+	exit 0
+fi
+if [ ! -c /dev/mdctl ]; then
+	echo "1..0 # SKIP no /dev/mdctl to create md devices"
 	exit 0
 fi
 

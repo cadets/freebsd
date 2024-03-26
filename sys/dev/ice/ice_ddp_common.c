@@ -28,7 +28,6 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-/*$FreeBSD$*/
 
 #include "ice_ddp_common.h"
 #include "ice_type.h"
@@ -469,6 +468,7 @@ static u32 ice_get_pkg_segment_id(enum ice_mac_type mac_type)
 	switch (mac_type) {
 	case ICE_MAC_GENERIC:
 	case ICE_MAC_GENERIC_3K:
+	case ICE_MAC_GENERIC_3K_E825:
 	default:
 		seg_id = SEGMENT_TYPE_ICE_E810;
 		break;
@@ -488,6 +488,9 @@ static u32 ice_get_pkg_sign_type(enum ice_mac_type mac_type)
 	switch (mac_type) {
 	case ICE_MAC_GENERIC_3K:
 		sign_type = SEGMENT_SIGN_TYPE_RSA3K;
+		break;
+	case ICE_MAC_GENERIC_3K_E825:
+		sign_type = SEGMENT_SIGN_TYPE_RSA3K_E825;
 		break;
 	case ICE_MAC_GENERIC:
 	default:

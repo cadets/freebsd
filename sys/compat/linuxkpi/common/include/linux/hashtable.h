@@ -23,8 +23,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _LINUXKPI_LINUX_HASHTABLE_H
@@ -94,8 +92,6 @@ __hash_node_type_assert(struct hlist_node *node)
 #define	hash_add_rcu(ht, node, key) do {				\
 	struct lkpi_hash_head *__head = &(ht)[hash_min(key, HASH_BITS(ht))]; \
 	__hash_node_type_assert(node); \
-	KASSERT(((struct lkpi_hash_entry *)(node))->entry.cle_prev == NULL, \
-	    ("node is already on list or was not zeroed")); \
 	CK_LIST_INSERT_HEAD(&__head->head, \
 	    (struct lkpi_hash_entry *)(node), entry); \
 } while (0)

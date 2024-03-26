@@ -27,9 +27,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/socket.h>
 
@@ -853,7 +850,6 @@ nat64lsn_foreach(nat64lsn_cb_t *f, const char *name, uint8_t set,  int sort)
 	ipfw_nat64lsn_cfg *cfg;
 	size_t sz;
 	uint32_t i;
-	int error;
 
 	/* Start with reasonable default */
 	sz = sizeof(*olh) + 16 * sizeof(ipfw_nat64lsn_cfg);
@@ -877,7 +873,7 @@ nat64lsn_foreach(nat64lsn_cb_t *f, const char *name, uint8_t set,  int sort)
 
 		cfg = (ipfw_nat64lsn_cfg *)(olh + 1);
 		for (i = 0; i < olh->count; i++) {
-			error = f(cfg, name, set); /* Ignore errors for now */
+			(void)f(cfg, name, set); /* Ignore errors for now */
 			cfg = (ipfw_nat64lsn_cfg *)((caddr_t)cfg +
 			    olh->objsize);
 		}

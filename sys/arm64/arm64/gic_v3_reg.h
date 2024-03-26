@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _GIC_V3_REG_H_
@@ -184,6 +182,15 @@
 #define		GICR_PROPBASER_OUTER_CACHE_MASK		\
 		    (0x7UL << GICR_PROPBASER_OUTER_CACHE_SHIFT)
 
+/*
+ * The PROPBASER LPI Configuration Table is 4k aligned, so bits 51:12 are
+ * defined to be the PA, for 40 potentially significant bits.
+ */
+#define		GICR_PROPBASER_PA_SHIFT		12
+#define		GICR_PROPBASER_PA_SIZE		40
+#define		GICR_PROPBASER_PA_MASK		\
+		    (((1UL << GICR_PROPBASER_PA_SIZE) - 1) << GICR_PROPBASER_PA_SHIFT)
+
 #define	GICR_PENDBASER		0x0078
 /*
  * Cacheability
@@ -226,6 +233,15 @@
 #define		GICR_PENDBASER_OUTER_CACHE_SHIFT	56
 #define		GICR_PENDBASER_OUTER_CACHE_MASK		\
 		    (0x7UL << GICR_PENDBASER_OUTER_CACHE_SHIFT)
+
+/*
+ * The LPI Pending Table (PENDBASER) is 64k aligned. So bits 51:16 are defined to be the PA, for 36
+ * potentially significant bits.
+ */
+#define		GICR_PENDBASER_PA_SHIFT		16
+#define		GICR_PENDBASER_PA_SIZE		36
+#define		GICR_PENDBASER_PA_MASK		\
+	(((1UL << GICR_PENDBASER_PA_SIZE) - 1) << GICR_PENDBASER_PA_SHIFT)
 
 #define	GICR_INVLPIR		0x00a0
 #define	GICR_INVALLR		0x00b0
@@ -419,6 +435,8 @@
 #define		GITS_BASER_SIZE_MASK	0xFFUL
 
 #define		GITS_BASER_NUM		8
+/* Size of entries in a level 1 indirect table */
+#define		GITS_INDIRECT_L1_ESIZE	8
 
 #define	GITS_TYPER		(0x0008)
 #define		GITS_TYPER_HCC_SHIFT	24
@@ -435,6 +453,7 @@
 		    ((((x) & GITS_TYPER_ITTES_MASK) >> GITS_TYPER_ITTES_SHIFT) + 1)
 
 #define	GITS_TRANSLATER		(0x10040)
+
 /*
  * LPI related
  */

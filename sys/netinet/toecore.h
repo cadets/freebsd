@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _NETINET_TOE_H_
@@ -38,6 +36,7 @@
 #include <netinet/tcp.h>
 #include <sys/_eventhandler.h>
 
+struct tcpcb;
 struct tcpopt;
 struct tcphdr;
 struct in_conninfo;
@@ -109,7 +108,7 @@ struct toedev {
 	void (*tod_ctloutput)(struct toedev *, struct tcpcb *, int, int);
 
 	/* Update software state */
-	void (*tod_tcp_info)(struct toedev *, struct tcpcb *,
+	void (*tod_tcp_info)(struct toedev *, const struct tcpcb *,
 	    struct tcp_info *);
 
 	/* Create a TLS session */

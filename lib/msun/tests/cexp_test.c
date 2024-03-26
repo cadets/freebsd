@@ -28,9 +28,6 @@
  * Tests for corner cases in cexp*().
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 
 #include <complex.h>

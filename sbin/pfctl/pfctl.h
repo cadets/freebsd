@@ -29,8 +29,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
  * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _PFCTL_H_
@@ -90,6 +88,7 @@ int	 pfctl_command_tables(int, char *[], char *, const char *, char *,
 int	 pfctl_show_altq(int, const char *, int, int);
 void	 warn_namespace_collision(const char *);
 int	 pfctl_show_ifaces(const char *, int);
+void	pfctl_show_creators(int);
 FILE	*pfctl_fopen(const char *, const char *);
 
 #ifdef __FreeBSD__

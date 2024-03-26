@@ -27,11 +27,8 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
-#include <sys/cdefs.h>
 
 #include "namespace.h"
 
@@ -40,10 +37,6 @@
 #include <ieeefp.h>
 
 #ifndef _SOFT_FLOAT
-#ifdef __weak_alias
-__weak_alias(fpgetsticky,_fpgetsticky)
-#endif
-
 fp_except_t
 fpgetsticky()
 {

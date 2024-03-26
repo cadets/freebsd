@@ -25,8 +25,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SYS_EVENT_H_
@@ -309,7 +307,7 @@ struct knote {
 		struct		aioliojob *p_lio;	/* LIO job pointer */
 		void		*p_v;		/* generic other pointer */
 	} kn_ptr;
-	struct			filterops *kn_fop;
+	const struct		filterops *kn_fop;
 
 #define kn_id		kn_kevent.ident
 #define kn_filter	kn_kevent.filter
@@ -351,7 +349,7 @@ void	knlist_cleardel(struct knlist *knl, struct thread *td,
 void	knote_fdclose(struct thread *p, int fd);
 int 	kqfd_register(int fd, struct kevent *kev, struct thread *p,
 	    int mflag);
-int	kqueue_add_filteropts(int filt, struct filterops *filtops);
+int	kqueue_add_filteropts(int filt, const struct filterops *filtops);
 int	kqueue_del_filteropts(int filt);
 void	kqueue_drain_schedtask(void);
 

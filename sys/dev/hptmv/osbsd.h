@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 #ifndef _OSBSD_H_
 #define _OSBSD_H_
@@ -192,8 +190,6 @@ typedef struct IALAdapter
 	UCHAR               status;
 	UCHAR               ver_601;
 	UCHAR               beeping;
-
-	eventhandler_tag	eh;
 }
 IAL_ADAPTER_T;
 

@@ -27,6 +27,7 @@
  * Copyright (c) 2017 Datto Inc.
  * Copyright (c) 2017, Intel Corporation.
  * Copyright (c) 2019, loli10K <ezomori.nozomu@gmail.com>. All rights reserved.
+ * Copyright (c) 2023, Klara Inc.
  */
 
 #include <sys/zfs_context.h>
@@ -387,8 +388,17 @@ uint_t spa_asize_inflation = 24;
 uint_t spa_slop_shift = 5;
 static const uint64_t spa_min_slop = 128ULL * 1024 * 1024;
 static const uint64_t spa_max_slop = 128ULL * 1024 * 1024 * 1024;
-static const int spa_allocators = 4;
 
+/*
+ * Number of allocators to use, per spa instance
+ */
+static int spa_num_allocators = 4;
+
+/*
+ * Spa active allocator.
+ * Valid values are zfs_active_allocator=<dynamic|cursor|new-dynamic>.
+ */
+const char *zfs_active_allocator = "dynamic";
 
 void
 spa_load_failed(spa_t *spa, const char *fmt, ...)
@@ -416,6 +426,8 @@ spa_load_note(spa_t *spa, const char *fmt, ...)
 
 	zfs_dbgmsg("spa_load(%s, config %s): %s", spa->spa_name,
 	    spa->spa_trust_config ? "trusted" : "untrusted", buf);
+
+	spa_import_progress_set_notes_nolog(spa, "%s", buf);
 }
 
 /*
@@ -710,6 +722,7 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	spa->spa_deadman_synctime = MSEC2NSEC(zfs_deadman_synctime_ms);
 	spa->spa_deadman_ziotime = MSEC2NSEC(zfs_deadman_ziotime_ms);
 	spa_set_deadman_failmode(spa, zfs_deadman_failmode);
+	spa_set_allocator(spa, zfs_active_allocator);
 
 	zfs_refcount_create(&spa->spa_refcount);
 	spa_config_lock_init(spa);
@@ -723,15 +736,18 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	if (altroot)
 		spa->spa_root = spa_strdup(altroot);
 
-	spa->spa_alloc_count = spa_allocators;
+	/* Do not allow more allocators than CPUs. */
+	spa->spa_alloc_count = MIN(MAX(spa_num_allocators, 1), boot_ncpus);
+
 	spa->spa_allocs = kmem_zalloc(spa->spa_alloc_count *
 	    sizeof (spa_alloc_t), KM_SLEEP);
 	for (int i = 0; i < spa->spa_alloc_count; i++) {
 		mutex_init(&spa->spa_allocs[i].spaa_lock, NULL, MUTEX_DEFAULT,
 		    NULL);
 		avl_create(&spa->spa_allocs[i].spaa_tree, zio_bookmark_compare,
-		    sizeof (zio_t), offsetof(zio_t, io_alloc_node));
+		    sizeof (zio_t), offsetof(zio_t, io_queue_node.a));
 	}
+
 	avl_create(&spa->spa_metaslabs_by_flushed, metaslab_sort_by_flushed,
 	    sizeof (metaslab_t), offsetof(metaslab_t, ms_spa_txg_node));
 	avl_create(&spa->spa_sm_logs_by_txg, spa_log_sm_sort_by_txg,
@@ -772,6 +788,7 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	spa->spa_min_ashift = INT_MAX;
 	spa->spa_max_ashift = 0;
 	spa->spa_min_alloc = INT_MAX;
+	spa->spa_gcd_alloc = INT_MAX;
 
 	/* Reset cached value */
 	spa->spa_dedup_dspace = ~0ULL;
@@ -814,8 +831,7 @@ spa_remove(spa_t *spa)
 	if (spa->spa_root)
 		spa_strfree(spa->spa_root);
 
-	while ((dp = list_head(&spa->spa_config_list)) != NULL) {
-		list_remove(&spa->spa_config_list, dp);
+	while ((dp = list_remove_head(&spa->spa_config_list)) != NULL) {
 		if (dp->scd_path != NULL)
 			spa_strfree(dp->scd_path);
 		kmem_free(dp, sizeof (spa_config_dirent_t));
@@ -1821,7 +1837,8 @@ spa_get_slop_space(spa_t *spa)
 	 * deduplicated data, so since it's not useful to reserve more
 	 * space with more deduplicated data, we subtract that out here.
 	 */
-	space = spa_get_dspace(spa) - spa->spa_dedup_dspace;
+	space =
+	    spa_get_dspace(spa) - spa->spa_dedup_dspace - brt_get_dspace(spa);
 	slop = MIN(space >> spa_slop_shift, spa_max_slop);
 
 	/*
@@ -2170,6 +2187,7 @@ typedef struct spa_import_progress {
 	uint64_t		pool_guid;	/* unique id for updates */
 	char			*pool_name;
 	spa_load_state_t	spa_load_state;
+	char			*spa_load_notes;
 	uint64_t		mmp_sec_remaining;	/* MMP activity check */
 	uint64_t		spa_load_max_txg;	/* rewind txg */
 	procfs_list_node_t	smh_node;
@@ -2180,9 +2198,9 @@ spa_history_list_t *spa_import_progress_list = NULL;
 static int
 spa_import_progress_show_header(struct seq_file *f)
 {
-	seq_printf(f, "%-20s %-14s %-14s %-12s %s\n", "pool_guid",
+	seq_printf(f, "%-20s %-14s %-14s %-12s %-16s %s\n", "pool_guid",
 	    "load_state", "multihost_secs", "max_txg",
-	    "pool_name");
+	    "pool_name", "notes");
 	return (0);
 }
 
@@ -2191,11 +2209,12 @@ spa_import_progress_show(struct seq_file *f, void *data)
 {
 	spa_import_progress_t *sip = (spa_import_progress_t *)data;
 
-	seq_printf(f, "%-20llu %-14llu %-14llu %-12llu %s\n",
+	seq_printf(f, "%-20llu %-14llu %-14llu %-12llu %-16s %s\n",
 	    (u_longlong_t)sip->pool_guid, (u_longlong_t)sip->spa_load_state,
 	    (u_longlong_t)sip->mmp_sec_remaining,
 	    (u_longlong_t)sip->spa_load_max_txg,
-	    (sip->pool_name ? sip->pool_name : "-"));
+	    (sip->pool_name ? sip->pool_name : "-"),
+	    (sip->spa_load_notes ? sip->spa_load_notes : "-"));
 
 	return (0);
 }
@@ -2209,6 +2228,8 @@ spa_import_progress_truncate(spa_history_list_t *shl, unsigned int size)
 		sip = list_remove_head(&shl->procfs_list.pl_list);
 		if (sip->pool_name)
 			spa_strfree(sip->pool_name);
+		if (sip->spa_load_notes)
+			kmem_strfree(sip->spa_load_notes);
 		kmem_free(sip, sizeof (spa_import_progress_t));
 		shl->size--;
 	}
@@ -2264,6 +2285,10 @@ spa_import_progress_set_state(uint64_t pool_guid,
 	    sip = list_prev(&shl->procfs_list.pl_list, sip)) {
 		if (sip->pool_guid == pool_guid) {
 			sip->spa_load_state = load_state;
+			if (sip->spa_load_notes != NULL) {
+				kmem_strfree(sip->spa_load_notes);
+				sip->spa_load_notes = NULL;
+			}
 			error = 0;
 			break;
 		}
@@ -2271,6 +2296,59 @@ spa_import_progress_set_state(uint64_t pool_guid,
 	mutex_exit(&shl->procfs_list.pl_lock);
 
 	return (error);
+}
+
+static void
+spa_import_progress_set_notes_impl(spa_t *spa, boolean_t log_dbgmsg,
+    const char *fmt, va_list adx)
+{
+	spa_history_list_t *shl = spa_import_progress_list;
+	spa_import_progress_t *sip;
+	uint64_t pool_guid = spa_guid(spa);
+
+	if (shl->size == 0)
+		return;
+
+	char *notes = kmem_vasprintf(fmt, adx);
+
+	mutex_enter(&shl->procfs_list.pl_lock);
+	for (sip = list_tail(&shl->procfs_list.pl_list); sip != NULL;
+	    sip = list_prev(&shl->procfs_list.pl_list, sip)) {
+		if (sip->pool_guid == pool_guid) {
+			if (sip->spa_load_notes != NULL) {
+				kmem_strfree(sip->spa_load_notes);
+				sip->spa_load_notes = NULL;
+			}
+			sip->spa_load_notes = notes;
+			if (log_dbgmsg)
+				zfs_dbgmsg("'%s' %s", sip->pool_name, notes);
+			notes = NULL;
+			break;
+		}
+	}
+	mutex_exit(&shl->procfs_list.pl_lock);
+	if (notes != NULL)
+		kmem_strfree(notes);
+}
+
+void
+spa_import_progress_set_notes(spa_t *spa, const char *fmt, ...)
+{
+	va_list adx;
+
+	va_start(adx, fmt);
+	spa_import_progress_set_notes_impl(spa, B_TRUE, fmt, adx);
+	va_end(adx);
+}
+
+void
+spa_import_progress_set_notes_nolog(spa_t *spa, const char *fmt, ...)
+{
+	va_list adx;
+
+	va_start(adx, fmt);
+	spa_import_progress_set_notes_impl(spa, B_FALSE, fmt, adx);
+	va_end(adx);
 }
 
 int
@@ -2341,6 +2419,7 @@ spa_import_progress_add(spa_t *spa)
 		poolname = spa_name(spa);
 	sip->pool_name = spa_strdup(poolname);
 	sip->spa_load_state = spa_load_state(spa);
+	sip->spa_load_notes = NULL;
 
 	mutex_enter(&shl->procfs_list.pl_lock);
 	procfs_list_add(&shl->procfs_list, sip);
@@ -2360,6 +2439,8 @@ spa_import_progress_remove(uint64_t pool_guid)
 		if (sip->pool_guid == pool_guid) {
 			if (sip->pool_name)
 				spa_strfree(sip->pool_name);
+			if (sip->spa_load_notes)
+				spa_strfree(sip->spa_load_notes);
 			list_remove(&shl->procfs_list.pl_list, sip);
 			shl->size--;
 			kmem_free(sip, sizeof (spa_import_progress_t));
@@ -2439,7 +2520,6 @@ spa_init(spa_mode_t mode)
 	zio_init();
 	dmu_init();
 	zil_init();
-	vdev_cache_stat_init();
 	vdev_mirror_stat_init();
 	vdev_raidz_math_init();
 	vdev_file_init();
@@ -2463,7 +2543,6 @@ spa_fini(void)
 	spa_evict_all();
 
 	vdev_file_fini();
-	vdev_cache_stat_fini();
 	vdev_mirror_stat_fini();
 	vdev_raidz_math_fini();
 	chksum_fini();
@@ -2614,7 +2693,7 @@ spa_scan_get_stats(spa_t *spa, pool_scan_stat_t *ps)
 	ps->pss_end_time = scn->scn_phys.scn_end_time;
 	ps->pss_to_examine = scn->scn_phys.scn_to_examine;
 	ps->pss_examined = scn->scn_phys.scn_examined;
-	ps->pss_to_process = scn->scn_phys.scn_to_process;
+	ps->pss_skipped = scn->scn_phys.scn_skipped;
 	ps->pss_processed = scn->scn_phys.scn_processed;
 	ps->pss_errors = scn->scn_phys.scn_errors;
 
@@ -2758,8 +2837,7 @@ spa_state_to_name(spa_t *spa)
 	vdev_state_t state = rvd->vdev_state;
 	vdev_aux_t aux = rvd->vdev_stat.vs_aux;
 
-	if (spa_suspended(spa) &&
-	    (spa_get_failmode(spa) != ZIO_FAILURE_MODE_CONTINUE))
+	if (spa_suspended(spa))
 		return ("SUSPENDED");
 
 	switch (state) {
@@ -3005,3 +3083,6 @@ ZFS_MODULE_PARAM(zfs, zfs_, special_class_metadata_reserve_pct, UINT, ZMOD_RW,
 
 ZFS_MODULE_PARAM_CALL(zfs_spa, spa_, slop_shift, param_set_slop_shift,
 	param_get_uint, ZMOD_RW, "Reserved free space in pool");
+
+ZFS_MODULE_PARAM(zfs, spa_, num_allocators, INT, ZMOD_RW,
+	"Number of allocators per spa, capped by ncpus");

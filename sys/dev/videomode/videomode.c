@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 
 /*
  * THIS FILE AUTOMATICALLY GENERATED.  DO NOT EDIT.
@@ -6,9 +5,6 @@
  * generated from:
  *	NetBSD: modelines,v 1.9 2011/03/30 18:45:04 jdc Exp 
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
 #include <sys/param.h>

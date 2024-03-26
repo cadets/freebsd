@@ -1,4 +1,4 @@
-/*	$NetBSD: for.c,v 1.174 2023/05/09 19:43:12 rillig Exp $	*/
+/*	$NetBSD: for.c,v 1.178 2024/01/21 15:02:17 rillig Exp $	*/
 
 /*
  * Copyright (c) 1992, The Regents of the University of California.
@@ -45,7 +45,7 @@
  *
  * After reaching the .endfor, the values from the .for line are grouped
  * according to the number of variables.  For each such group, the unexpanded
- * body is scanned for variable expressions, and those that match the
+ * body is scanned for expressions, and those that match the
  * variable names are replaced with expressions of the form ${:U...}.  After
  * that, the body is treated like a file from an .include directive.
  *
@@ -58,7 +58,7 @@
 #include "make.h"
 
 /*	"@(#)for.c	8.1 (Berkeley) 6/6/93"	*/
-MAKE_RCSID("$NetBSD: for.c,v 1.174 2023/05/09 19:43:12 rillig Exp $");
+MAKE_RCSID("$NetBSD: for.c,v 1.178 2024/01/21 15:02:17 rillig Exp $");
 
 
 typedef struct ForLoop {
@@ -115,7 +115,7 @@ ForLoop_Free(ForLoop *f)
 }
 
 char *
-ForLoop_Details(ForLoop *f)
+ForLoop_Details(const ForLoop *f)
 {
 	size_t i, n;
 	const char **vars;
@@ -133,7 +133,7 @@ ForLoop_Details(ForLoop *f)
 			Buf_AddStr(&buf, ", ");
 		Buf_AddStr(&buf, vars[i]);
 		Buf_AddStr(&buf, " = ");
-		Buf_AddBytesBetween(&buf, items[i].start, items[i].end);
+		Buf_AddRange(&buf, items[i].start, items[i].end);
 	}
 	return Buf_DoneData(&buf);
 }
@@ -298,8 +298,8 @@ For_Accum(const char *line, int *forLevel)
 /*
  * When the body of a '.for i' loop is prepared for an iteration, each
  * occurrence of $i in the body is replaced with ${:U...}, inserting the
- * value of the item.  If this item contains a '$', it may be the start of a
- * variable expression.  This expression is copied verbatim, its length is
+ * value of the item.  If this item contains a '$', it may be the start of an
+ * expression.  This expression is copied verbatim, its length is
  * determined here, in a rather naive way, ignoring escape characters and
  * funny delimiters in modifiers like ':S}from}to}'.
  */
@@ -351,7 +351,7 @@ NeedsEscapes(Substring value, char endc)
 }
 
 /*
- * While expanding the body of a .for loop, write the item in the ${:U...}
+ * While expanding the body of a .for loop, write the item as a ${:U...}
  * expression, escaping characters as needed.  The result is later unescaped
  * by ApplyModifier_Defined.
  */
@@ -362,7 +362,7 @@ AddEscaped(Buffer *cmds, Substring item, char endc)
 	char ch;
 
 	if (!NeedsEscapes(item, endc)) {
-		Buf_AddBytesBetween(cmds, item.start, item.end);
+		Buf_AddRange(cmds, item.start, item.end);
 		return;
 	}
 
@@ -392,7 +392,7 @@ AddEscaped(Buffer *cmds, Substring item, char endc)
 }
 
 /*
- * When expanding the body of a .for loop, replace the variable name of an
+ * While expanding the body of a .for loop, replace the variable name of an
  * expression like ${i} or ${i:...} or $(i) or $(i:...) with ":Uvalue".
  */
 static void
@@ -401,12 +401,12 @@ ForLoop_SubstVarLong(ForLoop *f, unsigned int firstItem, Buffer *body,
 {
 	size_t i;
 	const char *start = *pp;
-	const char **vars = Vector_Get(&f->vars, 0);
+	const char **varnames = Vector_Get(&f->vars, 0);
 
 	for (i = 0; i < f->vars.len; i++) {
 		const char *p = start;
 
-		if (!cpp_skip_string(&p, vars[i]))
+		if (!cpp_skip_string(&p, varnames[i]))
 			continue;
 		/* XXX: why test for backslash here? */
 		if (*p != ':' && *p != endc && *p != '\\')
@@ -416,7 +416,7 @@ ForLoop_SubstVarLong(ForLoop *f, unsigned int firstItem, Buffer *body,
 		 * Found a variable match.  Skip over the variable name and
 		 * instead add ':U<value>' to the current body.
 		 */
-		Buf_AddBytesBetween(body, *inout_mark, start);
+		Buf_AddRange(body, *inout_mark, start);
 		Buf_AddStr(body, ":U");
 		AddEscaped(body, f->items.words[firstItem + i], endc);
 
@@ -427,14 +427,14 @@ ForLoop_SubstVarLong(ForLoop *f, unsigned int firstItem, Buffer *body,
 }
 
 /*
- * When expanding the body of a .for loop, replace single-character
- * variable expressions like $i with their ${:U...} expansion.
+ * While expanding the body of a .for loop, replace single-character
+ * expressions like $i with their ${:U...} expansion.
  */
 static void
 ForLoop_SubstVarShort(ForLoop *f, unsigned int firstItem, Buffer *body,
 		      const char *p, const char **inout_mark)
 {
-	const char ch = *p;
+	char ch = *p;
 	const char **vars;
 	size_t i;
 
@@ -451,7 +451,7 @@ ForLoop_SubstVarShort(ForLoop *f, unsigned int firstItem, Buffer *body,
 	return;
 
 found:
-	Buf_AddBytesBetween(body, *inout_mark, p);
+	Buf_AddRange(body, *inout_mark, p);
 	*inout_mark = p + 1;
 
 	/* Replace $<ch> with ${:U<value>} */
@@ -464,14 +464,15 @@ found:
  * Compute the body for the current iteration by copying the unexpanded body,
  * replacing the expressions for the iteration variables on the way.
  *
- * Using variable expressions ensures that the .for loop can't generate
- * syntax, and that the later parsing will still see a variable.
- * This code assumes that the variable with the empty name will never be
- * defined, see unit-tests/varname-empty.mk for more details.
+ * Using expressions ensures that the .for loop can't generate
+ * syntax, and that the later parsing will still see an expression.
+ * This code assumes that the variable with the empty name is never defined,
+ * see unit-tests/varname-empty.mk.
  *
  * The detection of substitutions of the loop control variables is naive.
  * Many of the modifiers use '\$' instead of '$$' to escape '$', so it is
  * possible to contrive a makefile where an unwanted substitution happens.
+ * See unit-tests/directive-for-escape.mk.
  */
 static void
 ForLoop_SubstBody(ForLoop *f, unsigned int firstItem, Buffer *body)
@@ -497,7 +498,7 @@ ForLoop_SubstBody(ForLoop *f, unsigned int firstItem, Buffer *body)
 			break;
 	}
 
-	Buf_AddBytesBetween(body, mark, end);
+	Buf_AddRange(body, mark, end);
 }
 
 /*
@@ -512,7 +513,12 @@ For_NextIteration(ForLoop *f, Buffer *body)
 
 	f->nextItem += (unsigned int)f->vars.len;
 	ForLoop_SubstBody(f, f->nextItem - (unsigned int)f->vars.len, body);
-	DEBUG1(FOR, "For: loop body:\n%s", body->data);
+	if (DEBUG(FOR)) {
+		char *details = ForLoop_Details(f);
+		debug_printf("For: loop body with %s:\n%s",
+		    details, body->data);
+		free(details);
+	}
 	return true;
 }
 

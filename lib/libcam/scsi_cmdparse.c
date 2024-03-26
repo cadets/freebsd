@@ -37,9 +37,6 @@
  * From: scsi.c,v 1.8 1997/02/22 15:07:54 peter Exp $
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 
 #include <stdlib.h>
@@ -103,7 +100,7 @@ __FBSDID("$FreeBSD$");
  */
 
 static int
-do_buff_decode(u_int8_t *buff, size_t len,
+do_buff_decode(uint8_t *buff, size_t len,
 	       void (*arg_put)(void *, int , void *, int, char *),
 	       void *puthook, const char *fmt, va_list *ap)
 {
@@ -701,7 +698,7 @@ csio_decode_visit(struct ccb_scsiio *csio, const char *fmt,
 }
 
 int
-buff_decode(u_int8_t *buff, size_t len, const char *fmt, ...)
+buff_decode(uint8_t *buff, size_t len, const char *fmt, ...)
 {
 	va_list ap;
 	int retval;
@@ -716,7 +713,7 @@ buff_decode(u_int8_t *buff, size_t len, const char *fmt, ...)
 }
 
 int
-buff_decode_visit(u_int8_t *buff, size_t len, const char *fmt,
+buff_decode_visit(uint8_t *buff, size_t len, const char *fmt,
 		  void (*arg_put)(void *, int, void *, int, char *),
 		  void *puthook)
 {
@@ -736,8 +733,8 @@ buff_decode_visit(u_int8_t *buff, size_t len, const char *fmt,
  * string describing the 
  */
 int
-csio_build(struct ccb_scsiio *csio, u_int8_t *data_ptr, u_int32_t dxfer_len,
-	   u_int32_t flags, int retry_count, int timeout, const char *cmd_spec,
+csio_build(struct ccb_scsiio *csio, uint8_t *data_ptr, uint32_t dxfer_len,
+	   uint32_t flags, int retry_count, int timeout, const char *cmd_spec,
 	   ...)
 {
 	size_t cmdlen;
@@ -773,8 +770,8 @@ done:
 }
 
 int
-csio_build_visit(struct ccb_scsiio *csio, u_int8_t *data_ptr,
-		 u_int32_t dxfer_len, u_int32_t flags, int retry_count,
+csio_build_visit(struct ccb_scsiio *csio, uint8_t *data_ptr,
+		 uint32_t dxfer_len, uint32_t flags, int retry_count,
 		 int timeout, const char *cmd_spec,
 		 int (*arg_get)(void *hook, char *field_name), void *gethook)
 {
@@ -831,7 +828,7 @@ csio_encode(struct ccb_scsiio *csio, const char *fmt, ...)
 }
 
 int
-buff_encode_visit(u_int8_t *buff, size_t len, const char *fmt,
+buff_encode_visit(uint8_t *buff, size_t len, const char *fmt,
 		  int (*arg_get)(void *hook, char *field_name), void *gethook)
 {
 

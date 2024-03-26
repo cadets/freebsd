@@ -25,9 +25,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -54,9 +51,9 @@ static void
 ipsec_status(if_ctx *ctx)
 {
 	uint32_t reqid;
+	struct ifreq ifr = { .ifr_data = (caddr_t)&reqid };
 
-	ifr.ifr_data = (caddr_t)&reqid;
-	if (ioctl_ctx(ctx, IPSECGREQID, &ifr) == -1)
+	if (ioctl_ctx_ifr(ctx, IPSECGREQID, &ifr) == -1)
 		return;
 	printf("\treqid: %u\n", reqid);
 }
@@ -66,15 +63,14 @@ setreqid(if_ctx *ctx, const char *val, int dummy __unused)
 {
 	char *ep;
 	uint32_t v;
+	struct ifreq ifr = { .ifr_data = (caddr_t)&v };
 
 	v = strtoul(val, &ep, 0);
 	if (*ep != '\0') {
 		warn("Invalid reqid value %s", val);
 		return;
 	}
-	strlcpy(ifr.ifr_name, name, sizeof(ifr.ifr_name));
-	ifr.ifr_data = (char *)&v;
-	if (ioctl_ctx(ctx, IPSECSREQID, &ifr) == -1) {
+	if (ioctl_ctx_ifr(ctx, IPSECSREQID, &ifr) == -1) {
 		warn("ioctl(IPSECSREQID)");
 		return;
 	}

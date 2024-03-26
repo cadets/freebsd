@@ -1,15 +1,17 @@
-#	@(#)Makefile	8.2 (Berkeley) 1/4/94
-# $FreeBSD$
-#
 # Doing a "make install" builds /usr/include.
 
 .include <src.opts.mk>
 
-PACKAGE=runtime
+PACKAGE=clibs
 CLEANFILES= osreldate.h version
 SUBDIR= arpa protocols rpcsvc rpc xlocale
 .if ${MACHINE_CPUARCH} == "amd64"
-SUBDIR+=	i386
+SUBDIR+=		i386
+INCLUDE_SUBDIRS+=	i386
+.endif
+.if ${MACHINE_CPUARCH} == "aarch64"
+SUBDIR+=		arm
+INCLUDE_SUBDIRS+=	arm
 .endif
 SUBDIR_PARALLEL=
 INCS=	a.out.h ar.h assert.h bitstring.h byteswap.h \
@@ -26,7 +28,7 @@ INCS=	a.out.h ar.h assert.h bitstring.h byteswap.h \
 	pthread_np.h pwd.h ranlib.h readpassphrase.h regex.h \
 	res_update.h resolv.h runetype.h sched.h \
 	search.h semaphore.h setjmp.h \
-	signal.h spawn.h stab.h stdalign.h stdbool.h stddef.h \
+	signal.h spawn.h stab.h stdalign.h stdbool.h stdckdint.h stddef.h \
 	stdnoreturn.h stdio.h stdlib.h string.h stringlist.h \
 	strings.h sysexits.h tar.h termios.h tgmath.h \
 	time.h timeconv.h timers.h ttyent.h \
@@ -48,7 +50,7 @@ LDIRS=	geom net net80211 netgraph netinet netinet6 \
 
 LSUBDIRS=	dev/acpica dev/agp dev/ciss dev/filemon dev/firewire \
 	dev/hwpmc dev/hyperv \
-	dev/ic dev/iicbus dev/io dev/mfi dev/mmc dev/nvme \
+	dev/ic dev/iicbus dev/io dev/mfi dev/mmc \
 	dev/ofw dev/pbio dev/pci ${_dev_powermac_nvram} dev/ppbus dev/pwm \
 	dev/smbus dev/speaker dev/tcp_log dev/veriexec dev/vkbd dev/wg \
 	fs/devfs fs/fdescfs fs/msdosfs fs/nfs fs/nullfs \
@@ -63,7 +65,9 @@ LSUBDIRS=	dev/acpica dev/agp dev/ciss dev/filemon dev/firewire \
 	netinet/netdump \
 	netinet/tcp_stacks \
 	netlink/route \
-	security/mac_biba security/mac_bsdextended security/mac_lomac \
+	security/mac_biba security/mac_bsdextended \
+	security/mac_grantbylabel \
+	security/mac_lomac \
 	security/mac_mls security/mac_partition \
 	security/mac_veriexec \
 	sys/disk \
@@ -174,6 +178,10 @@ HYPERVDIR=	${INCLUDEDIR}/dev/hyperv
 OPENCRYPTO=	cryptodev.h
 OPENCRYPTODIR=	${INCLUDEDIR}/crypto
 
+.PATH: ${SRCTOP}/sys/dev/nvme
+NVME=		nvme.h
+NVMEDIR=	${INCLUDEDIR}/dev/nvme
+
 .PATH: ${SRCTOP}/sys/dev/pci
 PCI=		pcireg.h
 PCIDIR=		${INCLUDEDIR}/dev/pci
@@ -205,7 +213,8 @@ IPFILTERDIR=	${INCLUDEDIR}/netinet
 .PATH: ${SRCTOP}/sys/netpfil/pf
 PF=		pf.h \
 		pf_altq.h \
-		pf_mtag.h
+		pf_mtag.h \
+		pf_nl.h
 PFPACKAGE=	pf
 PFDIR=	${INCLUDEDIR}/netpfil/pf
 
@@ -245,6 +254,7 @@ INCSGROUPS=	INCS \
 		HID \
 		HYPERV \
 		OPENCRYPTO \
+		NVME \
 		PCI \
 		RPC \
 		SECAUDIT \
@@ -348,10 +358,10 @@ compat:
 	mtree -deU ${NO_ROOT:D-W} ${MTREE_FOLLOWS_SYMLINKS} \
 	    -f ${SRCTOP}/etc/mtree/BSD.include.dist \
 	    -p ${SDESTDIR}${INCLUDEDIR} > /dev/null
-.if ${MACHINE_CPUARCH} == "amd64"
+.for d in ${INCLUDE_SUBDIRS}
 	${INSTALL} -d ${TAG_ARGS} -o ${BINOWN} -g ${BINGRP} -m 755 \
-	    ${SDESTDIR}${INCLUDEDIR}/i386
-.endif
+	    ${SDESTDIR}${INCLUDEDIR}/${d}
+.endfor
 
 copies: .PHONY .META
 	cd ${SDESTDIR}${INCLUDEDIR}; find ${LDIRS} ${LSUBDIRS} ${LSUBSUBDIRS} crypto \

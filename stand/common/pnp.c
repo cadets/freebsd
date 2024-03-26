@@ -3,9 +3,6 @@
  *
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * "Plug and Play" functionality.
  *

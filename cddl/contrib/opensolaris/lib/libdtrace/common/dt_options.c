@@ -49,6 +49,7 @@
 #include <dt_impl.h>
 #include <dt_string.h>
 #include <dt_elf.h>
+#include <dt_oformat.h>
 
 extern dt_elf_opt_t dtelf_ctopts[];
 extern dt_elf_opt_t dtelf_rtopts[];
@@ -734,6 +735,18 @@ dt_opt_size(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
 }
 
 static int
+dt_opt_oformat(dtrace_hdl_t *dtp, const char *arg, uintptr_t option __unused)
+{
+	if (arg == NULL)
+		return (dt_set_errno(dtp, EDT_BADOPTVAL));
+
+	if (xo_set_options(NULL, arg) < 0)
+		return (dt_set_errno(dtp, EDT_BADOPTVAL));
+
+	return (dtrace_oformat_configure(dtp));
+}
+
+static int
 dt_opt_rate(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
 {
 	char *end;
@@ -1057,6 +1070,7 @@ static const dt_option_t _dtrace_rtoptions[] = {
 	{ "ddtracearg", dt_opt_runtime, DTRACEOPT_DDTRACEARG},
 	{ "jstackstrsize", dt_opt_size, DTRACEOPT_JSTACKSTRSIZE },
 	{ "nspec", dt_opt_runtime, DTRACEOPT_NSPEC },
+	{ "oformat", dt_opt_oformat, 0 },
 	{ "specsize", dt_opt_size, DTRACEOPT_SPECSIZE },
 	{ "stackframes", dt_opt_runtime, DTRACEOPT_STACKFRAMES },
 	{ "statusrate", dt_opt_rate, DTRACEOPT_STATUSRATE },

@@ -26,9 +26,6 @@
  *	from: FreeBSD: src/sys/boot/sparc64/loader/metadata.c,v 1.6
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <stand.h>
 #include <sys/param.h>
 #include <sys/linker.h>

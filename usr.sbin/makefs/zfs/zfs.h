@@ -124,7 +124,7 @@ char *dsl_dir_get_mountpoint(zfs_opt_t *, zfs_dsl_dir_t *);
 bool dsl_dir_has_dataset(zfs_dsl_dir_t *);
 bool dsl_dir_dataset_has_objset(zfs_dsl_dir_t *);
 void dsl_dir_dataset_write(zfs_opt_t *, zfs_objset_t *, zfs_dsl_dir_t *);
-void dsl_dir_size_add(zfs_dsl_dir_t *, uint64_t);
+void dsl_dir_root_finalize(zfs_opt_t *, uint64_t);
 void dsl_write(zfs_opt_t *);
 
 /* fs.c */
@@ -168,5 +168,6 @@ struct dnode_cursor *dnode_cursor_init(zfs_opt_t *, zfs_objset_t *,
     dnode_phys_t *, off_t, off_t);
 blkptr_t *dnode_cursor_next(zfs_opt_t *, struct dnode_cursor *, off_t);
 void dnode_cursor_finish(zfs_opt_t *, struct dnode_cursor *);
+uint64_t randomguid(void);
 
 #endif /* !_MAKEFS_ZFS_H_ */

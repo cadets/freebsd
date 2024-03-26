@@ -27,7 +27,6 @@
  * SUCH DAMAGE.
  *
  *	from: FreeBSD: src/sys/i386/include/md_var.h,v 1.40 2001/07/12
- * $FreeBSD$
  */
 
 #ifndef	_MACHINE_MD_VAR_H_
@@ -38,6 +37,8 @@ extern char sigcode[];
 extern int szsigcode;
 extern u_long elf_hwcap;
 extern u_long elf_hwcap2;
+extern u_long linux_elf_hwcap;
+extern u_long linux_elf_hwcap2;
 #ifdef COMPAT_FREEBSD32
 extern u_long elf32_hwcap;
 extern u_long elf32_hwcap2;

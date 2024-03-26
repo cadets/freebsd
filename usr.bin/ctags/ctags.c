@@ -29,21 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1987, 1993, 1994, 1995\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif
-
-#if 0
-#ifndef lint
-static char sccsid[] = "@(#)ctags.c	8.4 (Berkeley) 2/7/95";
-#endif
-#endif
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -87,7 +72,7 @@ char	lbuf[LINE_MAX];
 
 void	init(void);
 void	find_entries(char *);
-static void usage(void);
+static void usage(void) __dead2;
 
 int
 main(int argc, char **argv)

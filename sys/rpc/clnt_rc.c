@@ -27,9 +27,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -44,6 +41,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/socketvar.h>
 #include <sys/time.h>
 #include <sys/uio.h>
+
+#include <netinet/tcp.h>
 
 #include <rpc/rpc.h>
 #include <rpc/rpc_com.h>
@@ -214,6 +213,12 @@ clnt_reconnect_connect(CLIENT *cl)
 				td->td_ucred = oldcred;
 				goto out;
 			}
+		}
+		if (newclient != NULL) {
+			int optval = 1;
+
+			(void)so_setsockopt(so, IPPROTO_TCP, TCP_USE_DDP,
+			    &optval, sizeof(optval));
 		}
 		if (newclient != NULL && rc->rc_reconcall != NULL)
 			(*rc->rc_reconcall)(newclient, rc->rc_reconarg,

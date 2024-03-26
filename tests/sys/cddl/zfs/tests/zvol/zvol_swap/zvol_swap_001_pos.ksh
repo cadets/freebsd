@@ -20,11 +20,6 @@
 # CDDL HEADER END
 #
 
-# $FreeBSD$
-
-#
-# ident	"@(#)zvol_swap_001_pos.ksh	1.3	08/05/14 SMI"
-#
 # Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #

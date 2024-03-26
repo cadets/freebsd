@@ -28,8 +28,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_kern_tls.h"
@@ -181,8 +179,7 @@ init_toepcb(struct vi_info *vi, struct toepcb *toep)
 	toep->ctrlq = &sc->sge.ctrlq[pi->port_id];
 
 	tls_init_toep(toep);
-	if (ulp_mode(toep) == ULP_MODE_TCPDDP)
-		ddp_init_toep(toep);
+	MPASS(ulp_mode(toep) != ULP_MODE_TCPDDP);
 
 	toep->flags |= TPF_INITIALIZED;
 
@@ -325,8 +322,8 @@ release_offload_resources(struct toepcb *toep)
 	 * that a normal connection's socket's so_snd would have been purged or
 	 * drained.  Do _not_ clean up here.
 	 */
-	MPASS(mbufq_len(&toep->ulp_pduq) == 0);
-	MPASS(mbufq_len(&toep->ulp_pdu_reclaimq) == 0);
+	MPASS(mbufq_empty(&toep->ulp_pduq));
+	MPASS(mbufq_empty(&toep->ulp_pdu_reclaimq));
 #ifdef INVARIANTS
 	if (ulp_mode(toep) == ULP_MODE_TCPDDP)
 		ddp_assert_empty(toep);
@@ -732,9 +729,13 @@ fill_tcp_info_from_tcb(struct adapter *sc, uint64_t *tcb, struct tcp_info *ti)
 	ti->tcpi_snd_ssthresh = GET_TCB_FIELD(tcb, SND_SSTHRESH);
 	ti->tcpi_snd_cwnd = GET_TCB_FIELD(tcb, SND_CWND);
 	ti->tcpi_rcv_nxt = GET_TCB_FIELD(tcb, RCV_NXT);
+	ti->tcpi_rcv_adv = GET_TCB_FIELD(tcb, RCV_ADV);
+	ti->tcpi_dupacks = GET_TCB_FIELD(tcb, T_DUPACKS);
 
 	v = GET_TCB_FIELD(tcb, TX_MAX);
 	ti->tcpi_snd_nxt = v - GET_TCB_FIELD(tcb, SND_NXT_RAW);
+	ti->tcpi_snd_una = v - GET_TCB_FIELD(tcb, SND_UNA_RAW);
+	ti->tcpi_snd_max = v - GET_TCB_FIELD(tcb, SND_MAX_RAW);
 
 	/* Receive window being advertised by us. */
 	ti->tcpi_rcv_wscale = GET_TCB_FIELD(tcb, SND_SCALE);	/* Yes, SND. */
@@ -812,12 +813,12 @@ fill_tcp_info(struct adapter *sc, u_int tid, struct tcp_info *ti)
  * the tcp_info for an offloaded connection.
  */
 static void
-t4_tcp_info(struct toedev *tod, struct tcpcb *tp, struct tcp_info *ti)
+t4_tcp_info(struct toedev *tod, const struct tcpcb *tp, struct tcp_info *ti)
 {
 	struct adapter *sc = tod->tod_softc;
 	struct toepcb *toep = tp->t_toe;
 
-	INP_WLOCK_ASSERT(tptoinpcb(tp));
+	INP_LOCK_ASSERT(tptoinpcb(tp));
 	MPASS(ti != NULL);
 
 	fill_tcp_info(sc, toep->tid, ti);
@@ -1214,10 +1215,7 @@ calc_options2(struct vi_info *vi, struct conn_params *cp)
 		opt2 |= V_RX_COALESCE(M_RX_COALESCE);
 
 	opt2 |= V_RX_FC_DDP(0) | V_RX_FC_DISABLE(0);
-#ifdef USE_DDP_RX_FLOW_CONTROL
-	if (cp->ulp_mode == ULP_MODE_TCPDDP)
-		opt2 |= F_RX_FC_DDP;
-#endif
+	MPASS(cp->ulp_mode != ULP_MODE_TCPDDP);
 
 	return (htobe32(opt2));
 }
@@ -1325,11 +1323,7 @@ init_conn_params(struct vi_info *vi , struct offload_settings *s,
 		cp->tx_align = 0;
 
 	/* ULP mode. */
-	if (s->ddp > 0 ||
-	    (s->ddp < 0 && sc->tt.ddp && (so_options_get(so) & SO_NO_DDP) == 0))
-		cp->ulp_mode = ULP_MODE_TCPDDP;
-	else
-		cp->ulp_mode = ULP_MODE_NONE;
+	cp->ulp_mode = ULP_MODE_NONE;
 
 	/* Rx coalescing. */
 	if (s->rx_coalesce >= 0)
@@ -1957,6 +1951,35 @@ t4_tom_deactivate(struct adapter *sc)
 }
 
 static int
+t4_ctloutput_tom(struct socket *so, struct sockopt *sopt)
+{
+	struct tcpcb *tp = sototcpcb(so);
+	struct toepcb *toep = tp->t_toe;
+	int error, optval;
+
+	if (sopt->sopt_level == IPPROTO_TCP && sopt->sopt_name == TCP_USE_DDP) {
+		if (sopt->sopt_dir != SOPT_SET)
+			return (EOPNOTSUPP);
+
+		if (sopt->sopt_td != NULL) {
+			/* Only settable by the kernel. */
+			return (EPERM);
+		}
+
+		error = sooptcopyin(sopt, &optval, sizeof(optval),
+		    sizeof(optval));
+		if (error != 0)
+			return (error);
+
+		if (optval != 0)
+			return (t4_enable_ddp_rcv(so, toep));
+		else
+			return (EOPNOTSUPP);
+	}
+	return (tcp_ctloutput(so, sopt));
+}
+
+static int
 t4_aio_queue_tom(struct socket *so, struct kaiocb *job)
 {
 	struct tcpcb *tp = sototcpcb(so);
@@ -1970,7 +1993,8 @@ t4_aio_queue_tom(struct socket *so, struct kaiocb *job)
 	if (SOLISTENING(so))
 		return (EINVAL);
 
-	if (ulp_mode(toep) == ULP_MODE_TCPDDP) {
+	if (ulp_mode(toep) == ULP_MODE_TCPDDP ||
+	    ulp_mode(toep) == ULP_MODE_NONE) {
 		error = t4_aio_queue_ddp(so, job);
 		if (error != EOPNOTSUPP)
 			return (error);
@@ -1994,9 +2018,11 @@ t4_tom_mod_load(void)
 	t4_tls_mod_load();
 
 	bcopy(&tcp_protosw, &toe_protosw, sizeof(toe_protosw));
+	toe_protosw.pr_ctloutput = t4_ctloutput_tom;
 	toe_protosw.pr_aio_queue = t4_aio_queue_tom;
 
 	bcopy(&tcp6_protosw, &toe6_protosw, sizeof(toe6_protosw));
+	toe6_protosw.pr_ctloutput = t4_ctloutput_tom;
 	toe6_protosw.pr_aio_queue = t4_aio_queue_tom;
 
 	return (t4_register_uld(&tom_uld_info));

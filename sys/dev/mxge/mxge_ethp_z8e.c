@@ -1,8 +1,7 @@
 /*
  * from: FreeBSD: src/sys/tools/fw_stub.awk,v 1.6 2007/03/02 11:42:53 flz
  */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+
 #include <sys/param.h>
 #include <sys/errno.h>
 #include <sys/kernel.h>

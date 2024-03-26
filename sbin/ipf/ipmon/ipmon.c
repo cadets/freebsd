@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 
 /*
  * Copyright (C) 2012 by Darren Reed.
@@ -14,10 +13,6 @@
 #include <fcntl.h>
 #include <signal.h>
 
-#if !defined(lint)
-static const char sccsid[] = "@(#)ipmon.c	1.21 6/5/96 (C)1993-2000 Darren Reed";
-static const char rcsid[] = "@(#)$Id$";
-#endif
 
 
 #define	STRERROR(x)	strerror(x)
@@ -304,7 +299,6 @@ static icmp_subtype_t *
 find_icmpsubtype(int type, icmp_subtype_t *table, size_t tablesz)
 {
 	icmp_subtype_t *ist;
-	int i;
 
 	if (tablesz < 2)
 		return (NULL);
@@ -312,11 +306,10 @@ find_icmpsubtype(int type, icmp_subtype_t *table, size_t tablesz)
 	if ((type < 0) || (type > table[tablesz - 2].ist_val))
 		return (NULL);
 
-	i = type;
 	if (table[type].ist_val == type)
 		return (table + type);
 
-	for (i = 0, ist = table; ist->ist_val != -2; i++, ist++)
+	for (ist = table; ist->ist_val != -2; ist++)
 		if (ist->ist_val == type)
 			return (ist);
 	return (NULL);
@@ -327,7 +320,6 @@ static icmp_type_t *
 find_icmptype(int type, icmp_type_t *table, size_t tablesz)
 {
 	icmp_type_t *it;
-	int i;
 
 	if (tablesz < 2)
 		return (NULL);
@@ -335,11 +327,10 @@ find_icmptype(int type, icmp_type_t *table, size_t tablesz)
 	if ((type < 0) || (type > table[tablesz - 2].it_val))
 		return (NULL);
 
-	i = type;
 	if (table[type].it_val == type)
 		return (table + type);
 
-	for (i = 0, it = table; it->it_val != -2; i++, it++)
+	for (it = table; it->it_val != -2; it++)
 		if (it->it_val == type)
 			return (it);
 	return (NULL);
@@ -587,7 +578,7 @@ dumphex(FILE *log, int dopts, char *buf, int len)
 		}
 
 		if ((j + 1) & 0xf)
-			*t++ = ' ';;
+			*t++ = ' ';
 	}
 
 	if (j & 0xf) {

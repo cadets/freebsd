@@ -22,8 +22,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _IF_HNVAR_H_
@@ -102,7 +100,6 @@ struct hn_rx_ring {
 	struct sysctl_oid *hn_rx_sysctl_tree;
 
 	void		*hn_br;		/* TX/RX bufring */
-	struct hyperv_dma hn_br_dma;
 
 	struct vmbus_channel *hn_chan;
 } __aligned(CACHE_LINE_SIZE);
@@ -242,10 +239,8 @@ struct hn_softc {
 
 	void			*hn_rxbuf;
 	uint32_t		hn_rxbuf_gpadl;
-	struct hyperv_dma	hn_rxbuf_dma;
 
 	uint32_t		hn_chim_gpadl;
-	struct hyperv_dma	hn_chim_dma;
 
 	uint32_t		hn_rndis_rid;
 	uint32_t		hn_ndis_ver;
@@ -282,6 +277,8 @@ struct hn_softc {
 	u_int			hn_saved_tsomax;
 	u_int			hn_saved_tsosegcnt;
 	u_int			hn_saved_tsosegsz;
+	u_int			hn_saved_capenable;
+	u_int			hn_saved_hwassist;
 
 	/*
 	 * RSC switch, default off

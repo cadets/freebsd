@@ -53,9 +53,6 @@
  * information, know-how or other confidential information to any third party.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bio.h>

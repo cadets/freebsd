@@ -30,20 +30,6 @@
  * SUCH DAMAGE.
  */
 
-#if 0
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1989, 1993\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#ifndef lint
-static const char sccsid[] = "@(#)strfile.c   8.1 (Berkeley) 5/31/93";
-#endif /* not lint */
-#endif
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/endian.h>
 #include <ctype.h>
@@ -126,7 +112,7 @@ static int stable_collate_range_cmp(int, int);
 static void do_order(void);
 static void getargs(int, char **);
 static void randomize(void);
-static void usage(void);
+static void usage(void) __dead2;
 
 /*
  * main:

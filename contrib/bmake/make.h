@@ -1,4 +1,4 @@
-/*	$NetBSD: make.h,v 1.319 2023/03/28 14:39:31 rillig Exp $	*/
+/*	$NetBSD: make.h,v 1.329 2024/03/10 02:53:37 sjg Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -193,6 +193,13 @@ typedef unsigned char bool;
 
 #if defined(sun) && (defined(__svr4__) || defined(__SVR4))
 # define POSIX_SIGNALS
+#endif
+
+/*
+ * IRIX defines OP_NONE in sys/fcntl.h
+ */
+#if defined(OP_NONE)
+# undef OP_NONE
 #endif
 
 /*
@@ -520,6 +527,7 @@ typedef struct GNode {
 	const char *fname;
 	/* Line number where the GNode got defined, 1-based */
 	unsigned lineno;
+	int exit_status;
 } GNode;
 
 /*
@@ -554,6 +562,14 @@ typedef enum CondResult {
 	CR_FALSE,		/* Skip the next lines */
 	CR_ERROR		/* Unknown directive or parse error */
 } CondResult;
+
+typedef struct {
+	enum GuardKind {
+		GK_VARIABLE,
+		GK_TARGET
+	} kind;
+	char *name;
+} Guard;
 
 /* Names of the variables that are "local" to a specific target. */
 #define TARGET	"@"		/* Target of dependency */
@@ -794,8 +810,8 @@ void Arch_End(void);
 bool Arch_ParseArchive(char **, GNodeList *, GNode *);
 void Arch_Touch(GNode *);
 void Arch_TouchLib(GNode *);
-void Arch_UpdateMTime(GNode *gn);
-void Arch_UpdateMemberMTime(GNode *gn);
+void Arch_UpdateMTime(GNode *);
+void Arch_UpdateMemberMTime(GNode *);
 void Arch_FindLib(GNode *, SearchPath *);
 bool Arch_LibOODate(GNode *) MAKE_ATTR_USE;
 bool Arch_IsLib(GNode *) MAKE_ATTR_USE;
@@ -809,6 +825,7 @@ void Compat_Make(GNode *, GNode *);
 extern unsigned int cond_depth;
 CondResult Cond_EvalCondition(const char *) MAKE_ATTR_USE;
 CondResult Cond_EvalLine(const char *) MAKE_ATTR_USE;
+Guard *Cond_ExtractGuard(const char *) MAKE_ATTR_USE;
 void Cond_EndFile(void);
 
 /* dir.c; see also dir.h */
@@ -836,7 +853,7 @@ int For_Eval(const char *) MAKE_ATTR_USE;
 bool For_Accum(const char *, int *) MAKE_ATTR_USE;
 void For_Run(unsigned, unsigned);
 bool For_NextIteration(struct ForLoop *, Buffer *);
-char *ForLoop_Details(struct ForLoop *);
+char *ForLoop_Details(const struct ForLoop *);
 void ForLoop_Free(struct ForLoop *);
 void For_Break(struct ForLoop *);
 
@@ -866,13 +883,14 @@ void PrintLocation(FILE *, bool, const GNode *);
 void PrintStackTrace(bool);
 void Parse_Error(ParseErrorLevel, const char *, ...) MAKE_ATTR_PRINTFLIKE(2, 3);
 bool Parse_VarAssign(const char *, bool, GNode *) MAKE_ATTR_USE;
-void Parse_AddIncludeDir(const char *);
 void Parse_File(const char *, int);
 void Parse_PushInput(const char *, unsigned, unsigned, Buffer,
 		     struct ForLoop *);
 void Parse_MainName(GNodeList *);
 int Parse_NumErrors(void) MAKE_ATTR_USE;
 unsigned int CurFile_CondMinDepth(void) MAKE_ATTR_USE;
+void Parse_GuardElse(void);
+void Parse_GuardEndif(void);
 
 
 /* suff.c */
@@ -1017,7 +1035,7 @@ char *Var_Subst(const char *, GNode *, VarEvalMode);
 void Var_Expand(FStr *, GNode *, VarEvalMode);
 void Var_Stats(void);
 void Var_Dump(GNode *);
-void Var_ReexportVars(void);
+void Var_ReexportVars(GNode *);
 void Var_Export(VarExportMode, const char *);
 void Var_ExportVars(const char *);
 void Var_UnExport(bool, const char *);
@@ -1046,7 +1064,7 @@ void PrintOnError(GNode *, const char *);
 void Main_ExportMAKEFLAGS(bool);
 bool Main_SetObjdir(bool, const char *, ...) MAKE_ATTR_PRINTFLIKE(2, 3);
 int mkTempFile(const char *, char *, size_t) MAKE_ATTR_USE;
-int str2Lst_Append(StringList *, char *);
+void AppendWords(StringList *, char *);
 void GNode_FprintDetails(FILE *, const char *, const GNode *, const char *);
 bool GNode_ShouldExecute(GNode *gn) MAKE_ATTR_USE;
 
@@ -1203,8 +1221,8 @@ pp_skip_hspace(char **pp)
 }
 
 #if defined(lint)
-extern void do_not_define_rcsid(void); /* for lint */
-# define MAKE_RCSID(id) extern void do_not_define_rcsid(void)
+void do_not_define_rcsid(void); /* for lint */
+# define MAKE_RCSID(id) void do_not_define_rcsid(void)
 #elif defined(MAKE_NATIVE)
 # include <sys/cdefs.h>
 # ifndef __IDSTRING
@@ -1223,7 +1241,7 @@ extern void do_not_define_rcsid(void); /* for lint */
 # define MAKE_RCSID(id) static volatile char \
 	MAKE_RCSID_CONCAT(rcsid_, __COUNTER__)[] = id
 #elif defined(MAKE_ALL_IN_ONE)
-# define MAKE_RCSID(id) extern void do_not_define_rcsid(void)
+# define MAKE_RCSID(id) void do_not_define_rcsid(void)
 #else
 # define MAKE_RCSID(id) static volatile char rcsid[] = id
 #endif

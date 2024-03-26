@@ -62,11 +62,6 @@
  * messages from MMCCAM to newbus and back.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
-#include "opt_cam.h"
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/types.h>

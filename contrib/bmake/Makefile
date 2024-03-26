@@ -1,4 +1,4 @@
-#	$Id: Makefile,v 1.124 2023/02/25 20:27:44 sjg Exp $
+#	$Id: Makefile,v 1.126 2024/03/10 17:46:44 sjg Exp $
 
 PROG=	bmake
 
@@ -68,7 +68,9 @@ FILEMON_H ?= /usr/include/dev/filemon/filemon.h
 .if exists(${FILEMON_H}) && ${FILEMON_H:T} == "filemon.h"
 COPTS.filemon_dev.c += -DHAVE_FILEMON_H -I${FILEMON_H:H}
 .endif
-.endif				# USE_FILEMON == dev
+.elif ${USE_FILEMON} == "ktrace"
+COPTS.filemon_ktrace.c += -Wno-error=unused-parameter
+.endif
 
 .endif				# USE_FILEMON
 
@@ -88,9 +90,8 @@ OS := ${.MAKE.OS:U${uname -s:L:sh}}
 # are we 4.4BSD ?
 isBSD44:=${BSD44_LIST:M${OS}}
 
-.if ${isBSD44} == "" && ${OS:NDarwin:NLinux} != ""
-MANTARGET= cat
-INSTALL?=${srcdir}/install-sh
+.if ${isBSD44} == "" && ${OS:NCYGWIN*:NDarwin:NLinux} != ""
+MANTARGET?= cat
 .if ${MACHINE} == "sun386"
 # even I don't have one of these anymore :-)
 CFLAGS+= -DPORTAR

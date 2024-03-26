@@ -29,9 +29,6 @@
  * Emulation of selected legacy test/debug interfaces expected by KVM-unit-tests
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <machine/vmm.h>
@@ -45,7 +42,9 @@ __FBSDID("$FreeBSD$");
 #include <vmmapi.h>
 
 #include "debug.h"
-#include "inout.h"
+#ifdef __amd64__
+#include "amd64/inout.h"
+#endif
 #include "mem.h"
 #include "pctestdev.h"
 

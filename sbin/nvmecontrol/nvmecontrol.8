@@ -33,9 +33,7 @@
 .\"
 .\" Author: Jim Harris <jimharris@FreeBSD.org>
 .\"
-.\" $FreeBSD$
-.\"
-.Dd December 14, 2022
+.Dd February 28, 2022
 .Dt NVMECONTROL 8
 .Os
 .Sh NAME
@@ -157,7 +155,7 @@
 .Ic format
 .Op Fl f Ar fmt
 .Op Fl m Ar mset
-.Op Fl o Ar pi
+.Op Fl p Ar pi
 .Op Fl l Ar pil
 .Op Fl E
 .Op Fl C
@@ -589,6 +587,7 @@ Show all the command values on stdout.
 .It Fl w -write
 Command writes data to the device.
 .El
+.Pp
 Send arbitrary commands to the device.
 Can be used to extract vendor specific logs.
 Transfers to/from the device possible, but limited to
@@ -615,7 +614,7 @@ Where
 is required, you can use either the
 .Pa nvmeX
 device, or the disk device such as
-.Pa nda Z
+.Pa ndaZ
 or
 .Pa nvdZ .
 For commands that take an optional

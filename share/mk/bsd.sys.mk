@@ -1,4 +1,3 @@
-# $FreeBSD$
 #
 # This file contains common settings used for building FreeBSD
 # sources.
@@ -86,9 +85,6 @@ CWARNFLAGS+=	-Wdate-time
 .if ${WARNS} <= 6
 CWARNFLAGS.clang+=	-Wno-empty-body -Wno-string-plus-int
 CWARNFLAGS.clang+=	-Wno-unused-const-variable
-.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 130000
-CWARNFLAGS.clang+=	-Wno-error=unused-but-set-variable
-.endif
 .if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 150000
 CWARNFLAGS.clang+=	-Wno-error=unused-but-set-parameter
 .endif
@@ -116,6 +112,9 @@ CWARNFLAGS.clang+=	-Wno-array-bounds
       ${COMPILER_TYPE} == "gcc")
 CWARNFLAGS+=		-Wno-misleading-indentation
 .endif # NO_WMISLEADING_INDENTATION
+.if ${COMPILER_VERSION} >= 130000
+NO_WUNUSED_BUT_SET_VARIABLE=	-Wno-unused-but-set-variable
+.endif
 .if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 140000
 NO_WBITWISE_INSTEAD_OF_LOGICAL=	-Wno-bitwise-instead-of-logical
 .endif
@@ -123,6 +122,9 @@ NO_WBITWISE_INSTEAD_OF_LOGICAL=	-Wno-bitwise-instead-of-logical
 NO_WARRAY_PARAMETER=	-Wno-array-parameter
 NO_WSTRICT_PROTOTYPES=	-Wno-strict-prototypes
 NO_WDEPRECATED_NON_PROTOTYPE=-Wno-deprecated-non-prototype
+.endif
+.if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} >= 50200
+NO_WUNUSED_BUT_SET_VARIABLE=-Wno-unused-but-set-variable
 .endif
 .if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} >= 100100
 NO_WZERO_LENGTH_BOUNDS=	-Wno-zero-length-bounds
@@ -176,7 +178,6 @@ CWARNFLAGS+=	-Wno-error=address			\
 		-Wno-error=logical-not-parentheses	\
 		-Wno-error=strict-aliasing		\
 		-Wno-error=uninitialized		\
-		-Wno-error=unused-but-set-variable	\
 		-Wno-error=unused-function		\
 		-Wno-error=unused-value
 .endif
@@ -231,6 +232,13 @@ CWARNFLAGS+=	-Wno-error=overflow
 # globally for all C++
 CXXWARNFLAGS+=	-Wno-literal-suffix 			\
 		-Wno-error=unknown-pragmas
+.endif
+
+# GCC 13.1.0
+.if ${COMPILER_VERSION} >= 130100
+# These warnings are raised by headers in libc++ so are disabled
+# globally for all C++
+CXXWARNFLAGS+=	-Wno-dangling-reference
 .endif
 
 # GCC produces false positives for functions that switch on an
@@ -500,3 +508,8 @@ ${_tgt}: ${META_DEPS}
 .endif
 .endfor
 .endif
+
+# we are generally the last makefile read
+CFLAGS+= ${CFLAGS_LAST}
+CXXFLAGS+= ${CXXFLAGS_LAST}
+LDFLAGS+= ${LDFLAGS_LAST}

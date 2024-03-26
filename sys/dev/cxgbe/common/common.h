@@ -25,8 +25,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
- *
  */
 
 #ifndef __CHELSIO_COMMON_H
@@ -315,6 +313,7 @@ struct chip_params {
 	u32 sge_fl_db;
 	u16 mps_tcam_size;
 	u16 rss_nentries;
+	u16 cim_la_size;
 };
 
 /* VF-only parameters. */

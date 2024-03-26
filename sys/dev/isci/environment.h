@@ -28,8 +28,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef ENVIRONMENT_H_
@@ -40,7 +38,7 @@
  *
  * @brief Types and macros specific to the FreeBSD environment.
  */
-#include <sys/cdefs.h>
+
 #include <sys/types.h>
 #include <sys/libkern.h>
 #include <machine/bus.h>

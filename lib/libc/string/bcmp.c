@@ -29,12 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#if defined(LIBC_SCCS) && !defined(lint)
-static char sccsid[] = "@(#)bcmp.c	8.1 (Berkeley) 6/4/93";
-#endif /* LIBC_SCCS and not lint */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <strings.h>
 
 /*
@@ -51,7 +45,7 @@ bcmp(const void *b1, const void *b2, size_t length)
 	p2 = (char *)b2;
 	do
 		if (*p1++ != *p2++)
-			break;
+			return (1);
 	while (--length);
-	return (length);
+	return (0);
 }

@@ -20,14 +20,9 @@
 # CDDL HEADER END
 #
 
-# $FreeBSD$
-
 #
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
-#
-# ident	"@(#)zfs_mount_008_pos.ksh	1.3	09/01/13 SMI"
-#
 
 . $STF_SUITE/tests/cli_root/zfs_mount/zfs_mount.kshlib
 

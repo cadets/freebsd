@@ -29,9 +29,6 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/fcntl.h>
 #include <unistd.h>
@@ -43,6 +40,5 @@ __weak_reference(__sys_close, __close);
 int
 close(int fd)
 {
-
-	return (((int (*)(int))__libc_interposing[INTERPOS_close])(fd));
+	return (((int (*)(int))*(__libc_interposing_slot(INTERPOS_close)))(fd));
 }

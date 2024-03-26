@@ -57,13 +57,11 @@
  */
 
 /*
- * $FreeBSD$
  */
 
 #ifndef HEADER_RIPEMD_H
 #define HEADER_RIPEMD_H
 
-#include <sys/cdefs.h>
 #include <sys/types.h>		/* XXX switch to machine/ansi.h and __ types */
 
 #define RIPEMD160_CBLOCK	64

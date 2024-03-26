@@ -21,8 +21,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 
@@ -1540,8 +1538,7 @@ uniform_delay_run(struct _qs *q, struct _cfg *arg)
 {
 	uint64_t x = my_random24();
 	q->cur_delay = arg->d[0] + ((arg->d[2] * x) >> 24);
-#if 0 /* COMPUTE_STATS */
-#endif /* COMPUTE_STATS */
+
 	return 0;
 }
 

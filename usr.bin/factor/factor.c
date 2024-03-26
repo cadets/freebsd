@@ -30,23 +30,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-#include <sys/cdefs.h>
-#ifdef __COPYRIGHT
-__COPYRIGHT("@(#) Copyright (c) 1989, 1993\
-	The Regents of the University of California.  All rights reserved.");
-#endif
-#ifdef __SCCSID
-__SCCSID("@(#)factor.c	8.4 (Berkeley) 5/4/95");
-#endif
-#ifdef __RCSID
-__RCSID("$NetBSD: factor.c,v 1.19 2009/08/12 05:54:31 dholland Exp $");
-#endif
-#ifdef __FBSDID
-__FBSDID("$FreeBSD$");
-#endif
-#endif /* not lint */
-
 /*
  * factor - factor a number into primes
  *
@@ -82,7 +65,15 @@ __FBSDID("$FreeBSD$");
 
 #include <openssl/bn.h>
 
-#define	PRIME_CHECKS	5
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+static inline int
+BN_check_prime(BIGNUM *p, BN_CTX *ctx, BN_GENCB *cb)
+{
+	const int nchecks = 5;
+
+	return BN_is_prime_ex(p, nchecks, ctx, cb);
+}
+#endif
 
 static void	pollard_pminus1(BIGNUM *); /* print factors for big numbers */
 
@@ -209,7 +200,7 @@ pr_fact(BIGNUM *val)
 			if (!BN_sqr(bnfact, bnfact, ctx))
 				errx(1, "error in BN_sqr()");
 			if (BN_cmp(bnfact, val) > 0 ||
-			    BN_is_prime_ex(val, PRIME_CHECKS, NULL, NULL) == 1)
+			    BN_check_prime(val, NULL, NULL) == 1)
 				pr_print(val);
 			else
 				pollard_pminus1(val);
@@ -282,7 +273,7 @@ newbase:
 			errx(1, "error in BN_gcd()");
 
 		if (!BN_is_one(x)) {
-			if (BN_is_prime_ex(x, PRIME_CHECKS, NULL, NULL) == 1)
+			if (BN_check_prime(x, NULL, NULL) == 1)
 				pr_print(x);
 			else
 				pollard_pminus1(x);
@@ -291,8 +282,7 @@ newbase:
 			BN_div(num, NULL, val, x, ctx);
 			if (BN_is_one(num))
 				return;
-			if (BN_is_prime_ex(num, PRIME_CHECKS, NULL,
-			    NULL) == 1) {
+			if (BN_check_prime(num, NULL, NULL) == 1) {
 				pr_print(num);
 				fflush(stdout);
 				return;

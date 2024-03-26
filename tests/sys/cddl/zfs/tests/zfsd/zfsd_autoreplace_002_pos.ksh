@@ -20,14 +20,9 @@
 # CDDL HEADER END
 #
 
-# $FreeBSD$
-
 #
 # Copyright 2013 Spectra Logic.  All rights reserved.
 # Use is subject to license terms.
-#
-# ident	"@(#)hotspare_replace_007_pos.ksh	1.0	12/08/10 SL"
-#
 . $STF_SUITE/tests/hotspare/hotspare.kshlib
 . $STF_SUITE/tests/zfsd/zfsd.kshlib
 . $STF_SUITE/include/libgnop.kshlib
@@ -83,6 +78,7 @@ for keyword in "${MY_KEYWORDS[@]}" ; do
 	log_must $ZPOOL set autoreplace=on $TESTPOOL
 
 	log_must destroy_gnop $REMOVAL_DISK
+	log_must wait_for_pool_removal 20
 	log_must create_gnop $NEW_DISK $PHYSPATH
 	verify_assertion
 	destroy_pool "$TESTPOOL"

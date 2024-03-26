@@ -32,21 +32,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1989, 1993\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#if 0
-#ifndef lint
-static char sccsid[] = "@(#)paste.c	8.1 (Berkeley) 6/6/93";
-#endif /* not lint */
-#endif
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 
 #include <err.h>
@@ -65,7 +50,7 @@ static int delimcnt;
 static int parallel(char **);
 static int sequential(char **);
 static int tr(wchar_t *);
-static void usage(void);
+static void usage(void) __dead2;
 
 static wchar_t tab[] = L"\t";
 

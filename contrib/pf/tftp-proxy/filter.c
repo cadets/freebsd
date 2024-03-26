@@ -62,6 +62,7 @@ static char			pfanchor_call[PF_ANCHOR_NAME_SIZE];
 static struct pfioc_trans	pft;
 static struct pfioc_trans_e	pfte[TRANS_SIZE];
 static int dev, rule_log;
+static struct pfctl_handle *pfh = NULL;
 static char *qname;
 
 int
@@ -77,7 +78,7 @@ add_filter(u_int32_t id, u_int8_t dir, struct sockaddr *src,
 		return (-1);
 
 	pfrule.direction = dir;
-	if (pfctl_add_rule(dev, &pfrule, pfanchor, pfanchor_call,
+	if (pfctl_add_rule_h(pfh, &pfrule, pfanchor, pfanchor_call,
 	    pfticket, pfpool_ticket))
 		return (-1);
 
@@ -112,7 +113,7 @@ add_nat(u_int32_t id, struct sockaddr *src, struct sockaddr *dst,
 
 	pfrule.rpool.proxy_port[0] = nat_range_low;
 	pfrule.rpool.proxy_port[1] = nat_range_high;
-	if (pfctl_add_rule(dev, &pfrule, pfanchor, pfanchor_call,
+	if (pfctl_add_rule_h(pfh, &pfrule, pfanchor, pfanchor_call,
 	    pfticket, pfpool_ticket))
 		return (-1);
 
@@ -145,7 +146,7 @@ add_rdr(u_int32_t id, struct sockaddr *src, struct sockaddr *dst,
 		return (-1);
 
 	pfrule.rpool.proxy_port[0] = rdr_port;
-	if (pfctl_add_rule(dev, &pfrule, pfanchor, pfanchor_call,
+	if (pfctl_add_rule_h(pfh, &pfrule, pfanchor, pfanchor_call,
 	    pfticket, pfpool_ticket))
 		return (-1);
 
@@ -173,7 +174,7 @@ do_rollback(void)
 void
 init_filter(char *opt_qname, int opt_verbose)
 {
-	struct pf_status status;
+	struct pfctl_status *status;
 
 	qname = opt_qname;
 
@@ -187,14 +188,22 @@ init_filter(char *opt_qname, int opt_verbose)
 		syslog(LOG_ERR, "can't open /dev/pf");
 		exit(1);
 	}
-	if (ioctl(dev, DIOCGETSTATUS, &status) == -1) {
+	pfh = pfctl_open(PF_DEVICE);
+	if (pfh == NULL) {
+		syslog(LOG_ERR, "can't pfctl_open()");
+		exit(1);
+	}
+	status = pfctl_get_status(dev);
+	if (status == NULL) {
 		syslog(LOG_ERR, "DIOCGETSTATUS");
 		exit(1);
 	}
-	if (!status.running) {
+	if (!status->running) {
 		syslog(LOG_ERR, "pf is disabled");
 		exit(1);
 	}
+
+	pfctl_free_status(status);
 }
 
 int

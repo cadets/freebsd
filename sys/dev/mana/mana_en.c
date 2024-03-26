@@ -27,8 +27,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -171,7 +169,7 @@ mana_ioctl(if_t ifp, u_long command, caddr_t data)
 	struct ifrsshash *ifrh;
 	struct ifreq *ifr;
 	uint16_t new_mtu;
-	int rc = 0;
+	int rc = 0, mask;
 
 	switch (command) {
 	case SIOCSIFMTU:
@@ -214,6 +212,81 @@ mana_ioctl(if_t ifp, u_long command, caddr_t data)
 				MANA_APC_LOCK_UNLOCK(apc);
 			}
 		}
+		break;
+
+	case SIOCSIFCAP:
+		MANA_APC_LOCK_LOCK(apc);
+		ifr = (struct ifreq *)data;
+		/*
+		 * Fix up requested capabilities w/ supported capabilities,
+		 * since the supported capabilities could have been changed.
+		 */
+		mask = (ifr->ifr_reqcap & if_getcapabilities(ifp)) ^
+		    if_getcapenable(ifp);
+
+		if (mask & IFCAP_TXCSUM) {
+			if_togglecapenable(ifp, IFCAP_TXCSUM);
+			if_togglehwassist(ifp, (CSUM_TCP | CSUM_UDP | CSUM_IP));
+
+			if ((IFCAP_TSO4 & if_getcapenable(ifp)) &&
+			    !(IFCAP_TXCSUM & if_getcapenable(ifp))) {
+				mask &= ~IFCAP_TSO4;
+				if_setcapenablebit(ifp, 0, IFCAP_TSO4);
+				if_sethwassistbits(ifp, 0, CSUM_IP_TSO);
+				mana_warn(NULL,
+				    "Also disabled tso4 due to -txcsum.\n");
+			}
+		}
+
+		if (mask & IFCAP_TXCSUM_IPV6) {
+			if_togglecapenable(ifp, IFCAP_TXCSUM_IPV6);
+			if_togglehwassist(ifp, (CSUM_UDP_IPV6 | CSUM_TCP_IPV6));
+
+			if ((IFCAP_TSO6 & if_getcapenable(ifp)) &&
+			    !(IFCAP_TXCSUM_IPV6 & if_getcapenable(ifp))) {
+				mask &= ~IFCAP_TSO6;
+				if_setcapenablebit(ifp, 0, IFCAP_TSO6);
+				if_sethwassistbits(ifp, 0, CSUM_IP6_TSO);
+				mana_warn(ifp,
+				    "Also disabled tso6 due to -txcsum6.\n");
+			}
+		}
+
+		if (mask & IFCAP_RXCSUM)
+			if_togglecapenable(ifp, IFCAP_RXCSUM);
+		/* We can't diff IPv6 packets from IPv4 packets on RX path. */
+		if (mask & IFCAP_RXCSUM_IPV6)
+			if_togglecapenable(ifp, IFCAP_RXCSUM_IPV6);
+
+		if (mask & IFCAP_LRO)
+			if_togglecapenable(ifp, IFCAP_LRO);
+
+		if (mask & IFCAP_TSO4) {
+			if (!(IFCAP_TSO4 & if_getcapenable(ifp)) &&
+			    !(IFCAP_TXCSUM & if_getcapenable(ifp))) {
+				MANA_APC_LOCK_UNLOCK(apc);
+				if_printf(ifp, "Enable txcsum first.\n");
+				rc = EAGAIN;
+				goto out;
+			}
+			if_togglecapenable(ifp, IFCAP_TSO4);
+			if_togglehwassist(ifp, CSUM_IP_TSO);
+		}
+
+		if (mask & IFCAP_TSO6) {
+			if (!(IFCAP_TSO6 & if_getcapenable(ifp)) &&
+			    !(IFCAP_TXCSUM_IPV6 & if_getcapenable(ifp))) {
+				MANA_APC_LOCK_UNLOCK(apc);
+				if_printf(ifp, "Enable txcsum6 first.\n");
+				rc = EAGAIN;
+				goto out;
+			}
+			if_togglecapenable(ifp, IFCAP_TSO6);
+			if_togglehwassist(ifp, CSUM_IP6_TSO);
+		}
+
+		MANA_APC_LOCK_UNLOCK(apc);
+out:
 		break;
 
 	case SIOCSIFMEDIA:
@@ -428,6 +501,7 @@ mana_xmit(struct mana_txq *txq)
 	struct gdma_queue *gdma_sq;
 	struct mana_cq *cq;
 	int err, len;
+	bool is_tso;
 
 	gdma_sq = txq->gdma_sq;
 	cq = &apc->tx_qp[txq->idx].tx_cq;
@@ -505,7 +579,10 @@ mana_xmit(struct mana_txq *txq)
 		pkg.wqe_req.flags = 0;
 		pkg.wqe_req.client_data_unit = 0;
 
+		is_tso = false;
 		if (mbuf->m_pkthdr.csum_flags & CSUM_TSO) {
+			is_tso =  true;
+
 			if (MANA_L3_PROTO(mbuf) == ETHERTYPE_IP)
 				pkg.tx_oob.s_oob.is_outer_ipv4 = 1;
 			else
@@ -568,6 +645,11 @@ mana_xmit(struct mana_txq *txq)
 
 		packets++;
 		bytes += len;
+
+		if (is_tso) {
+			txq->tso_pkts++;
+			txq->tso_bytes += len;
+		}
 	}
 
 	counter_enter();
@@ -800,8 +882,7 @@ mana_init_port_context(struct mana_port_context *apc)
 	uint32_t tso_maxsize;
 	int err;
 
-	tso_maxsize = MAX_MBUF_FRAGS * MANA_TSO_MAXSEG_SZ -
-	    (ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN);
+	tso_maxsize = MANA_TSO_MAX_SZ;
 
 	/* Create DMA tag for tx bufs */
 	err = bus_dma_tag_create(bus_get_dma_tag(dev),	/* parent */
@@ -983,14 +1064,12 @@ mana_query_vport_cfg(struct mana_port_context *apc, uint32_t vport_index,
 void
 mana_uncfg_vport(struct mana_port_context *apc)
 {
-	MANA_APC_LOCK_LOCK(apc);
 	apc->vport_use_count--;
 	if (apc->vport_use_count < 0) {
 		mana_err(NULL,
 		    "WARNING: vport_use_count less than 0: %u\n",
 		    apc->vport_use_count);
 	}
-	MANA_APC_LOCK_UNLOCK(apc);
 }
 
 int
@@ -1019,13 +1098,10 @@ mana_cfg_vport(struct mana_port_context *apc, uint32_t protection_dom_id,
 	 * QPs on a physical port up to the hardware limits independent of the
 	 * Ethernet usage on the same port.
 	 */
-	MANA_APC_LOCK_LOCK(apc);
 	if (apc->vport_use_count > 0) {
-		MANA_APC_LOCK_UNLOCK(apc);
 		return EBUSY;
 	}
 	apc->vport_use_count++;
-	MANA_APC_LOCK_UNLOCK(apc);
 
 	mana_gd_init_req_hdr(&req.hdr, MANA_CONFIG_VPORT_TX,
 	    sizeof(req), sizeof(resp));
@@ -1411,21 +1487,23 @@ mana_poll_tx_cq(struct mana_cq *cq)
 		case CQE_TX_VPORT_DISABLED:
 		case CQE_TX_VLAN_TAGGING_VIOLATION:
 			sa_drop ++;
-			mana_err(NULL,
+			mana_dbg(NULL,
 			    "TX: txq %d CQE error %d, ntc = %d, "
 			    "pending sends = %d: err ignored.\n",
 			    txq_idx, cqe_oob->cqe_hdr.cqe_type,
 			    next_to_complete, txq->pending_sends);
+			counter_u64_add(txq->stats.cqe_err, 1);
 			break;
 
 		default:
-			/* If the CQE type is unexpected, log an error,
-			 * and go through the error path.
+			/* If the CQE type is unknown, log a debug msg,
+			 * and still free the mbuf, etc.
 			 */
-			mana_err(NULL,
-			    "ERROR: TX: Unexpected CQE type %d: HW BUG?\n",
+			mana_dbg(NULL,
+			    "ERROR: TX: Unknown CQE type %d\n",
 			    cqe_oob->cqe_hdr.cqe_type);
-			return;
+			counter_u64_add(txq->stats.cqe_unknown_type, 1);
+			break;
 		}
 		if (txq->gdma_txq_id != completions[i].wq_num) {
 			mana_dbg(NULL,
@@ -1531,7 +1609,7 @@ mana_post_pkt_rxq(struct mana_rxq *rxq)
 
 	recv_buf_oob = &rxq->rx_oobs[curr_index];
 
-	err = mana_gd_post_and_ring(rxq->gdma_rq, &recv_buf_oob->wqe_req,
+	err = mana_gd_post_work_request(rxq->gdma_rq, &recv_buf_oob->wqe_req,
 	    &recv_buf_oob->wqe_inf);
 	if (err) {
 		mana_err(NULL, "WARNING: rxq %u post pkt err %d\n",
@@ -1630,9 +1708,12 @@ mana_rx_mbuf(struct mbuf *mbuf, struct mana_rxcomp_oob *cqe,
 
 	do_if_input = true;
 	if ((if_getcapenable(ndev) & IFCAP_LRO) && do_lro) {
+		rxq->lro_tried++;
 		if (rxq->lro.lro_cnt != 0 &&
 		    tcp_lro_rx(&rxq->lro, mbuf, 0) == 0)
 			do_if_input = false;
+		else
+			rxq->lro_failed++;
 	}
 	if (do_if_input) {
 		if_input(ndev, mbuf);
@@ -1762,6 +1843,13 @@ mana_poll_rx_cq(struct mana_cq *cq)
 		}
 
 		mana_process_rx_cqe(cq->rxq, cq, &comp[i]);
+	}
+
+	if (comp_read > 0) {
+		struct gdma_context *gc =
+		    cq->rxq->gdma_rq->gdma_dev->gdma_context;
+
+		mana_gd_wq_ring_doorbell(gc, cq->rxq->gdma_rq);
 	}
 
 	tcp_lro_flush_all(&cq->rxq->lro);
@@ -2712,6 +2800,7 @@ mana_probe_port(struct mana_context *ac, int port_idx,
 {
 	struct gdma_context *gc = ac->gdma_dev->gdma_context;
 	struct mana_port_context *apc;
+	uint32_t hwassist;
 	if_t ndev;
 	int err;
 
@@ -2774,10 +2863,20 @@ mana_probe_port(struct mana_context *ac, int port_idx,
 	if_setcapenable(ndev, if_getcapabilities(ndev));
 
 	/* TSO parameters */
-	if_sethwtsomax(ndev, MAX_MBUF_FRAGS * MANA_TSO_MAXSEG_SZ -
+	if_sethwtsomax(ndev, MANA_TSO_MAX_SZ -
 	    (ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN));
 	if_sethwtsomaxsegcount(ndev, MAX_MBUF_FRAGS);
 	if_sethwtsomaxsegsize(ndev, PAGE_SIZE);
+
+	hwassist = 0;
+	if (if_getcapenable(ndev) & (IFCAP_TSO4 | IFCAP_TSO6))
+		hwassist |= CSUM_TSO;
+	if (if_getcapenable(ndev) & IFCAP_TXCSUM)
+		hwassist |= (CSUM_TCP | CSUM_UDP | CSUM_IP);
+	if (if_getcapenable(ndev) & IFCAP_TXCSUM_IPV6)
+		hwassist |= (CSUM_UDP_IPV6 | CSUM_TCP_IPV6);
+	mana_dbg(NULL, "set hwassist 0x%x\n", hwassist);
+	if_sethwassist(ndev, hwassist);
 
 	ifmedia_init(&apc->media, IFM_IMASK,
 	    mana_ifmedia_change, mana_ifmedia_status);

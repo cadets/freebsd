@@ -34,8 +34,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "yp.h"
 #include "yp_extern.h"
 #include <dirent.h>
@@ -307,7 +305,6 @@ ypxfr_callback(ypxfrstat rval, struct sockaddr_in *addr, unsigned int transid,
 	}
 
 	clnt_destroy(clnt);
-	return;
 }
 
 #define YPXFR_RETURN(CODE) 						\
@@ -675,7 +672,6 @@ static void yp_maplist_free(struct ypmaplist *yp_maplist)
 		free(yp_maplist);
 		yp_maplist = next;
 	}
-	return;
 }
 
 static struct ypmaplist *

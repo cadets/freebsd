@@ -22,8 +22,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef FMAN_H_
@@ -58,9 +56,8 @@ struct fman_softc {
 struct resource * fman_alloc_resource(device_t bus, device_t child, int type,
     int *rid, rman_res_t start, rman_res_t end, rman_res_t count, u_int flags);
 int fman_activate_resource(device_t bus, device_t child,
-    int type, int rid, struct resource *res);
-int fman_release_resource(device_t bus, device_t child, int type, int rid,
     struct resource *res);
+int fman_release_resource(device_t bus, device_t child, struct resource *res);
 int	fman_attach(device_t dev);
 int	fman_detach(device_t dev);
 int	fman_suspend(device_t dev);

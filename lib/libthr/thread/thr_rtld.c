@@ -26,13 +26,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
  /*
   * A lockless rwlock for rtld.
   */
-#include <sys/cdefs.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <link.h>
@@ -240,6 +236,7 @@ _thr_rtld_init(void)
 
 	mprotect(NULL, 0, 0);
 	_rtld_get_stack_prot();
+	thr_wake(-1);
 
 	li.rtli_version = RTLI_VERSION;
 	li.lock_create  = _thr_rtld_lock_create;

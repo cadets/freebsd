@@ -33,9 +33,6 @@
  * available at http://www.cs.berkeley.edu/~wkahan/testpi/ .
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 
 #include <fenv.h>

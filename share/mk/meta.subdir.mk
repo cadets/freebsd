@@ -1,5 +1,6 @@
-# $FreeBSD$
-# $Id: meta.subdir.mk,v 1.12 2020/08/19 17:51:53 sjg Exp $
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# $Id: meta.subdir.mk,v 1.14 2024/02/17 17:26:57 sjg Exp $
 
 #
 #	@(#) Copyright (c) 2010, Simon J. Gerraty
@@ -18,7 +19,7 @@
 .if !defined(NO_SUBDIR) && !empty(SUBDIR)
 .if make(destroy*) || make(clean*)
 .MAKE.MODE = compat
-.if !commands(destroy)
+.if !commands(obj)
 .-include <bsd.obj.mk>
 .endif
 .elif ${.MAKE.LEVEL} == 0

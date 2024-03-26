@@ -32,9 +32,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)in_pcb.h	8.1 (Berkeley) 6/10/93
- * $FreeBSD$
  */
 
 #ifndef _NETINET_IN_PCB_H_
@@ -482,15 +479,10 @@ void inp_unlock_assert(struct inpcb *);
 
 void	inp_apply_all(struct inpcbinfo *, void (*func)(struct inpcb *, void *),
 	    void *arg);
-int 	inp_ip_tos_get(const struct inpcb *inp);
-void 	inp_ip_tos_set(struct inpcb *inp, int val);
 struct socket *
 	inp_inpcbtosocket(struct inpcb *inp);
-struct tcpcb *
-	inp_inpcbtotcpcb(struct inpcb *inp);
 void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 		uint32_t *faddr, uint16_t *fp);
-int	inp_so_options(const struct inpcb *inp);
 
 #endif /* _KERNEL */
 
@@ -575,6 +567,7 @@ int	inp_so_options(const struct inpcb *inp);
 #define	IN6P_RTHDRDSTOPTS	0x00200000 /* receive dstoptions before rthdr */
 #define	IN6P_TCLASS		0x00400000 /* receive traffic class value */
 #define	IN6P_AUTOFLOWLABEL	0x00800000 /* attach flowlabel automatically */
+/*	INP_INLBGROUP		0x01000000 private to in_pcb.c */
 #define	INP_ONESBCAST		0x02000000 /* send all-ones broadcast */
 #define	INP_DROPPED		0x04000000 /* protocol drop flag */
 #define	INP_SOCKREF		0x08000000 /* strong socket reference */
@@ -596,9 +589,9 @@ int	inp_so_options(const struct inpcb *inp);
 /*				0x00000001 */
 /*				0x00000002 */
 /*				0x00000004 */
-#define	INP_REUSEPORT		0x00000008 /* SO_REUSEPORT option is set */
+/*				0x00000008 */
 /*				0x00000010 */
-#define	INP_REUSEADDR		0x00000020 /* SO_REUSEADDR option is set */
+/*				0x00000020 */
 /*				0x00000040 */
 /*				0x00000080 */
 #define	INP_RECVFLOWID		0x00000100 /* populate recv datagram with flow info */
@@ -606,7 +599,7 @@ int	inp_so_options(const struct inpcb *inp);
 #define	INP_RATE_LIMIT_CHANGED	0x00000400 /* rate limit needs attention */
 #define	INP_ORIGDSTADDR		0x00000800 /* receive IP dst address/port */
 /*				0x00001000 */
-#define	INP_REUSEPORT_LB	0x00002000 /* SO_REUSEPORT_LB option is set */
+/*				0x00002000 */
 /*				0x00004000 */
 /*				0x00008000 */
 /*				0x00010000 */
@@ -673,7 +666,6 @@ int	in_pcbconnect(struct inpcb *, struct sockaddr_in *, struct ucred *,
 	    bool);
 int	in_pcbconnect_setup(struct inpcb *, struct sockaddr_in *, in_addr_t *,
 	    u_short *, in_addr_t *, u_short *, struct ucred *);
-void	in_pcbdetach(struct inpcb *);
 void	in_pcbdisconnect(struct inpcb *);
 void	in_pcbdrop(struct inpcb *);
 void	in_pcbfree(struct inpcb *);
@@ -687,8 +679,6 @@ struct inpcb *
 struct inpcb *
 	in_pcblookup_mbuf(struct inpcbinfo *, struct in_addr, u_int,
 	    struct in_addr, u_int, int, struct ifnet *, struct mbuf *);
-void	in_pcbnotifyall(struct inpcbinfo *pcbinfo, struct in_addr,
-	    int, struct inpcb *(*)(struct inpcb *, int));
 void	in_pcbref(struct inpcb *);
 void	in_pcbrehash(struct inpcb *);
 void	in_pcbremhash_locked(struct inpcb *);
@@ -726,10 +716,8 @@ struct inpcb_iterator {
 struct inpcb *inp_next(struct inpcb_iterator *);
 void	in_losing(struct inpcb *);
 void	in_pcbsetsolabel(struct socket *so);
-int	in_getpeeraddr(struct socket *so, struct sockaddr **nam);
-int	in_getsockaddr(struct socket *so, struct sockaddr **nam);
-struct sockaddr *
-	in_sockaddr(in_port_t port, struct in_addr *addr);
+int	in_getpeeraddr(struct socket *, struct sockaddr *sa);
+int	in_getsockaddr(struct socket *, struct sockaddr *sa);
 void	in_pcbsosetlabel(struct socket *so);
 #ifdef RATELIMIT
 int

@@ -32,9 +32,6 @@
  * - tests for harder values (more mantissa bits than float)
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <fenv.h>
 #include <math.h>

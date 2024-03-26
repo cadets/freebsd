@@ -20,14 +20,9 @@
 # CDDL HEADER END
 #
 
-# $FreeBSD$
-
 #
 # Copyright 2013 Spectra Logic.  All rights reserved.
 # Use is subject to license terms.
-#
-# ident	"@(#)zfsd_zfsd_002_pos.ksh	1.0	12/08/10 SL"
-#
 . $STF_SUITE/tests/hotspare/hotspare.kshlib
 . $STF_SUITE/tests/zfsd/zfsd.kshlib
 . $STF_SUITE/include/libgnop.kshlib

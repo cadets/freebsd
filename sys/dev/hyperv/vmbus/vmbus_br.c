@@ -26,9 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -142,8 +139,8 @@ vmbus_rxbr_avail(const struct vmbus_rxbr *rbr)
 	uint32_t rindex, windex;
 
 	/* Get snapshot */
-	rindex = rbr->rxbr_rindex;
-	windex = rbr->rxbr_windex;
+	rindex = atomic_load_acq_32(&rbr->rxbr_rindex);
+	windex = atomic_load_acq_32(&rbr->rxbr_windex);
 
 	return (rbr->rxbr_dsize -
 	    VMBUS_BR_WAVAIL(rindex, windex, rbr->rxbr_dsize));
@@ -289,7 +286,7 @@ vmbus_txbr_need_signal(const struct vmbus_txbr *tbr, uint32_t old_windex)
 	 * This is the only case we need to signal when the
 	 * ring transitions from being empty to non-empty.
 	 */
-	if (old_windex == tbr->txbr_rindex)
+	if (old_windex == atomic_load_acq_32(&tbr->txbr_rindex))
 		return (TRUE);
 
 	return (FALSE);
@@ -301,8 +298,8 @@ vmbus_txbr_avail(const struct vmbus_txbr *tbr)
 	uint32_t rindex, windex;
 
 	/* Get snapshot */
-	rindex = tbr->txbr_rindex;
-	windex = tbr->txbr_windex;
+	rindex = atomic_load_acq_32(&tbr->txbr_rindex);
+	windex = atomic_load_acq_32(&tbr->txbr_windex);
 
 	return VMBUS_BR_WAVAIL(rindex, windex, tbr->txbr_dsize);
 }
@@ -427,7 +424,7 @@ vmbus_txbr_write_call(struct vmbus_txbr *tbr,
 	 * is copied.
 	 */
 	__compiler_membar();
-	tbr->txbr_windex = windex;
+	atomic_store_rel_32(&tbr->txbr_windex, windex);
 
 	mtx_unlock_spin(&tbr->txbr_lock);
 
@@ -471,7 +468,7 @@ vmbus_txbr_write(struct vmbus_txbr *tbr, const struct iovec iov[], int iovlen,
 	}
 
 	/* Save br_windex for later use */
-	old_windex = tbr->txbr_windex;
+	old_windex = atomic_load_acq_32(&tbr->txbr_windex);
 
 	/*
 	 * Copy the scattered channel packet to the TX bufring.
@@ -494,7 +491,7 @@ vmbus_txbr_write(struct vmbus_txbr *tbr, const struct iovec iov[], int iovlen,
 	 * is copied.
 	 */
 	__compiler_membar();
-	tbr->txbr_windex = windex;
+	atomic_store_rel_32(&tbr->txbr_windex, windex);
 
 	mtx_unlock_spin(&tbr->txbr_lock);
 
@@ -557,7 +554,8 @@ vmbus_rxbr_peek(struct vmbus_rxbr *rbr, void *data, int dlen)
 		mtx_unlock_spin(&rbr->rxbr_lock);
 		return (EAGAIN);
 	}
-	vmbus_rxbr_copyfrom(rbr, rbr->rxbr_rindex, data, dlen);
+	vmbus_rxbr_copyfrom(rbr,
+	    atomic_load_acq_32(&rbr->rxbr_rindex), data, dlen);
 
 	mtx_unlock_spin(&rbr->rxbr_lock);
 
@@ -622,10 +620,11 @@ vmbus_rxbr_idxadv_peek(struct vmbus_rxbr *rbr, void *data, int dlen,
 		rindex = VMBUS_BR_IDXINC(rbr->rxbr_rindex,
 		    idx_adv + sizeof(uint64_t), br_dsize);
 		__compiler_membar();
-		rbr->rxbr_rindex = rindex;
+		atomic_store_rel_32(&rbr->rxbr_rindex, rindex);
 	}
 
-	vmbus_rxbr_copyfrom(rbr, rbr->rxbr_rindex, data, dlen);
+	vmbus_rxbr_copyfrom(rbr,
+	    atomic_load_acq_32(&rbr->rxbr_rindex), data, dlen);
 
 	mtx_unlock_spin(&rbr->rxbr_lock);
 
@@ -667,7 +666,7 @@ vmbus_rxbr_idxadv(struct vmbus_rxbr *rbr, uint32_t idx_adv,
 	rindex = VMBUS_BR_IDXINC(rbr->rxbr_rindex,
 	    idx_adv + sizeof(uint64_t), br_dsize);
 	__compiler_membar();
-	rbr->rxbr_rindex = rindex;
+	atomic_store_rel_32(&rbr->rxbr_rindex, rindex);
 
 	mtx_unlock_spin(&rbr->rxbr_lock);
 
@@ -684,7 +683,8 @@ vmbus_rxbr_idxadv(struct vmbus_rxbr *rbr, uint32_t idx_adv,
  * We assume (dlen + skip) == sizeof(channel packet).
  */
 int
-vmbus_rxbr_read(struct vmbus_rxbr *rbr, void *data, int dlen, uint32_t skip)
+vmbus_rxbr_read(struct vmbus_rxbr *rbr, void *data, int dlen, uint32_t skip,
+    boolean_t *need_sig)
 {
 	uint32_t rindex, br_dsize = rbr->rxbr_dsize;
 
@@ -700,7 +700,8 @@ vmbus_rxbr_read(struct vmbus_rxbr *rbr, void *data, int dlen, uint32_t skip)
 	/*
 	 * Copy channel packet from RX bufring.
 	 */
-	rindex = VMBUS_BR_IDXINC(rbr->rxbr_rindex, skip, br_dsize);
+	rindex = VMBUS_BR_IDXINC(atomic_load_acq_32(&rbr->rxbr_rindex),
+	    skip, br_dsize);
 	rindex = vmbus_rxbr_copyfrom(rbr, rindex, data, dlen);
 
 	/*
@@ -712,9 +713,15 @@ vmbus_rxbr_read(struct vmbus_rxbr *rbr, void *data, int dlen, uint32_t skip)
 	 * Update the read index _after_ the channel packet is fetched.
 	 */
 	__compiler_membar();
-	rbr->rxbr_rindex = rindex;
+	atomic_store_rel_32(&rbr->rxbr_rindex, rindex);
 
 	mtx_unlock_spin(&rbr->rxbr_lock);
+
+	if (need_sig) {
+		*need_sig =
+		    vmbus_rxbr_need_signal(rbr,
+		    dlen + skip + sizeof(uint64_t));
+	}
 
 	return (0);
 }

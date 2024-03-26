@@ -41,9 +41,6 @@
  * - Xen: https://github.com/xenserver/xen-4.5/blob/master/tools/firmware/hvmloader/acpi/dsdt.asl#L456
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/eventhandler.h>

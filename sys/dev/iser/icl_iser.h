@@ -1,4 +1,3 @@
-/* $FreeBSD$ */
 /*-
  * Copyright (c) 2015, Mellanox Technologies, Inc. All rights reserved.
  *
@@ -31,7 +30,6 @@
  * iSCSI Common Layer for RDMA.
  */
 
-#include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/capsicum.h>
 #include <sys/condvar.h>

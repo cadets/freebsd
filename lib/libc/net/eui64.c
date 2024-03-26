@@ -67,9 +67,6 @@
  * Columbia University, New York City
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <stdio.h>
 #include <paths.h>
 #include <sys/param.h>

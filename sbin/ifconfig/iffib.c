@@ -26,8 +26,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/param.h>
@@ -51,13 +49,13 @@ fib_status(if_ctx *ctx)
 	struct ifreq ifr;
 
 	memset(&ifr, 0, sizeof(ifr));
-	strlcpy(ifr.ifr_name, name, sizeof(ifr.ifr_name));
+	strlcpy(ifr.ifr_name, ctx->ifname, sizeof(ifr.ifr_name));
 	if (ioctl_ctx(ctx, SIOCGIFFIB, (caddr_t)&ifr) == 0 &&
 	    ifr.ifr_fib != RT_DEFAULT_FIB)
 		printf("\tfib: %u\n", ifr.ifr_fib);
 
 	memset(&ifr, 0, sizeof(ifr));
-	strlcpy(ifr.ifr_name, name, sizeof(ifr.ifr_name));
+	strlcpy(ifr.ifr_name, ctx->ifname, sizeof(ifr.ifr_name));
 	if (ioctl_ctx(ctx, SIOCGTUNFIB, (caddr_t)&ifr) == 0 &&
 	    ifr.ifr_fib != RT_DEFAULT_FIB)
 		printf("\ttunnelfib: %u\n", ifr.ifr_fib);
@@ -66,6 +64,7 @@ fib_status(if_ctx *ctx)
 static void
 setiffib(if_ctx *ctx, const char *val, int dummy __unused)
 {
+	struct ifreq ifr = {};
 	unsigned long fib;
 	char *ep;
 
@@ -75,15 +74,15 @@ setiffib(if_ctx *ctx, const char *val, int dummy __unused)
 		return;
 	}
 
-	strlcpy(ifr.ifr_name, name, sizeof (ifr.ifr_name));
 	ifr.ifr_fib = fib;
-	if (ioctl(ctx->io_s, SIOCSIFFIB, (caddr_t)&ifr) < 0)
+	if (ioctl_ctx_ifr(ctx, SIOCSIFFIB, &ifr) < 0)
 		warn("ioctl (SIOCSIFFIB)");
 }
 
 static void
 settunfib(if_ctx *ctx, const char *val, int dummy __unused)
 {
+	struct ifreq ifr = {};
 	unsigned long fib;
 	char *ep;
 
@@ -93,9 +92,8 @@ settunfib(if_ctx *ctx, const char *val, int dummy __unused)
 		return;
 	}
 
-	strlcpy(ifr.ifr_name, name, sizeof (ifr.ifr_name));
 	ifr.ifr_fib = fib;
-	if (ioctl(ctx->io_s, SIOCSTUNFIB, (caddr_t)&ifr) < 0)
+	if (ioctl_ctx_ifr(ctx, SIOCSTUNFIB, &ifr) < 0)
 		warn("ioctl (SIOCSTUNFIB)");
 }
 

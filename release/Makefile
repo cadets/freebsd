@@ -1,4 +1,3 @@
-# $FreeBSD$
 #
 # Makefile for building releases and release media.
 #
@@ -37,6 +36,8 @@
 WORLDDIR?=	${.CURDIR}/..
 PORTSDIR?=	/usr/ports
 
+.include "${WORLDDIR}/share/mk/bsd.compat.pre.mk"
+
 .if !defined(TARGET) || empty(TARGET)
 TARGET=		${MACHINE}
 .endif
@@ -74,12 +75,12 @@ VOLUME_LABEL=	FreeBSD_Install
 NOPORTS= true
 .endif
 
-EXTRA_PACKAGES=
+DISTRIBUTIONS= base.txz kernel.txz
 .if !defined(NOPORTS)
-EXTRA_PACKAGES+= ports.txz
+DISTRIBUTIONS+= ports.txz
 .endif
 .if !defined(NOSRC)
-EXTRA_PACKAGES+= src.txz
+DISTRIBUTIONS+= src.txz
 .endif
 
 RELEASE_TARGETS= ftp
@@ -117,13 +118,7 @@ clean: beforeclean
 base.txz:
 	mkdir -p ${DISTDIR}
 	cd ${WORLDDIR} && ${IMAKE} distributeworld DISTDIR=${.OBJDIR}/${DISTDIR}
-# TODO: Add NO_ROOT mode to mm-tree.sh
-.if !defined(NO_ROOT)
-# Set up mergemaster root database
-	sh ${.CURDIR}/scripts/mm-mtree.sh -m ${WORLDDIR} -F \
-	    "TARGET_ARCH=${TARGET_ARCH} TARGET=${TARGET} ${.MAKE.JOBS:D-j${.MAKE.JOBS}}" \
-	    -D "${.OBJDIR}/${DISTDIR}/base"
-.endif
+	# Bootstrap etcupdate(8) database.
 	sh ${WORLDDIR}/usr.sbin/etcupdate/etcupdate.sh extract -B \
 	    -m "${MAKE}" -M "TARGET_ARCH=${TARGET_ARCH} TARGET=${TARGET}" \
 	    -s ${WORLDDIR} -d "${.OBJDIR}/${DISTDIR}/base/var/db/etcupdate" \
@@ -164,19 +159,20 @@ disc1: packagesystem
 	mkdir -p ${.TARGET}
 	cd ${WORLDDIR} && ${IMAKE} installworld installkernel distribution \
 	    DESTDIR=${.OBJDIR}/${.TARGET} MK_AT=no \
-	    MK_INSTALLLIB=no MK_LIB32=no MK_MAIL=no \
+	    MK_INSTALLLIB=no MK_MAIL=no \
+	    ${_ALL_LIBCOMPATS:@v@MK_LIB$v=no@} \
 	    MK_TOOLCHAIN=no MK_PROFILE=no \
 	    MK_RESCUE=no MK_DICT=no \
 	    MK_KERNEL_SYMBOLS=no MK_TESTS=no MK_DEBUG_FILES=no \
 	    -DDB_FROM_SRC
 # Copy distfiles
 	mkdir -p ${.TARGET}/usr/freebsd-dist
-	for dist in MANIFEST $$(ls *.txz | grep -vE -- '(base|lib32)-dbg'); \
+	for dist in MANIFEST $$(ls *.txz | grep -vE -- '(${base ${_ALL_libcompats}:L:ts|})-dbg'); \
 	    do cp $${dist} ${.TARGET}/usr/freebsd-dist; \
 	done
 .if defined(NO_ROOT)
 	echo "./usr/freebsd-dist type=dir uname=root gname=wheel mode=0755" >> ${.TARGET}/METALOG
-	for dist in MANIFEST $$(ls *.txz | grep -vE -- '(base|lib32)-dbg'); \
+	for dist in MANIFEST $$(ls *.txz | grep -vE -- '(${base ${_ALL_libcompats}:L:ts|})-dbg'); \
 	    do echo "./usr/freebsd-dist/$${dist} type=file uname=root gname=wheel mode=0644" >> ${.TARGET}/METALOG; \
 	done
 .endif
@@ -204,7 +200,8 @@ bootonly: packagesystem
 	cd ${WORLDDIR} && ${IMAKE} installworld installkernel distribution \
 	    DESTDIR=${.OBJDIR}/${.TARGET} MK_AT=no \
 	    MK_GAMES=no \
-	    MK_INSTALLLIB=no MK_LIB32=no MK_MAIL=no \
+	    MK_INSTALLLIB=no MK_MAIL=no \
+	    ${_ALL_LIBCOMPATS:@v@MK_LIB$v=no@} \
 	    MK_TOOLCHAIN=no MK_PROFILE=no \
 	    MK_RESCUE=no MK_DICT=no \
 	    MK_KERNEL_SYMBOLS=no MK_TESTS=no MK_DEBUG_FILES=no \
@@ -242,12 +239,12 @@ dvd: packagesystem
 		-DDB_FROM_SRC
 # Copy distfiles
 	mkdir -p ${.TARGET}/usr/freebsd-dist
-	for dist in MANIFEST $$(ls *.txz | grep -v -- '(base|lib32)-dbg'); \
+	for dist in MANIFEST $$(ls *.txz | grep -v -- '(${base ${_ALL_libcompats}:L:ts|})-dbg'); \
 	    do cp $${dist} ${.TARGET}/usr/freebsd-dist; \
 	done
 .if defined(NO_ROOT)
 	echo "./usr/freebsd-dist type=dir uname=root gname=wheel mode=0755" >> ${.TARGET}/METALOG
-	for dist in MANIFEST $$(ls *.txz | grep -vE -- '(base|lib32)-dbg'); \
+	for dist in MANIFEST $$(ls *.txz | grep -vE -- '(${base ${_ALL_libcompats}:L:ts|})-dbg'); \
 	    do echo "./usr/freebsd-dist/$${dist} type=file uname=root gname=wheel mode=0644" >> ${.TARGET}/METALOG; \
 	done
 .endif
@@ -287,7 +284,7 @@ mini-memstick: mini-memstick.img
 mini-memstick.img: bootonly
 	cd bootonly && sh ${.CURDIR}/${TARGET}/make-memstick.sh .${NO_ROOT:D/METALOG} ../${.TARGET}
 
-packagesystem: base.txz kernel.txz ${EXTRA_PACKAGES}
+packagesystem: ${DISTRIBUTIONS}
 	sh ${.CURDIR}/scripts/make-manifest.sh *.txz > MANIFEST
 	touch ${.TARGET}
 

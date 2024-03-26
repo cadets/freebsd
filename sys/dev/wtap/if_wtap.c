@@ -30,8 +30,6 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
- *
- * $FreeBSD$
  */
 #include "if_wtapvar.h"
 #include <sys/uio.h>    /* uio struct */
@@ -495,7 +493,6 @@ wtap_inject(struct wtap_softc *sc, struct mbuf *m)
 static void
 wtap_rx_proc(void *arg, int npending)
 {
-	struct epoch_tracker et;
 	struct wtap_softc *sc = (struct wtap_softc *)arg;
 	struct ieee80211com *ic = &sc->sc_ic;
 	struct mbuf *m;
@@ -542,7 +539,6 @@ wtap_rx_proc(void *arg, int npending)
 		ni = ieee80211_find_rxnode_withkey(ic,
 		    mtod(m, const struct ieee80211_frame_min *),
 		    IEEE80211_KEYIX_NONE);
-		NET_EPOCH_ENTER(et);
 		if (ni != NULL) {
 			/*
 			 * Sending station is known, dispatch directly.
@@ -552,8 +548,7 @@ wtap_rx_proc(void *arg, int npending)
 		} else {
 			ieee80211_input_all(ic, m, 1<<7, 10);
 		}
-		NET_EPOCH_EXIT(et);
-
+		
 		/* The mbufs are freed by the Net80211 stack */
 		free(bf, M_WTAP_RXBUF);
 	}

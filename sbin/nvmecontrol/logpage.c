@@ -30,9 +30,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/ioccom.h>
 
@@ -232,10 +229,6 @@ read_logpage(int fd, uint8_t log_page, uint32_t nsid, uint8_t lsp,
 		nvme_health_information_page_swapbytes(
 		    (struct nvme_health_information_page *)payload);
 		break;
-	case NVME_LOG_FIRMWARE_SLOT:
-		nvme_firmware_page_swapbytes(
-		    (struct nvme_firmware_page *)payload);
-		break;
 	case NVME_LOG_CHANGED_NAMESPACE:
 		nvme_ns_list_swapbytes((struct nvme_ns_list *)payload);
 		break;
@@ -408,13 +401,10 @@ print_log_firmware(const struct nvme_controller_data *cdata, void *buf, uint32_t
 	uint16_t			oacs_fw;
 	uint8_t				fw_num_slots;
 
-	afi_slot = fw->afi >> NVME_FIRMWARE_PAGE_AFI_SLOT_SHIFT;
-	afi_slot &= NVME_FIRMWARE_PAGE_AFI_SLOT_MASK;
+	afi_slot = NVMEV(NVME_FIRMWARE_PAGE_AFI_SLOT, fw->afi);
 
-	oacs_fw = (cdata->oacs >> NVME_CTRLR_DATA_OACS_FIRMWARE_SHIFT) &
-		NVME_CTRLR_DATA_OACS_FIRMWARE_MASK;
-	fw_num_slots = (cdata->frmw >> NVME_CTRLR_DATA_FRMW_NUM_SLOTS_SHIFT) &
-		NVME_CTRLR_DATA_FRMW_NUM_SLOTS_MASK;
+	oacs_fw = NVMEV(NVME_CTRLR_DATA_OACS_FIRMWARE, cdata->oacs);
+	fw_num_slots = NVMEV(NVME_CTRLR_DATA_FRMW_NUM_SLOTS, cdata->frmw);
 
 	printf("Firmware Slot Log\n");
 	printf("=================\n");
@@ -431,15 +421,10 @@ print_log_firmware(const struct nvme_controller_data *cdata, void *buf, uint32_t
 		else
 			status = "Inactive";
 
-		if (fw->revision[i] == 0LLU)
+		if (fw->revision[i][0] == '\0')
 			printf("Empty\n");
 		else
-			if (isprint(*(char *)&fw->revision[i]))
-				printf("[%s] %.8s\n", status,
-				    (char *)&fw->revision[i]);
-			else
-				printf("[%s] %016jx\n", status,
-				    fw->revision[i]);
+			printf("[%s] %.8s\n", status, fw->revision[i]);
 	}
 }
 
@@ -474,41 +459,27 @@ print_log_command_effects(const struct nvme_controller_data *cdata __unused,
 
 	for (i = 0; i < 255; i++) {
 		s = ce->acs[i];
-		if (((s >> NVME_CE_PAGE_CSUP_SHIFT) &
-		     NVME_CE_PAGE_CSUP_MASK) == 0)
+		if (NVMEV(NVME_CE_PAGE_CSUP, s) == 0)
 			continue;
 		printf("Admin\t%02x\t%s\t%s\t%s\t%s\t%u\t%s\n", i,
-		    ((s >> NVME_CE_PAGE_LBCC_SHIFT) &
-		     NVME_CE_PAGE_LBCC_MASK) ? "Yes" : "No",
-		    ((s >> NVME_CE_PAGE_NCC_SHIFT) &
-		     NVME_CE_PAGE_NCC_MASK) ? "Yes" : "No",
-		    ((s >> NVME_CE_PAGE_NIC_SHIFT) &
-		     NVME_CE_PAGE_NIC_MASK) ? "Yes" : "No",
-		    ((s >> NVME_CE_PAGE_CCC_SHIFT) &
-		     NVME_CE_PAGE_CCC_MASK) ? "Yes" : "No",
-		    ((s >> NVME_CE_PAGE_CSE_SHIFT) &
-		     NVME_CE_PAGE_CSE_MASK),
-		    ((s >> NVME_CE_PAGE_UUID_SHIFT) &
-		     NVME_CE_PAGE_UUID_MASK) ? "Yes" : "No");
+		    NVMEV(NVME_CE_PAGE_LBCC, s) != 0 ? "Yes" : "No",
+		    NVMEV(NVME_CE_PAGE_NCC, s) != 0 ? "Yes" : "No",
+		    NVMEV(NVME_CE_PAGE_NIC, s) != 0 ? "Yes" : "No",
+		    NVMEV(NVME_CE_PAGE_CCC, s) != 0 ? "Yes" : "No",
+		    NVMEV(NVME_CE_PAGE_CSE, s),
+		    NVMEV(NVME_CE_PAGE_UUID, s) != 0 ? "Yes" : "No");
 	}
 	for (i = 0; i < 255; i++) {
 		s = ce->iocs[i];
-		if (((s >> NVME_CE_PAGE_CSUP_SHIFT) &
-		     NVME_CE_PAGE_CSUP_MASK) == 0)
+		if (NVMEV(NVME_CE_PAGE_CSUP, s) == 0)
 			continue;
 		printf("I/O\t%02x\t%s\t%s\t%s\t%s\t%u\t%s\n", i,
-		    ((s >> NVME_CE_PAGE_LBCC_SHIFT) &
-		     NVME_CE_PAGE_LBCC_MASK) ? "Yes" : "No",
-		    ((s >> NVME_CE_PAGE_NCC_SHIFT) &
-		     NVME_CE_PAGE_NCC_MASK) ? "Yes" : "No",
-		    ((s >> NVME_CE_PAGE_NIC_SHIFT) &
-		     NVME_CE_PAGE_NIC_MASK) ? "Yes" : "No",
-		    ((s >> NVME_CE_PAGE_CCC_SHIFT) &
-		     NVME_CE_PAGE_CCC_MASK) ? "Yes" : "No",
-		    ((s >> NVME_CE_PAGE_CSE_SHIFT) &
-		     NVME_CE_PAGE_CSE_MASK),
-		    ((s >> NVME_CE_PAGE_UUID_SHIFT) &
-		     NVME_CE_PAGE_UUID_MASK) ? "Yes" : "No");
+		    NVMEV(NVME_CE_PAGE_LBCC, s) != 0 ? "Yes" : "No",
+		    NVMEV(NVME_CE_PAGE_NCC, s) != 0 ? "Yes" : "No",
+		    NVMEV(NVME_CE_PAGE_NIC, s) != 0 ? "Yes" : "No",
+		    NVMEV(NVME_CE_PAGE_CCC, s) != 0 ? "Yes" : "No",
+		    NVMEV(NVME_CE_PAGE_CSE, s),
+		    NVMEV(NVME_CE_PAGE_UUID, s) != 0 ? "Yes" : "No");
 	}
 }
 
@@ -559,8 +530,7 @@ print_log_sanitize_status(const struct nvme_controller_data *cdata __unused,
 	printf("Sanitize Progress:                   %u%% (%u/65535)\n",
 	    (ss->sprog * 100 + 32768) / 65536, ss->sprog);
 	printf("Sanitize Status:                     ");
-	switch ((ss->sstat >> NVME_SS_PAGE_SSTAT_STATUS_SHIFT) &
-	    NVME_SS_PAGE_SSTAT_STATUS_MASK) {
+	switch (NVMEV(NVME_SS_PAGE_SSTAT_STATUS, ss->sstat)) {
 	case NVME_SS_PAGE_SSTAT_STATUS_NEVER:
 		printf("Never sanitized");
 		break;
@@ -580,12 +550,10 @@ print_log_sanitize_status(const struct nvme_controller_data *cdata __unused,
 		printf("Unknown");
 		break;
 	}
-	p = (ss->sstat >> NVME_SS_PAGE_SSTAT_PASSES_SHIFT) &
-	    NVME_SS_PAGE_SSTAT_PASSES_MASK;
+	p = NVMEV(NVME_SS_PAGE_SSTAT_PASSES, ss->sstat);
 	if (p > 0)
 		printf(", %d passes", p);
-	if ((ss->sstat >> NVME_SS_PAGE_SSTAT_GDE_SHIFT) &
-	    NVME_SS_PAGE_SSTAT_GDE_MASK)
+	if (NVMEV(NVME_SS_PAGE_SSTAT_GDE, ss->sstat) != 0)
 		printf(", Global Data Erased");
 	printf("\n");
 	printf("Sanitize Command Dword 10:           0x%x\n", ss->scdw10);
@@ -807,11 +775,10 @@ logpage(const struct cmd *f, int argc, char *argv[])
 	if (read_controller_data(fd, &cdata))
 		errx(EX_IOERR, "Identify request failed");
 
-	ns_smart = (cdata.lpa >> NVME_CTRLR_DATA_LPA_NS_SMART_SHIFT) &
-		NVME_CTRLR_DATA_LPA_NS_SMART_MASK;
+	ns_smart = NVMEV(NVME_CTRLR_DATA_LPA_NS_SMART, cdata.lpa);
 
 	/*
-	 * The log page attribtues indicate whether or not the controller
+	 * The log page attributes indicate whether or not the controller
 	 * supports the SMART/Health information log page on a per
 	 * namespace basis.
 	 */

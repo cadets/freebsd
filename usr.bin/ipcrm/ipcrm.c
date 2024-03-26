@@ -32,9 +32,6 @@
  *
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #define	_WANT_SYSVMSG_INTERNALS
 #include <sys/msg.h>

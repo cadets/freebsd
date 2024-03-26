@@ -21,8 +21,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 struct spi_command {
@@ -47,4 +45,10 @@ struct spi_command {
 #define	SPIBUS_FDT_PNP_INFO(t)	FDTCOMPAT_PNP_INFO(t, spibus)
 #else
 #define	SPIBUS_FDT_PNP_INFO(t)
+#endif
+
+#ifdef DEV_ACPI
+#define	SPIBUS_ACPI_PNP_INFO(t)	ACPICOMPAT_PNP_INFO(t, spibus)
+#else
+#define	SPIBUS_ACPI_PNP_INFO(t)
 #endif

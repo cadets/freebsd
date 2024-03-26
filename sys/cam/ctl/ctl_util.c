@@ -37,9 +37,6 @@
  * Author: Ken Merry <ken@FreeBSD.org>
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #ifdef _KERNEL
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -758,7 +755,7 @@ ctl_io_sbuf(union ctl_io *io, struct sbuf *sb)
 			    io->taskio.tag_num, io->taskio.tag_type);
 			break;
 		default:
-			sbuf_printf(sb, "\n");
+			sbuf_putc(sb, '\n');
 			break;
 		}
 		break;

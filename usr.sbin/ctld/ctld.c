@@ -29,9 +29,6 @@
  *
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/socket.h>
@@ -535,6 +532,7 @@ auth_group_find(const struct conf *conf, const char *name)
 {
 	struct auth_group *ag;
 
+	assert(name != NULL);
 	TAILQ_FOREACH(ag, &conf->conf_auth_groups, ag_next) {
 		if (ag->ag_name != NULL && strcmp(ag->ag_name, name) == 0)
 			return (ag);

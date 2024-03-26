@@ -1,6 +1,6 @@
 .\"-
 .\" Copyright (c) 2001 Boris Popov
-.\" Copyright (c) 2001 Dag-Erling Coïdan Smørgrav
+.\" Copyright (c) 2001 Dag-Erling Smørgrav
 .\" All rights reserved.
 .\"
 .\" Redistribution and use in source and binary forms, with or without
@@ -23,8 +23,6 @@
 .\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
-.\"
-.\" $FreeBSD$
 .\"
 .Dd February 25, 2023
 .Dt KLDXREF 8
@@ -52,14 +50,12 @@ file is created, and the preexisting hint file (if there was one in
 that directory) is removed.
 .Pp
 .Nm
-ignores files with at least two "."s in the filename, such as
-.Pa foo.ko.debug
-or
-.Pa bar.ko.pkgsave .
-Note that this means that modules cannot have names such as
-.Pa foo.bar.ko .
-This limitation however, has been lived practice since the beginning of
-FreeBSD's kernel modules.
+only processes files that either have no dots in their name like
+.Pa kernel
+or that end in
+.Dq .ko
+like
+.Pa foo.ko .
 .Pp
 The following options are available:
 .Bl -tag -width indent

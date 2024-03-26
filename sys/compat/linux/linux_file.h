@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _LINUX_FILE_H_
@@ -191,11 +189,15 @@
 #define LINUX_HUGETLB_FLAG_ENCODE_2GB	(31 << LINUX_HUGETLB_FLAG_ENCODE_SHIFT)
 #define LINUX_HUGETLB_FLAG_ENCODE_16GB	(34U << LINUX_HUGETLB_FLAG_ENCODE_SHIFT)
 
+#if defined(_KERNEL)
 struct l_file_handle {
 	l_uint handle_bytes;
 	l_int handle_type;
 	unsigned char f_handle[0];
 };
+
+int	linux_enobufs2eagain(struct thread *, int, int);
+#endif
 
 /*
  * Look at linux_close_range() for an explanation.

@@ -26,8 +26,6 @@
  *
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_inet6.h"
 
@@ -77,7 +75,7 @@ __FBSDID("$FreeBSD$");
 		if (! nvlist_exists_number_array(nvl, name))			\
 			return (EINVAL);					\
 		n = nvlist_get_number_array(nvl, name, &nitems);		\
-		if (nitems != maxelems)						\
+		if (nitems > maxelems)						\
 			return (E2BIG);						\
 		if (nelems != NULL)						\
 			*nelems = nitems;					\
@@ -875,6 +873,9 @@ pf_nvstate_kill_to_kstate_kill(const nvlist_t *nvl,
 	    sizeof(kill->psk_label)));
 	PFNV_CHK(pf_nvbool(nvl, "kill_match", &kill->psk_kill_match));
 
+	if (nvlist_exists_bool(nvl, "nat"))
+		PFNV_CHK(pf_nvbool(nvl, "nat", &kill->psk_nat));
+
 errout:
 	return (error);
 }
@@ -973,7 +974,7 @@ pf_state_to_nvstate(const struct pf_kstate *s)
 	    s->anchor.ptr ? s->anchor.ptr->nr : -1);
 	nvlist_add_number(nvl, "nat_rule",
 	    s->nat_rule.ptr ? s->nat_rule.ptr->nr : -1);
-	nvlist_add_number(nvl, "creation", s->creation);
+	nvlist_add_number(nvl, "creation", s->creation / 1000);
 
 	expire = pf_state_expires(s);
 	if (expire <= time_uptime)

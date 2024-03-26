@@ -25,8 +25,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 #include <sys/types.h>
 #include <sys/ck.h>
 #include <sys/epoch.h>
@@ -135,6 +133,7 @@ static void
 rtnl_unload(void *u __unused)
 {
 	netlink_callback_p = nlbridge_orig_p;
+	netlink_unregister_proto(NETLINK_ROUTE);
 	rtnl_ifaces_destroy();
 	rtnl_neighs_destroy();
 

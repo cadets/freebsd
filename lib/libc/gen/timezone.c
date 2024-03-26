@@ -29,10 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__SCCSID("@(#)timezone.c	8.1 (Berkeley) 6/4/93");
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/time.h>
 #include <stdio.h>
@@ -40,7 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #define TZ_MAX_CHARS 255
 
-char *_tztab(int, int);
+static char *_tztab(int, int);
 
 /*
  * timezone --
@@ -53,7 +49,7 @@ char *_tztab(int, int);
 static char	czone[TZ_MAX_CHARS];		/* space for zone name */
 
 char *
-timezone(int zone, int dst)
+__timezone_compat(int zone, int dst)
 {
 	char	*beg,
 			*end;
@@ -72,6 +68,7 @@ timezone(int zone, int dst)
 	}
 	return(_tztab(zone,dst));	/* default: table or created zone */
 }
+__sym_compat(timezone, __timezone_compat, FBSD_1.0);
 
 static struct zone {
 	int	offset;
@@ -103,7 +100,7 @@ static struct zone {
  *	aren't in place in /etc.  DO NOT USE THIS ROUTINE OUTSIDE OF THE
  *	STANDARD LIBRARY.
  */
-char *
+static char *
 _tztab(int zone, int dst)
 {
 	struct zone	*zp;

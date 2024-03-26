@@ -30,8 +30,6 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /*
@@ -446,7 +444,7 @@
 #define VGE_MIICMD_MOUT		0x08	/* data out pin enable */
 #define VGE_MIICMD_MDP		0x10	/* enable direct programming mode */
 #define VGE_MIICMD_WCMD		0x20	/* embedded mode write */
-#define VGE_MIICMD_RCMD		0x40	/* embadded mode read */
+#define VGE_MIICMD_RCMD		0x40	/* embedded mode read */
 #define VGE_MIICMD_MAUTO	0x80	/* enable autopolling */
 
 /* MII address register */

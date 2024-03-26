@@ -17,12 +17,6 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#ifndef lint
-static const char rcsid[] = "$Id: ns_name.c,v 1.11 2009/01/23 19:59:16 each Exp $";
-#endif
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "port_before.h"
 
 #include <sys/types.h>
@@ -1150,7 +1144,7 @@ labellen(const u_char *lp)
 				bitlen = 256;
 			return ((bitlen + 7 ) / 8 + 1);
 		}
-		return (-1);	/*%< unknwon ELT */
+		return (-1);	/*%< unknown ELT */
 	}
 	return (l);
 }

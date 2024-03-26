@@ -25,14 +25,12 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
- *
  */
 
 #ifndef	_QORIQ_CLK_PLL_H_
 #define	_QORIQ_CLK_PLL_H_
 
-#include <dev/extres/clk/clk.h>
+#include <dev/clk/clk.h>
 
 #define	QORIQ_CLK_PLL_HAS_KILL_BIT	0x01
 

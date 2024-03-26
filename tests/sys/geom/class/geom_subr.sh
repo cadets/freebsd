@@ -1,5 +1,4 @@
 #!/bin/sh
-# $FreeBSD$
 
 TEST_MDS_FILE="${TMPDIR}/test_mds.$(basename $0)"
 
@@ -15,11 +14,14 @@ devwait()
 
 attach_md()
 {
-	local test_md
+	local _md
+	local rv=$1
+	shift
 
-	test_md=$(mdconfig -a "$@") || exit
-	echo $test_md >> $TEST_MDS_FILE || exit
-	echo $test_md
+	[ -c /dev/mdctl ] || atf_skip "no /dev/mdctl to create md devices"
+	_md=$(mdconfig -a "$@") || exit
+	echo $_md >> $TEST_MDS_FILE || exit
+	eval "${rv}='${_md}'"
 }
 
 detach_md()

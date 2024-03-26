@@ -33,8 +33,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Do standard and reverse DNS lookups using the resolver library.
  * Take care of all the dirty work here so the main program only has to
@@ -308,8 +306,6 @@ yp_send_dns_reply(struct circleq_dnsentry *q, char *buf)
 	if (q->prot_type == SOCK_DGRAM)
 		svcudp_set_xid(q->xprt, xid);
 	q->xprt->xp_raddr = client_addr;
-
-	return;
 }
 
 /*
@@ -336,8 +332,6 @@ yp_prune_dnsq(void)
 
 	if (pending < 0)
 		pending = 0;
-
-	return;
 }
 
 /*
@@ -405,8 +399,6 @@ yp_run_dnsq(void)
 
 	/* Decrement TTLs on other entries while we're here. */
 	yp_prune_dnsq();
-
-	return;
 }
 
 /*

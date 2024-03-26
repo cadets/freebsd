@@ -43,8 +43,6 @@
 #include <dev/sound/pci/hda/hda_reg.h>
 #include <dev/sound/pci/hda/hdac.h>
 
-SND_DECLARE_FILE("$FreeBSD$");
-
 struct hdacc_fg {
 	device_t	dev;
 	nid_t		nid;
@@ -81,6 +79,7 @@ static const struct {
 	{ HDA_CODEC_ALC221, 0,		"Realtek ALC221" },
 	{ HDA_CODEC_ALC222, 0,		"Realtek ALC222" },
 	{ HDA_CODEC_ALC225, 0,		"Realtek ALC225" },
+	{ HDA_CODEC_ALC230, 0,		"Realtek ALC230" },
 	{ HDA_CODEC_ALC231, 0,		"Realtek ALC231" },
 	{ HDA_CODEC_ALC233, 0,		"Realtek ALC233" },
 	{ HDA_CODEC_ALC234, 0,		"Realtek ALC234" },
@@ -474,8 +473,7 @@ hdacc_probe(device_t dev)
 			    hdacc_codecs[i].name, hda_get_device_id(dev));
 	} else
 		snprintf(buf, sizeof(buf), "Generic (0x%04x)", id);
-	strlcat(buf, " HDA CODEC", sizeof(buf));
-	device_set_desc_copy(dev, buf);
+	device_set_descf(dev, "%s HDA CODEC", buf);
 	return (BUS_PROBE_DEFAULT);
 }
 

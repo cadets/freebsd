@@ -26,8 +26,5 @@
  */
 
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #define WEAK_STRNCPY
 #include "../../string/strncpy.c"

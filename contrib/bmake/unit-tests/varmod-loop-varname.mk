@@ -1,4 +1,4 @@
-# $NetBSD: varmod-loop-varname.mk,v 1.4 2021/12/05 15:01:04 rillig Exp $
+# $NetBSD: varmod-loop-varname.mk,v 1.6 2023/11/19 21:47:52 rillig Exp $
 #
 # Tests for the first part of the variable modifier ':@var@...@', which
 # contains the variable name to use during the loop.
@@ -13,6 +13,8 @@
 # dynamically.  There was no practical use-case for this.
 # Since var.c 1.907 from 2021-04-04, a '$' is no longer allowed in the
 # variable name.
+# expect+2: In the :@ modifier of "", the variable name "${:Ubar:S,b,v,}" must not contain a dollar
+# expect+1: Malformed conditional (${:Uone two three:@${:Ubar:S,b,v,}@+${var}+@} != "+one+ +two+ +three+")
 .if ${:Uone two three:@${:Ubar:S,b,v,}@+${var}+@} != "+one+ +two+ +three+"
 .  error
 .else
@@ -82,16 +84,22 @@ RES3=		3
 # There's no point in allowing a dollar sign in that position.
 # Since var.c 1.907 from 2021-04-04, a '$' is no longer allowed in the
 # variable name.
+# expect+2: In the :@ modifier of "1 2 3", the variable name "v$" must not contain a dollar
+# expect+1: Malformed conditional (${1 2 3:L:@v$@($v)@} != "(1) (2) (3)")
 .if ${1 2 3:L:@v$@($v)@} != "(1) (2) (3)"
 .  error
 .else
 .  error
 .endif
+# expect+2: In the :@ modifier of "1 2 3", the variable name "v$$" must not contain a dollar
+# expect+1: Malformed conditional (${1 2 3:L:@v$$@($v)@} != "() () ()")
 .if ${1 2 3:L:@v$$@($v)@} != "() () ()"
 .  error
 .else
 .  error
 .endif
+# expect+2: In the :@ modifier of "1 2 3", the variable name "v$$$" must not contain a dollar
+# expect+1: Malformed conditional (${1 2 3:L:@v$$$@($v)@} != "() () ()")
 .if ${1 2 3:L:@v$$$@($v)@} != "() () ()"
 .  error
 .else
@@ -104,7 +112,7 @@ RES3=		3
 #
 # As of 2020-10-18, the :@ modifier is implemented by actually setting a
 # variable in the scope of the expression and deleting it again after the
-# loop.  This is different from the .for loops, which substitute the variable
+# loop.  This is different from the .for loops, which substitute the
 # expression with ${:Uvalue}, leading to different unwanted side effects.
 #
 # To make the behavior more predictable, the :@ modifier should restore the

@@ -1,5 +1,3 @@
-#	@(#)Makefile	8.1 (Berkeley) 6/5/93
-# $FreeBSD$
 
 .include <src.opts.mk>
 
@@ -23,6 +21,11 @@ CFLAGS+= -I.
 SRCS+= route_netlink.c
 .else
 CFLAGS+=-DWITHOUT_NETLINK
+.endif
+
+.if ${MK_JAIL} != "no" && !defined(RESCUE)
+CFLAGS+= -DJAIL
+LIBADD+= jail
 .endif
 
 HAS_TESTS=

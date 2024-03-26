@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_syscons.h"
 
 #include <sys/param.h>
@@ -800,7 +798,7 @@ sc_mouse_ioctl(struct tty *tp, u_long cmd, caddr_t data, struct thread *td)
 	    cur_scp->status &= ~MOUSE_HIDDEN;
 
 	    if (cur_scp->mouse_level > 0) {
-	    	sc_mouse_input(scp, mouse);
+		sc_mouse_input(cur_scp, mouse);
 		break;
 	    }
 
@@ -861,7 +859,7 @@ sc_mouse_ioctl(struct tty *tp, u_long cmd, caddr_t data, struct thread *td)
 	    cur_scp->status &= ~MOUSE_HIDDEN;
 
 	    if (cur_scp->mouse_level > 0) {
-	    	sc_mouse_input(scp, mouse);
+		sc_mouse_input(cur_scp, mouse);
 		break;
 	    }
 

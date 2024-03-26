@@ -28,12 +28,6 @@
  * Mountain View, California  94043
  */
 
-#if !defined(lint) && defined(SCCSIDS)
-#if 0
-static char sccsid[] = "@(#)newkey.c 1.8 91/03/11 Copyr 1986 Sun Micro";
-#endif
-#endif
-
 /*
  * Copyright (C) 1986, Sun Microsystems, Inc.
  */
@@ -41,8 +35,6 @@ static char sccsid[] = "@(#)newkey.c 1.8 91/03/11 Copyr 1986 Sun Micro";
 /*
  * Administrative tool to add a new user to the publickey database
  */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
 #include <sys/time.h>
@@ -90,7 +82,7 @@ static char PKFILE[] = "/etc/publickey";
 static const char *err_string(int);
 #endif	/* YP */
 
-static void usage(void);
+static void usage(void) __dead2;
 
 int
 main(int argc, char *argv[])

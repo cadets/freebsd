@@ -29,9 +29,6 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <unistd.h>
 #include "libc_private.h"
@@ -42,6 +39,5 @@ __weak_reference(__sys_fork, __fork);
 pid_t
 fork(void)
 {
-
-	return (((pid_t (*)(void))__libc_interposing[INTERPOS_fork])());
+	return (((pid_t (*)(void))*(__libc_interposing_slot(INTERPOS_fork)))());
 }

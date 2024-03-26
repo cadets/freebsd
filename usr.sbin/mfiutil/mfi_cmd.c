@@ -27,8 +27,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/param.h>
@@ -222,7 +220,7 @@ mfi_reconfig_supported(const char *dev)
 		return (1);
 
 	cp += strlen(MFI_TYPE);
-	mfi_unit = strtol(cp, NULL, 10);;
+	mfi_unit = strtol(cp, NULL, 10);
 
 	len = sizeof(dummy);
 	snprintf(mibname, sizeof(mibname),

@@ -1,4 +1,4 @@
-# $NetBSD: var-op-shell.mk,v 1.6 2022/01/10 20:32:29 rillig Exp $
+# $NetBSD: var-op-shell.mk,v 1.8 2024/01/05 23:36:45 rillig Exp $
 #
 # Tests for the != variable assignment operator, which runs its right-hand
 # side through the shell.
@@ -28,12 +28,14 @@ OUTPUT!=	true
 # '::!=', expression modifier ':!...!'), a failed command generates only a
 # warning, not an "error".  These "errors" are ignored in default mode, for
 # compatibility, but not in lint mode (-dL).
+# expect+1: warning: "echo "failed"; false" returned non-zero status
 OUTPUT!=	echo "failed"; false
 .if ${OUTPUT} != "failed"
 .  error
 .endif
 
 # A command with empty output may fail as well.
+# expect+1: warning: "false" returned non-zero status
 OUTPUT!=	false
 .if ${OUTPUT} != ""
 .  error
@@ -56,12 +58,14 @@ OUTPUT!=	echo "before"; false; echo "after"
 # This should result in a warning about "exited on a signal".
 # This used to be kill -14 (SIGALRM), but that stopped working on
 # Darwin18 after recent update.
+# expect+1: warning: "kill $$" exited on a signal
 OUTPUT!=	kill $$$$
 .if ${OUTPUT} != ""
 .  error
 .endif
 
 # A nonexistent command produces a non-zero exit status.
+# expect+1: warning: "/bin/no/such/command" returned non-zero status
 OUTPUT!=	/bin/no/such/command
 .if ${OUTPUT} != ""
 .  error
@@ -86,5 +90,23 @@ OUTPUT!=	echo '$$$$$$$$'
 .MAKEFLAGS: -dv
 OUTPUT!=	echo '$$$$$$$$'
 .MAKEFLAGS: -d0
+
+
+# Since main.c 1.607 from 2024-01-05, long shell commands are not run directly
+# via '$shell -c $command', they are first written to a temporary file that is
+# then fed to the shell via '$shell $tmpfile'.
+OUTPUT_SHORT!=	echo "$$0"
+OUTPUT_LONG!=	echo "$$0" || : ${:U:range=1000}
+# When running '$shell -c $command', '$0' in the shell evaluates to the name
+# of the shell.
+.if ${OUTPUT_SHORT} != ${.SHELL:T}
+.  error
+.endif
+# When running '$shell $tmpfile', '$0' in the shell evaluates to the name of
+# the temporary file.
+.if !${OUTPUT_LONG:M*/make*}
+.  error
+.endif
+
 
 all:

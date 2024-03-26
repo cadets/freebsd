@@ -26,9 +26,11 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
+
+#ifdef __arm__
+#include <arm/frame.h>
+#else /* !__arm__ */
 
 #ifndef _MACHINE_FRAME_H_
 #define	_MACHINE_FRAME_H_
@@ -51,11 +53,6 @@ struct trapframe {
 	uint64_t tf_x[30];
 };
 
-struct arm64_frame {
-	struct arm64_frame	*f_frame;
-	u_long			f_retaddr;
-};
-
 /*
  * Signal frame, pushed onto the user stack.
  */
@@ -73,7 +70,7 @@ struct frame {
 
 #ifdef COMPAT_FREEBSD32
 struct sigframe32 {
-	struct siginfo32		sf_si;
+	struct __siginfo32		sf_si;
 	ucontext32_t			sf_uc;
 	mcontext32_vfp_t		sf_vfp;
 };
@@ -82,3 +79,5 @@ struct sigframe32 {
 #endif /* !LOCORE */
 
 #endif /* !_MACHINE_FRAME_H_ */
+
+#endif /* !__arm__ */

@@ -29,9 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -148,7 +145,7 @@ static void		targfreeccb(struct targ_softc *softc, union ccb *ccb);
 static struct targ_cmd_descr *
 			targgetdescr(struct targ_softc *softc);
 static periph_init_t	targinit;
-static void		targasync(void *callback_arg, u_int32_t code,
+static void		targasync(void *callback_arg, uint32_t code,
 				  struct cam_path *path, void *arg);
 static void		abort_all_pending(struct targ_softc *softc);
 static void		notify_user(struct targ_softc *softc);
@@ -637,8 +634,8 @@ targstart(struct cam_periph *periph, union ccb *start_ccb)
 			xpt_print(periph->path,
 			    "targsendccb failed, err %d\n", error);
 			xpt_release_ccb(start_ccb);
-			suword(&descr->user_ccb->ccb_h.status,
-			       CAM_REQ_CMP_ERR);
+			(void)suword(&descr->user_ccb->ccb_h.status,
+			    CAM_REQ_CMP_ERR);
 			TAILQ_INSERT_TAIL(&softc->abort_queue, descr, tqe);
 			notify_user(softc);
 		}
@@ -870,7 +867,10 @@ targread(struct cdev *dev, struct uio *uio, int ioflag)
 		CAM_DEBUG(softc->path, CAM_DEBUG_PERIPH,
 			  ("targread aborted descr %p (%p)\n",
 			  user_descr, user_ccb));
-		suword(&user_ccb->ccb_h.status, CAM_REQ_ABORTED);
+		if (suword(&user_ccb->ccb_h.status, CAM_REQ_ABORTED) != 0) {
+			error = EFAULT;
+			goto read_fail;
+		}
 		cam_periph_unlock(softc->periph);
 		error = uiomove((caddr_t)&user_ccb, sizeof(user_ccb), uio);
 		cam_periph_lock(softc->periph);
@@ -908,18 +908,29 @@ targreturnccb(struct targ_softc *softc, union ccb *ccb)
 	u_ccbh = &descr->user_ccb->ccb_h;
 
 	/* Copy out the central portion of the ccb_hdr */
-	copyout(&ccb->ccb_h.retry_count, &u_ccbh->retry_count,
-		offsetof(struct ccb_hdr, periph_priv) -
-		offsetof(struct ccb_hdr, retry_count));
+	error = copyout(&ccb->ccb_h.retry_count, &u_ccbh->retry_count,
+	    offsetof(struct ccb_hdr, periph_priv) -
+	    offsetof(struct ccb_hdr, retry_count));
+	if (error != 0) {
+		xpt_print(softc->path,
+		    "targreturnccb - CCB header copyout failed (%d)\n", error);
+	}
 
 	/* Copy out the rest of the ccb (after the ccb_hdr) */
 	ccb_len = targccblen(ccb->ccb_h.func_code) - sizeof(struct ccb_hdr);
-	if (descr->mapinfo.num_bufs_used != 0)
-		cam_periph_unmapmem(ccb, &descr->mapinfo);
-	error = copyout(&ccb->ccb_h + 1, u_ccbh + 1, ccb_len);
-	if (error != 0) {
-		xpt_print(softc->path,
-		    "targreturnccb - CCB copyout failed (%d)\n", error);
+	if (descr->mapinfo.num_bufs_used != 0) {
+		int error1;
+
+		error1 = cam_periph_unmapmem(ccb, &descr->mapinfo);
+		if (error == 0)
+			error = error1;
+	}
+	if (error == 0) {
+		error = copyout(&ccb->ccb_h + 1, u_ccbh + 1, ccb_len);
+		if (error != 0) {
+			xpt_print(softc->path,
+			    "targreturnccb - CCB copyout failed (%d)\n", error);
+		}
 	}
 	/* Free CCB or send back to devq. */
 	targfreeccb(softc, ccb);
@@ -1003,7 +1014,7 @@ targinit(void)
 }
 
 static void
-targasync(void *callback_arg, u_int32_t code, struct cam_path *path, void *arg)
+targasync(void *callback_arg, uint32_t code, struct cam_path *path, void *arg)
 {
 	/* All events are handled in usermode by INOTs */
 	panic("targasync() called, should be an INOT instead");

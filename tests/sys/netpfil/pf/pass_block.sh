@@ -1,4 +1,3 @@
-# $FreeBSD$
 #
 # SPDX-License-Identifier: BSD-2-Clause
 #
@@ -28,6 +27,43 @@
 . $(atf_get_srcdir)/utils.subr
 
 common_dir=$(atf_get_srcdir)/../common
+
+atf_test_case "enable_disable" "cleanup"
+enable_disable_head()
+{
+	atf_set descr 'Test enable/disable'
+	atf_set require.user root
+}
+
+enable_disable_body()
+{
+	pft_init
+
+	j="pass_block:enable_disable"
+
+	vnet_mkjail ${j}
+
+	# Disable when disabled fails
+	atf_check -s exit:1 -e ignore \
+	    jexec ${j} pfctl -d
+
+	# Enable succeeds
+	atf_check -s exit:0 -e ignore \
+	    jexec ${j} pfctl -e
+
+	# Enable when enabled fails
+	atf_check -s exit:1 -e ignore \
+	    jexec ${j} pfctl -e
+
+	# Disable succeeds
+	atf_check -s exit:0 -e ignore \
+	    jexec ${j} pfctl -d
+}
+
+enable_disable_cleanup()
+{
+	pft_cleanup
+}
 
 atf_test_case "v4" "cleanup"
 v4_head()
@@ -230,7 +266,8 @@ urpf_body()
 		--replyif ${epair_one}a
 
 	pft_set_rules alcatraz \
-		"block quick from urpf-failed"
+		"block quick from urpf-failed" \
+		"set skip on lo"
 	jexec alcatraz pfctl -e
 
 	# Correct source still works
@@ -257,6 +294,7 @@ urpf_cleanup()
 
 atf_init_test_cases()
 {
+	atf_add_test_case "enable_disable"
 	atf_add_test_case "v4"
 	atf_add_test_case "v6"
 	atf_add_test_case "noalias"

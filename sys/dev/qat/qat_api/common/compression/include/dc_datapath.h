@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 /* Copyright(c) 2007-2022 Intel Corporation */
-/* $FreeBSD$ */
 /**
  *****************************************************************************
  * @file dc_datapath.h
@@ -196,5 +195,16 @@ typedef enum dc_cnv_mode_s {
 	DC_CNVNR,
 	/* CNV = TRUE, CNVNR = TRUE */
 } dc_cnv_mode_t;
+
+/* Type to access extended features bit fields */
+typedef struct dc_extended_features_s {
+	unsigned is_cnv : 1; /* Bit<0> */
+	unsigned padding : 7;
+	unsigned is_cnvnr : 1; /* Bit<8> */
+	unsigned reserved : 2;
+	unsigned is_part_read : 1; /* Bit<11> */
+	unsigned is_zero_pad : 1;  /* Bit<12> */
+	unsigned not_used : 19;
+} dc_extd_ftrs_t;
 
 #endif /* DC_DATAPATH_H_ */

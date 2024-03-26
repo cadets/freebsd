@@ -25,9 +25,7 @@
 .\" OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 .\" ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 .\"
-.\" $FreeBSD$
-.\"
-.Dd May 1, 2020
+.Dd October 27, 2023
 .Dt STRLCPY 3
 .Os
 .Sh NAME
@@ -47,9 +45,11 @@ The
 .Fn strlcpy
 and
 .Fn strlcat
-functions copy and concatenate strings with the
-same input parameters and output result as
-.Xr snprintf 3 .
+functions copy and concatenate strings with the same input parameters and output result as
+.Xr strcpy 3
+and
+.Xr strcat 3
+with proper overflow protection.
 They are designed to be safer, more consistent, and less error
 prone replacements for the easily misused functions
 .Xr strncpy 3
@@ -102,22 +102,7 @@ and
 .Fa dst
 strings overlap, the behavior is undefined.
 .Sh RETURN VALUES
-Besides quibbles over the return type
-.Pf ( Va size_t
-versus
-.Va int )
-and signal handler safety
-.Pf ( Xr snprintf 3
-is not entirely safe on some systems), the
-following two are equivalent:
-.Bd -literal -offset indent
-n = strlcpy(dst, src, len);
-n = snprintf(dst, len, "%s", src);
-.Ed
-.Pp
-Like
-.Xr snprintf 3 ,
-the
+The
 .Fn strlcpy
 and
 .Fn strlcat
@@ -196,8 +181,7 @@ As a matter of fact, the first version of this manual page got it wrong.
 .%I USENIX Association
 .%B Proceedings of the FREENIX Track: 1999 USENIX Annual Technical Conference
 .%D June 6-11, 1999
-.%U http://www.usenix.org/publications/library/proceedings/usenix99/
-.%U full_papers/millert/millert.pdf
+.%U http://www.usenix.org/publications/library/proceedings/usenix99/full_papers/millert/millert.pdf
 .Re
 .Sh HISTORY
 The

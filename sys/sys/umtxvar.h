@@ -25,14 +25,14 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD$
- *
  */
 
 #ifndef _SYS_UMTXVAR_H_
 #define	_SYS_UMTXVAR_H_
 
 #ifdef _KERNEL
+
+#include <sys/_timespec.h>
 
 /*
  * The umtx_key structure is used by both the Linux futex code and the

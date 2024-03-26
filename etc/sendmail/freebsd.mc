@@ -46,9 +46,9 @@ divert(-1)
 #  and owner of the SSL certificates and keys in /etc/mail/certs to be usable
 #  by that user.
 #
+# Last updated: 2024-02-01
 
 divert(0)
-VERSIONID(`$FreeBSD$')
 OSTYPE(freebsd6)
 DOMAIN(generic)
 
@@ -66,7 +66,6 @@ define(`confCLIENT_CERT', `CERT_DIR/host.cert')dnl
 define(`confCLIENT_KEY', `CERT_DIR/host.key')dnl
 define(`confCACERT', `CERT_DIR/cacert.pem')dnl
 define(`confCACERT_PATH', `CERT_DIR')dnl
-define(`confDH_PARAMETERS', `CERT_DIR/dh.param')dnl
 
 dnl Uncomment to allow relaying based on your MX records.
 dnl NOTE: This can allow sites to use your server as a backup MX without

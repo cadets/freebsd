@@ -1,5 +1,4 @@
 .\"	$OpenBSD: sort.1,v 1.45 2015/03/19 13:51:10 jmc Exp $
-.\"	$FreeBSD$
 .\"
 .\" Copyright (c) 1991, 1993
 .\"	The Regents of the University of California.  All rights reserved.
@@ -31,9 +30,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\"     @(#)sort.1	8.1 (Berkeley) 6/6/93
-.\"
-.Dd September 4, 2019
+.Dd November 30, 2023
 .Dt SORT 1
 .Os
 .Sh NAME
@@ -182,7 +179,7 @@ options (human-readable).
 .It Fl i , Fl Fl ignore-nonprinting
 Ignore all non-printable characters.
 .It Fl M , Fl Fl month-sort , Fl Fl sort=month
-Sort by month abbreviations.
+Sort by month.
 Unknown strings are considered smaller than the month names.
 .It Fl n , Fl Fl numeric-sort , Fl Fl sort=numeric
 Sort fields numerically by arithmetic value.

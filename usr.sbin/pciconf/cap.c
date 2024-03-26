@@ -30,11 +30,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char rcsid[] =
-  "$FreeBSD$";
-#endif /* not lint */
-
 #include <sys/types.h>
 
 #include <err.h>
@@ -396,6 +391,10 @@ link_speed_string(uint8_t speed)
 		return ("8.0");
 	case 4:
 		return ("16.0");
+	case 5:
+		return ("32.0");
+	case 6:
+		return ("64.0");
 	default:
 		return ("undef");
 	}

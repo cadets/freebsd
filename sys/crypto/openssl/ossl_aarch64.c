@@ -26,8 +26,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/types.h>
@@ -37,7 +35,7 @@
 
 #include <crypto/openssl/ossl.h>
 #include <crypto/openssl/ossl_cipher.h>
-#include <crypto/openssl/aarch64/arm_arch.h>
+#include <crypto/openssl/arm_arch.h>
 
 /*
  * Feature bits defined in arm_arch.h

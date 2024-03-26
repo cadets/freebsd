@@ -43,8 +43,6 @@
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-SND_DECLARE_FILE("$FreeBSD$");
-
 /* Buffer size on dma transfer. Fixed for CS416x. */
 #define CS461x_BUFFSIZE   (4 * 1024)
 
@@ -821,8 +819,9 @@ pcmcsa_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	snprintf(status, SND_STATUSLEN, "at irq %jd %s",
-			rman_get_start(resp->irq),PCM_KLDSTRING(snd_csa));
+	snprintf(status, SND_STATUSLEN, "irq %jd on %s",
+			rman_get_start(resp->irq),
+			device_get_nameunit(device_get_parent(dev)));
 
 	/* Enable interrupt. */
 	if (snd_setup_intr(dev, resp->irq, 0, csa_intr, csa, &csa->ih)) {

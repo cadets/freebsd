@@ -1,5 +1,3 @@
-#	@(#)Makefile	8.1 (Berkeley) 6/4/93
-# $FreeBSD$
 
 .include <src.opts.mk>
 
@@ -21,6 +19,7 @@ SUBDIR_BOOTSTRAP= \
 	libelf \
 	libssp \
 	libssp_nonshared \
+	libsys \
 	msun
 
 # The main list; please keep these sorted alphabetically.
@@ -124,7 +123,7 @@ SUBDIR_DEPEND_libbsnmp= ${_libnetgraph}
 SUBDIR_DEPEND_libc++:= libcxxrt
 # libssp_nonshared doesn't need to be linked into libc on every arch, but it is
 # small enough to build that this bit of serialization is likely insignificant.
-SUBDIR_DEPEND_libc= libcompiler_rt libssp_nonshared
+SUBDIR_DEPEND_libc= libsys libcompiler_rt libssp_nonshared
 SUBDIR_DEPEND_libcam= libsbuf
 SUBDIR_DEPEND_libcasper= libnv
 SUBDIR_DEPEND_libdevstat= libkvm
@@ -139,6 +138,8 @@ SUBDIR_DEPEND_libpjdlog= libutil
 SUBDIR_DEPEND_libprocstat= libkvm libutil
 SUBDIR_DEPEND_libradius= libmd
 SUBDIR_DEPEND_libsmb= libkiconv
+# See comment above about libssp_nonshared
+SUBDIR_DEPEND_libsys= libcompiler_rt libssp_nonshared
 SUBDIR_DEPEND_libtacplus= libmd
 SUBDIR_DEPEND_libulog= libmd
 SUBDIR_DEPEND_libunbound= ${_libldns}
@@ -148,7 +149,7 @@ SUBDIR_DEPEND_libpcap= ofed
 .endif
 SUBDIR_DEPEND_nss_tacplus= libtacplus
 
-.if !defined(COMPAT_32BIT)
+.if !defined(COMPAT_LIBCOMPAT)
 SUBDIR+=	flua
 SUBDIR_DEPEND_flua=	libjail
 .endif
@@ -160,7 +161,7 @@ SUBDIR.${MK_BLACKLIST}+=libblacklist
 SUBDIR.${MK_BLUETOOTH}+=libbluetooth libsdp
 SUBDIR.${MK_BSNMP}+=	libbsnmp
 
-.if !defined(COMPAT_32BIT) && !defined(COMPAT_SOFTFP)
+.if !defined(COMPAT_LIBCOMPAT)
 .if ${MK_CLANG} != "no" || ${MK_LLD} != "no" || \
     ${MK_LLDB} != "no" || ${MK_LLVM_BINUTILS} != "no"
 SUBDIR+=	clang
@@ -170,6 +171,7 @@ SUBDIR+=	clang
 SUBDIR.${MK_CUSE}+= 	libcuse
 SUBDIR.${MK_TOOLCHAIN}+=libpe
 SUBDIR.${MK_DIALOG}+=	libdpv libfigpar
+SUBDIR.${MK_FDT}+=	libfdt
 SUBDIR.${MK_FILE}+=	libmagic
 SUBDIR.${MK_GPIO}+=	libgpio
 SUBDIR.${MK_GSSAPI}+=	libgssapi librpcsec_gss
@@ -203,10 +205,10 @@ SUBDIR.${MK_PMC}+=	libipt
 SUBDIR.${MK_BHYVE}+=	libvmmapi
 .endif
 
-.if ${MACHINE_ARCH} != "powerpc"
+.if ${MACHINE_ARCH} != "powerpc" && ${MACHINE_CPUARCH} != "arm"
 SUBDIR.${MK_OPENMP}+=	libomp
 .endif
-.if !defined(COMPAT_32BIT) && ${MK_USB} != "no"
+.if ${MK_USB} != "no"
 SUBDIR.${MK_OPENSSH}+=	libcbor libfido2
 .endif
 SUBDIR.${MK_OPENSSL}+=	libmp

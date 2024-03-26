@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 /* Copyright(c) 2007 - 2022 Intel Corporation */
-/* $FreeBSD$ */
 #include "qat_freebsd.h"
 #include "adf_cfg.h"
 #include "adf_common_drv.h"
@@ -87,16 +86,16 @@ adf_attach(device_t dev)
 	struct adf_accel_dev *accel_dev;
 	struct adf_accel_pci *accel_pci_dev;
 	struct adf_hw_device_data *hw_data;
-	unsigned int i, bar_nr;
+	unsigned int bar_nr;
 	int ret, rid;
 	struct adf_cfg_device *cfg_dev = NULL;
 
-	/* Set pci MaxPayLoad to 256. Implemented to avoid the issue of
+	/* Set pci MaxPayLoad to 512. Implemented to avoid the issue of
 	 * Pci-passthrough causing Maxpayload to be reset to 128 bytes
 	 * when the device is reset.
 	 */
-	if (pci_get_max_payload(dev) != 256)
-		pci_set_max_payload(dev, 256);
+	if (pci_get_max_payload(dev) != 512)
+		pci_set_max_payload(dev, 512);
 
 	accel_dev = device_get_softc(dev);
 
@@ -119,7 +118,7 @@ adf_attach(device_t dev)
 	hw_data = malloc(sizeof(*hw_data), M_QAT_4XXX, M_WAITOK | M_ZERO);
 
 	accel_dev->hw_device = hw_data;
-	adf_init_hw_data_4xxx(accel_dev->hw_device);
+	adf_init_hw_data_4xxx(accel_dev->hw_device, pci_get_device(dev));
 	accel_pci_dev->revid = pci_get_revid(dev);
 	hw_data->fuses = pci_read_config(dev, ADF_4XXX_FUSECTL4_OFFSET, 4);
 	if (accel_pci_dev->revid == 0x00) {
@@ -154,7 +153,7 @@ adf_attach(device_t dev)
 	if (ret)
 		goto out_err;
 
-	pci_set_max_read_req(dev, 1024);
+	pci_set_max_read_req(dev, 4096);
 
 	ret = bus_dma_tag_create(bus_get_dma_tag(dev),
 				 1,
@@ -179,15 +178,19 @@ adf_attach(device_t dev)
 	}
 
 	/* Find and map all the device's BARS */
-	i = 0;
-	for (bar_nr = 0; i < ADF_PCI_MAX_BARS && bar_nr < PCIR_MAX_BAR_0;
-	     bar_nr++) {
+	/* Logical BARs configuration for 64bit BARs:
+	     bar 0 and 1 - logical BAR0
+	     bar 2 and 3 - logical BAR1
+	     bar 4 and 5 - logical BAR3
+	*/
+	for (bar_nr = 0;
+	     bar_nr < (ADF_PCI_MAX_BARS * 2) && bar_nr < PCIR_MAX_BAR_0;
+	     bar_nr += 2) {
 		struct adf_bar *bar;
 
 		rid = PCIR_BAR(bar_nr);
-		if (bus_get_resource(dev, SYS_RES_MEMORY, rid, NULL, NULL) != 0)
-			continue;
-		bar = &accel_pci_dev->pci_bars[i++];
+		bar = &accel_pci_dev->pci_bars[bar_nr / 2];
+
 		bar->virt_addr = bus_alloc_resource_any(dev,
 							SYS_RES_MEMORY,
 							&rid,

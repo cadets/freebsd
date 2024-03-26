@@ -29,9 +29,6 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <signal.h>
 #include "libc_private.h"
@@ -43,8 +40,7 @@ int
 sigtimedwait(const sigset_t * __restrict set, siginfo_t * __restrict info,
     const struct timespec * __restrict t)
 {
-
 	return (((int (*)(const sigset_t *, siginfo_t *,
 	    const struct timespec *))
-	    __libc_interposing[INTERPOS_sigtimedwait])(set, info, t));
+	    *(__libc_interposing_slot(INTERPOS_sigtimedwait)))(set, info, t));
 }

@@ -29,9 +29,6 @@
 #include "opt_ddb.h"
 #include "opt_gdb.h"
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/kdb.h>
@@ -61,6 +58,11 @@ static int dbg_breakpoint_num;
 static struct debug_monitor_state kernel_monitor = {
 	.dbg_flags = DBGMON_KERNEL
 };
+
+static int dbg_setup_watchpoint(struct debug_monitor_state *, vm_offset_t,
+    vm_size_t, enum dbg_access_t);
+static int dbg_remove_watchpoint(struct debug_monitor_state *, vm_offset_t,
+    vm_size_t);
 
 /* Called from the exception handlers */
 void dbg_monitor_enter(struct thread *);
@@ -191,6 +193,15 @@ kdb_cpu_set_singlestep(void)
 	    ("%s: debug exceptions are not masked", __func__));
 
 	kdb_frame->tf_spsr |= PSR_SS;
+
+	/*
+	 * TODO: Handle single stepping over instructions that access
+	 * the DAIF values. On a read the value will be incorrect.
+	 */
+	kernel_monitor.dbg_flags &= ~PSR_DAIF;
+	kernel_monitor.dbg_flags |= kdb_frame->tf_spsr & PSR_DAIF;
+	kdb_frame->tf_spsr |= (PSR_A | PSR_I | PSR_F);
+
 	WRITE_SPECIALREG(mdscr_el1, READ_SPECIALREG(mdscr_el1) |
 	    MDSCR_SS | MDSCR_KDE);
 
@@ -211,6 +222,9 @@ kdb_cpu_clear_singlestep(void)
 
 	KASSERT((READ_SPECIALREG(daif) & PSR_D) == PSR_D,
 	    ("%s: debug exceptions are not masked", __func__));
+
+	kdb_frame->tf_spsr &= ~PSR_DAIF;
+	kdb_frame->tf_spsr |= kernel_monitor.dbg_flags & PSR_DAIF;
 
 	WRITE_SPECIALREG(mdscr_el1, READ_SPECIALREG(mdscr_el1) &
 	    ~(MDSCR_SS | MDSCR_KDE));
@@ -380,7 +394,7 @@ dbg_find_slot(struct debug_monitor_state *monitor, enum dbg_t type,
 	return (-1);
 }
 
-int
+static int
 dbg_setup_watchpoint(struct debug_monitor_state *monitor, vm_offset_t addr,
     vm_size_t size, enum dbg_access_t access)
 {
@@ -447,7 +461,7 @@ dbg_setup_watchpoint(struct debug_monitor_state *monitor, vm_offset_t addr,
 	return (0);
 }
 
-int
+static int
 dbg_remove_watchpoint(struct debug_monitor_state *monitor, vm_offset_t addr,
     vm_size_t size)
 {
@@ -481,23 +495,24 @@ dbg_register_sync(struct debug_monitor_state *monitor)
 	if (monitor == NULL)
 		monitor = &kernel_monitor;
 
+	for (i = 0; i < dbg_breakpoint_num; i++) {
+		dbg_wb_write_reg(DBG_REG_BASE_BCR, i,
+		    monitor->dbg_bcr[i]);
+		dbg_wb_write_reg(DBG_REG_BASE_BVR, i,
+		    monitor->dbg_bvr[i]);
+	}
+
+	for (i = 0; i < dbg_watchpoint_num; i++) {
+		dbg_wb_write_reg(DBG_REG_BASE_WCR, i,
+		    monitor->dbg_wcr[i]);
+		dbg_wb_write_reg(DBG_REG_BASE_WVR, i,
+		    monitor->dbg_wvr[i]);
+	}
+
 	mdscr = READ_SPECIALREG(mdscr_el1);
 	if ((monitor->dbg_flags & DBGMON_ENABLED) == 0) {
 		mdscr &= ~(MDSCR_MDE | MDSCR_KDE);
 	} else {
-		for (i = 0; i < dbg_breakpoint_num; i++) {
-			dbg_wb_write_reg(DBG_REG_BASE_BCR, i,
-			    monitor->dbg_bcr[i]);
-			dbg_wb_write_reg(DBG_REG_BASE_BVR, i,
-			    monitor->dbg_bvr[i]);
-		}
-
-		for (i = 0; i < dbg_watchpoint_num; i++) {
-			dbg_wb_write_reg(DBG_REG_BASE_WCR, i,
-			    monitor->dbg_wcr[i]);
-			dbg_wb_write_reg(DBG_REG_BASE_WVR, i,
-			    monitor->dbg_wvr[i]);
-		}
 		mdscr |= MDSCR_MDE;
 		if ((monitor->dbg_flags & DBGMON_KERNEL) == DBGMON_KERNEL)
 			mdscr |= MDSCR_KDE;

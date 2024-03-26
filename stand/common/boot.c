@@ -24,9 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Loading modules, booting the system
  */
@@ -162,7 +159,7 @@ command_autoboot(int argc, char *argv[])
  * we haven't tried already, try now.
  */
 void
-autoboot_maybe()
+autoboot_maybe(void)
 {
 	char	*cp;
 

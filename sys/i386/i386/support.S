@@ -25,8 +25,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <machine/asmacros.h>
@@ -580,3 +578,11 @@ ENTRY(mds_handler_silvermont)
 	movl	%eax, %cr0
 3:	ret
 END(mds_handler_silvermont)
+
+ENTRY(cpu_sync_core)
+	popl	%eax
+	pushfl
+	pushl	%cs
+	pushl	%eax
+	iretl
+END(cpu_sync_core)

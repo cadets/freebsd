@@ -68,7 +68,11 @@ def prepare_ipv4(dst_address, send_params):
     flags = send_params.get('flags')
     tos = send_params.get('tc')
     ttl = send_params.get('hlim')
-    ip = sp.IP(dst=dst_address)
+    opt = send_params.get('nop')
+    options = ''
+    if opt:
+        options='\x00'
+    ip = sp.IP(dst=dst_address, options=options)
     if src_address:
         ip.src = src_address
     if flags:
@@ -82,17 +86,29 @@ def prepare_ipv4(dst_address, send_params):
 
 def send_icmp_ping(dst_address, sendif, send_params):
     send_length = send_params['length']
+    send_frag_length = send_params['frag_length']
+    packets = []
     ether = sp.Ether()
     if ':' in dst_address:
         ip6 = prepare_ipv6(dst_address, send_params)
         icmp = sp.ICMPv6EchoRequest(data=sp.raw(build_payload(send_length)))
-        req = ether / ip6 / icmp
+        if send_frag_length:
+            for packet in sp.fragment(ip6 / icmp, fragsize=send_frag_length):
+                packets.append(ether / packet)
+        else:
+            packets.append(ether / ip6 / icmp)
+
     else:
         ip = prepare_ipv4(dst_address, send_params)
         icmp = sp.ICMP(type='echo-request')
         raw = sp.raw(build_payload(send_length))
-        req = ether / ip / icmp / raw
-    sp.sendp(req, sendif, verbose=False)
+        if send_frag_length:
+            for packet in sp.fragment(ip / icmp / raw, fragsize=send_frag_length):
+                packets.append(ether / packet)
+        else:
+            packets.append(ether / ip / icmp / raw)
+    for packet in packets:
+        sp.sendp(packet, sendif, verbose=False)
 
 
 def send_tcp_syn(dst_address, sendif, send_params):
@@ -372,7 +388,7 @@ def check_tcp_syn_reply(expect_params, packet):
         return check_tcp_syn_reply_4(expect_params, packet)
 
 
-def setup_sniffer(recvif, ping_type, sniff_type, expect_params):
+def setup_sniffer(recvif, ping_type, sniff_type, expect_params, defrag):
     if ping_type == 'icmp' and sniff_type == 'request':
         checkfn = check_ping_request
     elif ping_type == 'icmp' and sniff_type == 'reply':
@@ -384,7 +400,7 @@ def setup_sniffer(recvif, ping_type, sniff_type, expect_params):
     else:
         raise Exception('Unspported ping or sniff type')
 
-    return Sniffer(expect_params, checkfn, recvif)
+    return Sniffer(expect_params, checkfn, recvif, defrag=defrag)
 
 
 def parse_args():
@@ -417,6 +433,8 @@ def parse_args():
     parser_send = parser.add_argument_group('Values set in transmitted packets')
     parser_send.add_argument('--send-flags', nargs=1, type=str,
         help='IPv4 fragmentation flags')
+    parser_send.add_argument('--send-frag-length', nargs=1, type=int,
+         help='Force IP fragmentation with given fragment length')
     parser_send.add_argument('--send-hlim', nargs=1, type=int,
         help='IPv6 Hop Limit or IPv4 Time To Live')
     parser_send.add_argument('--send-mss', nargs=1, type=int,
@@ -428,7 +446,9 @@ def parse_args():
     parser_send.add_argument('--send-tc', nargs=1, type=int,
         help='IPv6 Traffic Class or IPv4 DiffServ / ToS')
     parser_send.add_argument('--send-tcpopt-unaligned', action='store_true',
-            help='Include unaligned TCP options')
+         help='Include unaligned TCP options')
+    parser_send.add_argument('--send-nop', action='store_true',
+         help='Include a NOP IPv4 option')
 
     # Expectations
     parser_expect = parser.add_argument_group('Values expected in sniffed packets')
@@ -467,7 +487,7 @@ def main():
     # Standardize parameters which have nargs=1.
     send_params = {}
     expect_params = {}
-    for param_name in ('flags', 'hlim', 'length', 'mss', 'seq', 'tc'):
+    for param_name in ('flags', 'hlim', 'length', 'mss', 'seq', 'tc', 'frag_length'):
         param_arg = vars(args).get(f'send_{param_name}')
         send_params[param_name] = param_arg[0] if param_arg else None
         param_arg = vars(args).get(f'expect_{param_name}')
@@ -475,6 +495,7 @@ def main():
 
     expect_params['length'] = send_params['length']
     send_params['tcpopt_unaligned'] = args.send_tcpopt_unaligned
+    send_params['nop'] = args.send_nop
     send_params['src_address'] = args.fromaddr[0] if args.fromaddr else None
 
     # We may not have a default route. Tell scapy where to start looking for routes
@@ -488,6 +509,11 @@ def main():
 
     sniffers = []
 
+    if send_params['frag_length']:
+        defrag = True
+    else:
+        defrag = False
+
     if recv_ifs:
         sniffer_params = copy(expect_params)
         sniffer_params['src_address'] = None
@@ -495,7 +521,8 @@ def main():
         for iface in recv_ifs:
             LOGGER.debug(f'Installing receive sniffer on {iface}')
             sniffers.append(
-                setup_sniffer(iface, args.ping_type, 'request', sniffer_params,
+                setup_sniffer(iface, args.ping_type, 'request',
+                              sniffer_params, defrag,
             ))
 
     if reply_ifs:
@@ -505,7 +532,8 @@ def main():
         for iface in reply_ifs:
             LOGGER.debug(f'Installing reply sniffer on {iface}')
             sniffers.append(
-                setup_sniffer(iface, args.ping_type, 'reply', sniffer_params,
+                setup_sniffer(iface, args.ping_type, 'reply',
+                              sniffer_params, defrag,
             ))
 
     LOGGER.debug(f'Installed {len(sniffers)} sniffers')

@@ -26,8 +26,6 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 --
--- $FreeBSD$
---
 
 local cli = require("cli")
 local core = require("core")
@@ -178,7 +176,7 @@ menu.boot_options = {
 		-- acpi
 		{
 			entry_type = core.MENU_ENTRY,
-			visible = core.isSystem386,
+			visible = core.hasACPI,
 			name = function()
 				return OnOff(color.highlight("A") ..
 				    "CPI       :", core.acpi)

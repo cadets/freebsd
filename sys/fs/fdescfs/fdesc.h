@@ -30,10 +30,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)fdesc.h	8.5 (Berkeley) 1/21/94
- *
- * $FreeBSD$
  */
 
 #ifndef _FS_FDESC_H_
@@ -43,6 +39,7 @@
 #define FMNT_UNMOUNTF	0x01
 #define FMNT_LINRDLNKF	0x02
 #define	FMNT_NODUP	0x04
+#define FMNT_RDLNKF	0x08
 
 struct fdescmount {
 	struct vnode	*f_root;	/* Root node */

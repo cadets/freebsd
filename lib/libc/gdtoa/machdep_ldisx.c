@@ -37,9 +37,6 @@
  * is an IEEE extended precision number.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <float.h>
 
 #include "gdtoaimp.h"

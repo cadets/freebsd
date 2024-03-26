@@ -1,5 +1,4 @@
 /* $NetBSD: pickmode.c,v 1.3 2011/04/09 18:22:31 jdc Exp $ */
-/* $FreeBSD$ */
 
 /*-
  * Copyright (c) 2006 The NetBSD Foundation
@@ -28,9 +27,6 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */ 
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/libkern.h>

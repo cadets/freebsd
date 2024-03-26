@@ -44,8 +44,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SECURITY_MAC_MAC_INTERNAL_H_
@@ -212,7 +210,7 @@ void		 mac_labelzone_init(void);
 
 void	mac_init_label(struct label *label);
 void	mac_destroy_label(struct label *label);
-int	mac_check_structmac_consistent(struct mac *mac);
+int	mac_check_structmac_consistent(const struct mac *mac);
 int	mac_allocate_slot(void);
 
 /*

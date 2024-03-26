@@ -31,7 +31,6 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-/*$FreeBSD$*/
 
 #ifndef IRDMA_H
 #define IRDMA_H
@@ -167,7 +166,7 @@ struct irdma_mcast_grp_ctx_entry_info {
 };
 
 struct irdma_mcast_grp_info {
-	u8 dest_mac_addr[ETH_ALEN];
+	u8 dest_mac_addr[ETHER_ADDR_LEN];
 	u16 vlan_id;
 	u16 hmc_fcn_id;
 	bool ipv4_valid:1;
@@ -184,7 +183,7 @@ enum irdma_vers {
 	IRDMA_GEN_RSVD = 0,
 	IRDMA_GEN_1 = 1,
 	IRDMA_GEN_2 = 2,
-	IRDMA_GEN_MAX = 2,
+	IRDMA_GEN_MAX = IRDMA_GEN_2,
 };
 
 struct irdma_uk_attrs {

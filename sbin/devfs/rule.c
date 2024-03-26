@@ -30,9 +30,6 @@
  * Rule subsystem manipulation.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/conf.h>
 #include <sys/ioctl.h>

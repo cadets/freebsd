@@ -48,9 +48,6 @@
 
 #include "opt_ddb.h"
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/malloc.h>
 #include <sys/queue.h>
@@ -345,11 +342,11 @@ undefinedinstruction(struct trapframe *frame)
 #else
 			printf("No debugger in kernel.\n");
 #endif
-			return;
-		}
-		else
-			panic("Undefined instruction in kernel (0x%08x).\n",
+		} else if (uh == NULL) {
+			panic("Undefined instruction in kernel (0x%08x)",
 			    fault_instruction);
+		}
+		return;
 	}
 
 	userret(td, frame);

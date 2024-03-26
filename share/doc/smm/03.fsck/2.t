@@ -25,9 +25,6 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\"	$FreeBSD$
-.\"	@(#)2.t	8.1 (Berkeley) 6/5/93
-.\"
 .ds RH Overview of the file system
 .NH
 Overview of the file system

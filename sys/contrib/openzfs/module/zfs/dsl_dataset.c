@@ -2069,8 +2069,9 @@ dsl_dataset_snapshot_tmp(const char *fsname, const char *snapname,
 	return (error);
 }
 
+/* Nonblocking dataset sync. Assumes dataset:objset is always 1:1 */
 void
-dsl_dataset_sync(dsl_dataset_t *ds, zio_t *zio, dmu_tx_t *tx)
+dsl_dataset_sync(dsl_dataset_t *ds, zio_t *rio, dmu_tx_t *tx)
 {
 	ASSERT(dmu_tx_is_syncing(tx));
 	ASSERT(ds->ds_objset != NULL);
@@ -2098,7 +2099,7 @@ dsl_dataset_sync(dsl_dataset_t *ds, zio_t *zio, dmu_tx_t *tx)
 		ds->ds_resume_bytes[tx->tx_txg & TXG_MASK] = 0;
 	}
 
-	dmu_objset_sync(ds->ds_objset, zio, tx);
+	dmu_objset_sync(ds->ds_objset, rio, tx);
 }
 
 /*
@@ -3782,8 +3783,7 @@ snaplist_destroy(list_t *l, const void *tag)
 	if (l == NULL || !list_link_active(&l->list_head))
 		return;
 
-	while ((snap = list_tail(l)) != NULL) {
-		list_remove(l, snap);
+	while ((snap = list_remove_tail(l)) != NULL) {
 		dsl_dataset_rele(snap->ds, tag);
 		kmem_free(snap, sizeof (*snap));
 	}

@@ -23,9 +23,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/buf.h>
@@ -69,12 +66,14 @@ nvme_sim_nvmeio_done(void *ccb_arg, const struct nvme_completion *cpl)
 
 	/*
 	 * Let the periph know the completion, and let it sort out what
-	 * it means. Make our best guess, though for the status code.
+	 * it means. Report an error or success based on SC and SCT.
+	 * We do not try to fetch additional data from the error log,
+	 * though maybe we should in the future.
 	 */
 	memcpy(&ccb->nvmeio.cpl, cpl, sizeof(*cpl));
 	ccb->ccb_h.status &= ~CAM_SIM_QUEUED;
 	if (nvme_completion_is_error(cpl)) {
-		ccb->ccb_h.status = CAM_REQ_CMP_ERR;
+		ccb->ccb_h.status = CAM_NVME_STATUS_ERROR;
 		xpt_done(ccb);
 	} else {
 		ccb->ccb_h.status = CAM_REQ_CMP;
@@ -243,11 +242,13 @@ nvme_sim_action(struct cam_sim *sim, union ccb *ccb)
 		}
 
 		/* XXX these should be something else maybe ? */
-		nvmep->valid = 1;
+		nvmep->valid = CTS_NVME_VALID_SPEC;
 		nvmep->spec = nvmex->spec;
 
 		cts->transport = XPORT_NVME;
+		cts->transport_version = nvmex->spec;
 		cts->protocol = PROTO_NVME;
+		cts->protocol_version = nvmex->spec;
 		cts->ccb_h.status = CAM_REQ_CMP;
 		break;
 	}
@@ -269,6 +270,10 @@ nvme_sim_action(struct cam_sim *sim, union ccb *ccb)
 	case XPT_NVME_IO:		/* Execute the requested I/O operation */
 	case XPT_NVME_ADMIN:		/* or Admin operation */
 		if (ctrlr->is_failed) {
+			/*
+			 * I/O came in while we were failing the drive, so drop
+			 * it. Once falure is complete, we'll be destroyed.
+			 */
 			ccb->ccb_h.status = CAM_DEV_NOT_THERE;
 			break;
 		}

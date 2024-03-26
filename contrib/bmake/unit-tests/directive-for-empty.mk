@@ -1,12 +1,12 @@
-# $NetBSD: directive-for-empty.mk,v 1.1 2022/05/23 22:33:56 rillig Exp $
+# $NetBSD: directive-for-empty.mk,v 1.3 2023/11/19 21:47:52 rillig Exp $
 #
 # Tests for .for loops containing conditions of the form 'empty(var:...)'.
 #
-# When a .for loop is expanded, variable expressions in the body of the loop
+# When a .for loop is expanded, expressions in the body of the loop
 # are replaced with expressions containing the variable values.  This
 # replacement is a bit naive but covers most of the practical cases.  The one
 # popular exception is the condition 'empty(var:Modifiers)', which does not
-# look like a variable expression and is thus not replaced.
+# look like an expression and is thus not replaced.
 #
 # See also:
 #	https://gnats.netbsd.org/43821
@@ -18,12 +18,13 @@
 # when in fact they aren't.
 .for i in 11 12 13
 .  if ${i:M*2*}
+# expect+1: 2
 .info 2
 .  endif
 .endfor
 
 
-# In conditions, the function call to 'empty' does not look like a variable
+# In conditions, the function call to 'empty' does not look like an
 # expression, therefore it is not replaced.  Since there is no global variable
 # named 'i', this expression makes for a leaky abstraction.  If the .for
 # variables were real variables, calling 'empty' would work on them as well.
@@ -31,6 +32,9 @@
 # Asking for an empty iteration variable does not make sense as the .for loop
 # splits the iteration items into words, and such a word cannot be empty.
 .  if empty(i)
+# expect+3: Missing argument for ".error"
+# expect+2: Missing argument for ".error"
+# expect+1: Missing argument for ".error"
 .    error			# due to the leaky abstraction
 .  endif
 # The typical way of using 'empty' with variables from .for loops is pattern
@@ -47,8 +51,8 @@
 # loop would be naive and require many special cases, as there are many cases
 # that need to be considered when deciding whether the token 'empty' is a
 # function call or not, as demonstrated by the following examples.  For
-# variable expressions like '${i:Modifiers}', this is simpler as a single
-# dollar almost always starts a variable expression.  For counterexamples and
+# expressions like '${i:Modifiers}', this is simpler as a single
+# dollar almost always starts an expression.  For counterexamples and
 # edge cases, see directive-for-escape.mk.  Adding another such tricky detail
 # is out of the question.
 .MAKEFLAGS: -df

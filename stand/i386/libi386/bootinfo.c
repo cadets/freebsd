@@ -24,9 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <stand.h>
 #include <sys/param.h>
 #include <sys/reboot.h>
@@ -37,25 +34,6 @@ __FBSDID("$FreeBSD$");
 #include "libi386.h"
 #include "vbe.h"
 #include "btxv86.h"
-
-void
-bi_load_vbe_data(struct preloaded_file *kfp)
-{
-	if (!kfp->f_tg_kernel_support) {
-		/*
-		 * Loaded kernel does not have vt/vbe backend,
-		 * switch console to text mode.
-		 */
-		if (vbe_available())
-			bios_set_text_mode(VGA_TEXT_MODE);
-		return;
-	}
-
-	if (vbe_available()) {
-		file_addmetadata(kfp, MODINFOMD_VBE_FB,
-		    sizeof(gfx_state.tg_fb), &gfx_state.tg_fb);
-	}
-}
 
 int
 bi_getboothowto(char *kargs)

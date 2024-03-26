@@ -33,9 +33,6 @@
  * Handle top mode with a sorted tree display.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/endian.h>
 #include <sys/queue.h>

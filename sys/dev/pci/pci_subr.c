@@ -28,8 +28,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Support APIs for Host to PCI bridge drivers and drivers that
  * provide PCI domains.
@@ -55,7 +53,7 @@ host_pcib_get_busno(pci_read_config_fn read_config, int bus, int slot, int func,
 {
 	uint32_t id;
 
-	id = read_config(bus, slot, func, PCIR_DEVVENDOR, 4);
+	id = read_config(0, bus, slot, func, PCIR_DEVVENDOR, 4);
 	if (id == 0xffffffff)
 		return (0);
 
@@ -63,12 +61,12 @@ host_pcib_get_busno(pci_read_config_fn read_config, int bus, int slot, int func,
 	case 0x12258086:
 		/* Intel 824?? */
 		/* XXX This is a guess */
-		/* *busnum = read_config(bus, slot, func, 0x41, 1); */
+		/* *busnum = read_config(0, bus, slot, func, 0x41, 1); */
 		*busnum = bus;
 		break;
 	case 0x84c48086:
 		/* Intel 82454KX/GX (Orion) */
-		*busnum = read_config(bus, slot, func, 0x4a, 1);
+		*busnum = read_config(0, bus, slot, func, 0x4a, 1);
 		break;
 	case 0x84ca8086:
 		/*
@@ -87,19 +85,19 @@ host_pcib_get_busno(pci_read_config_fn read_config, int bus, int slot, int func,
 		switch (slot) {
 		case 0x12:
 			/* Intel 82454NX PXB#0, Bus#A */
-			*busnum = read_config(bus, 0x10, func, 0xd0, 1);
+			*busnum = read_config(0, bus, 0x10, func, 0xd0, 1);
 			break;
 		case 0x13:
 			/* Intel 82454NX PXB#0, Bus#B */
-			*busnum = read_config(bus, 0x10, func, 0xd1, 1) + 1;
+			*busnum = read_config(0, bus, 0x10, func, 0xd1, 1) + 1;
 			break;
 		case 0x14:
 			/* Intel 82454NX PXB#1, Bus#A */
-			*busnum = read_config(bus, 0x10, func, 0xd3, 1);
+			*busnum = read_config(0, bus, 0x10, func, 0xd3, 1);
 			break;
 		case 0x15:
 			/* Intel 82454NX PXB#1, Bus#B */
-			*busnum = read_config(bus, 0x10, func, 0xd4, 1) + 1;
+			*busnum = read_config(0, bus, 0x10, func, 0xd4, 1) + 1;
 			break;
 		}
 		break;
@@ -118,12 +116,12 @@ host_pcib_get_busno(pci_read_config_fn read_config, int bus, int slot, int func,
 	case 0x02011166:
 	case 0x02251166:
 	case 0x03021014:
-		*busnum = read_config(bus, slot, func, 0x44, 1);
+		*busnum = read_config(0, bus, slot, func, 0x44, 1);
 		break;
 
 		/* Compaq/HP -- vendor 0x0e11 */
 	case 0x60100e11:
-		*busnum = read_config(bus, slot, func, 0xc8, 1);
+		*busnum = read_config(0, bus, slot, func, 0xc8, 1);
 		break;
 	default:
 		/* Don't know how to read bus number. */
@@ -262,26 +260,26 @@ restart:
 }
 
 int
-pcib_host_res_adjust(struct pcib_host_resources *hr, device_t dev, int type,
+pcib_host_res_adjust(struct pcib_host_resources *hr, device_t dev,
     struct resource *r, rman_res_t start, rman_res_t end)
 {
 	struct resource_list_entry *rle;
 
-	rle = resource_list_find(&hr->hr_rl, type, 0);
+	rle = resource_list_find(&hr->hr_rl, rman_get_type(r), 0);
 	if (rle == NULL) {
 		/*
 		 * No decoding ranges for this resource type, just pass
 		 * the request up to the parent.
 		 */
-		return (bus_generic_adjust_resource(hr->hr_pcib, dev, type, r,
-		    start, end));
+		return (bus_generic_adjust_resource(hr->hr_pcib, dev, r, start,
+		    end));
 	}
 
 	/* Only allow adjustments that stay within a decoded range. */
 	for (; rle != NULL; rle = STAILQ_NEXT(rle, link)) {
 		if (rle->start <= start && rle->end >= end)
 			return (bus_generic_adjust_resource(hr->hr_pcib, dev,
-			    type, r, start, end));
+			    r, start, end));
 	}
 	return (ERANGE);
 }
@@ -346,6 +344,7 @@ pci_domain_alloc_bus(int domain, device_t dev, int *rid, rman_res_t start,
 		return (NULL);
 
 	rman_set_rid(res, *rid);
+	rman_set_type(res, PCI_RES_BUS);
 	return (res);
 }
 
@@ -367,7 +366,7 @@ pci_domain_adjust_bus(int domain, device_t dev, struct resource *r,
 }
 
 int
-pci_domain_release_bus(int domain, device_t dev, int rid, struct resource *r)
+pci_domain_release_bus(int domain, device_t dev, struct resource *r)
 {
 #ifdef INVARIANTS
 	struct pci_domain *d;
@@ -380,6 +379,38 @@ pci_domain_release_bus(int domain, device_t dev, int rid, struct resource *r)
 	KASSERT(rman_is_region_manager(r, &d->pd_bus_rman), ("bad resource"));
 #endif
 	return (rman_release_resource(r));
+}
+
+int
+pci_domain_activate_bus(int domain, device_t dev, struct resource *r)
+{
+#ifdef INVARIANTS
+	struct pci_domain *d;
+#endif
+
+	if (domain < 0 || domain > PCI_DOMAINMAX)
+		return (EINVAL);
+#ifdef INVARIANTS
+	d = pci_find_domain(domain);
+	KASSERT(rman_is_region_manager(r, &d->pd_bus_rman), ("bad resource"));
+#endif
+	return (rman_activate_resource(r));
+}
+
+int
+pci_domain_deactivate_bus(int domain, device_t dev, struct resource *r)
+{
+#ifdef INVARIANTS
+	struct pci_domain *d;
+#endif
+
+	if (domain < 0 || domain > PCI_DOMAINMAX)
+		return (EINVAL);
+#ifdef INVARIANTS
+	d = pci_find_domain(domain);
+	KASSERT(rman_is_region_manager(r, &d->pd_bus_rman), ("bad resource"));
+#endif
+	return (rman_deactivate_resource(r));
 }
 #endif /* PCI_RES_BUS */
 

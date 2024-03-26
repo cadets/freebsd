@@ -38,8 +38,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_rss.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -179,7 +177,7 @@ epair_tx_start_deferred(void *arg, int pending)
 	 * end up starving ourselves in a multi-epair routing configuration.
 	 */
 	mtx_lock(&q->mtx);
-	if (mbufq_len(&q->q) > 0) {
+	if (!mbufq_empty(&q->q)) {
 		resched = true;
 		q->state = EPAIR_QUEUE_WAKING;
 	} else {
@@ -335,6 +333,17 @@ epair_transmit(struct ifnet *ifp, struct mbuf *m)
 	if (m == NULL)
 		return (0);
 	M_ASSERTPKTHDR(m);
+
+	/*
+	 * We could just transmit this, but it makes testing easier if we're a
+	 * little bit more like real hardware.
+	 * Allow just that little bit extra for ethernet (and vlan) headers.
+	 */
+	if (m->m_pkthdr.len > (ifp->if_mtu + sizeof(struct ether_vlan_header))) {
+		m_freem(m);
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		return (E2BIG);
+	}
 
 	/*
 	 * We are not going to use the interface en/dequeue mechanism

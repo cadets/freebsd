@@ -26,8 +26,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /*
@@ -322,7 +320,6 @@ int pcm_chnalloc(struct snddev_info *d, struct pcm_channel **ch, int direction,
     pid_t pid, char *comm, int devunit);
 int pcm_chnrelease(struct pcm_channel *c);
 int pcm_chnref(struct pcm_channel *c, int ref);
-int pcm_inprog(struct snddev_info *d, int delta);
 
 struct pcm_channel *pcm_chn_create(struct snddev_info *d, struct pcm_channel *parent, kobj_class_t cls, int dir, int num, void *devinfo);
 int pcm_chn_destroy(struct pcm_channel *ch);
@@ -349,20 +346,7 @@ void snd_mtxassert(void *m);
 
 typedef int (*sndstat_handler)(struct sbuf *s, device_t dev, int verbose);
 int sndstat_register(device_t dev, char *str, sndstat_handler handler);
-int sndstat_registerfile(char *str);
 int sndstat_unregister(device_t dev);
-int sndstat_unregisterfile(char *str);
-
-#define SND_DECLARE_FILE(version) \
-	_SND_DECLARE_FILE(__LINE__, version)
-
-#define _SND_DECLARE_FILE(uniq, version) \
-	__SND_DECLARE_FILE(uniq, version)
-
-#define __SND_DECLARE_FILE(uniq, version) \
-	static char sndstat_vinfo[] = version; \
-	SYSINIT(sdf_ ## uniq, SI_SUB_DRIVERS, SI_ORDER_MIDDLE, sndstat_registerfile, sndstat_vinfo); \
-	SYSUNINIT(sdf_ ## uniq, SI_SUB_DRIVERS, SI_ORDER_MIDDLE, sndstat_unregisterfile, sndstat_vinfo);
 
 /* usage of flags in device config entry (config file) */
 #define DV_F_DRQ_MASK	0x00000007	/* mask for secondary drq */
@@ -394,7 +378,6 @@ struct snddev_info {
 	struct snd_clone *clones;
 	unsigned devcount, playcount, reccount, pvchancount, rvchancount ;
 	unsigned flags;
-	int inprog;
 	unsigned int bufsz;
 	void *devinfo;
 	device_t dev;
@@ -612,12 +595,6 @@ int	sound_oss_card_info(oss_card_info *);
 #define PCM_GIANT_LEAVE(x)						\
 	PCM_GIANT_EXIT(x);						\
 } while (0)
-
-#ifdef KLD_MODULE
-#define PCM_KLDSTRING(a) ("kld " # a)
-#else
-#define PCM_KLDSTRING(a) ""
-#endif
 
 #endif /* _KERNEL */
 

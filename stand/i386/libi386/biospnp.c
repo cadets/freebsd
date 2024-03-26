@@ -24,9 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * PnP BIOS enumerator.
  */
@@ -157,6 +154,7 @@ biospnp_enumerate(void)
 {
     uint8_t		Node;
     struct pnp_devNode	*devNodeBuffer;
+    uint8_t		buffer[max(pnp_NodeSize, sizeof(*devNodeBuffer))];
     int			result;
     struct pnpinfo	*pi;
     int			count;
@@ -165,7 +163,7 @@ biospnp_enumerate(void)
     if (biospnp_init())
 	return;
 
-    devNodeBuffer = (struct pnp_devNode *)alloca(pnp_NodeSize);
+    devNodeBuffer = (struct pnp_devNode *)buffer;
     Node = 0;
     count = 1000;
     while((Node != 0xff) && (count-- > 0)) {

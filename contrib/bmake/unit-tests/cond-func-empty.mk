@@ -1,18 +1,19 @@
-# $NetBSD: cond-func-empty.mk,v 1.18 2023/03/04 21:15:30 rillig Exp $
+# $NetBSD: cond-func-empty.mk,v 1.24 2023/12/19 19:33:40 rillig Exp $
 #
-# Tests for the empty() function in .if conditions, which tests a variable
+# Tests for the empty() function in .if conditions, which tests an
 # expression for emptiness.
 #
-# Note that the argument in the parentheses is a variable name, not a variable
-# expression, optionally followed by variable modifiers.
+# Note that the argument in the parentheses is a variable name, not an
+# expression.  That name may be followed by ':...' modifiers.
 #
 
 .undef UNDEF
 EMPTY=	# empty
 SPACE=	${:U }
+ZERO=	0
 WORD=	word
 
-# An undefined variable is empty.
+# An undefined variable counts as empty.
 .if !empty(UNDEF)
 .  error
 .endif
@@ -25,7 +26,7 @@ WORD=	word
 .endif
 
 # The :S modifier replaces the empty value with an actual word.  After
-# applying the :S modifier to the expression, it value is 'empty', so it is
+# applying the :S modifier to the expression, its value is 'empty', so it is
 # no longer empty, but it is still based on an undefined variable.  There are
 # a few modifiers that turn an undefined expression into a defined expression,
 # among them :U and :D, but not :S.  Therefore, at the end of evaluating the
@@ -78,6 +79,17 @@ WORD=	word
 .  error
 .endif
 
+# The variable ZERO has the numeric value 0, but is not empty.  This is a
+# subtle difference between using either 'empty(ZERO)' or the expression
+# '${ZERO}' in a condition.
+.if empty(ZERO)
+.  error
+.elif ${ZERO}
+.  error
+.elif ${ZERO} == ""
+.  error
+.endif
+
 # The following example constructs an expression with the variable name ""
 # and the value " ".  This expression counts as empty since the value contains
 # only whitespace.
@@ -101,12 +113,14 @@ ${:U }=	space
 .  error
 .endif
 
-# The value of the following expression is " word", which is not empty.
+# The value of the following expression is " word", which is not empty.  To be
+# empty, _all_ characters in the expression value have to be whitespace, not
+# only the first.
 .if empty(:U word)
 .  error
 .endif
 
-# The :L modifier creates a variable expression that has the same value as
+# The :L modifier creates an expression that has the same value as
 # its name, which both are "VAR" in this case.  The value is therefore not
 # empty.
 .if empty(VAR:L)
@@ -124,19 +138,19 @@ ${:U }=	space
 .  error
 .endif
 
-# Ensure that variable expressions that appear as part of the function call
+# Ensure that expressions that appear as part of the function call
 # argument are properly parsed.  Typical use cases for this are .for loops,
 # which are expanded to exactly these ${:U} expressions.
 #
-# If everything goes well, the argument expands to "WORD", and that variable
-# is defined at the beginning of this file.  The surrounding 'W' and 'D'
-# ensure that CondParser_FuncCallEmpty keeps track of the parsing position,
-# both before and after the call to Var_Parse.
+# The argument expands to "WORD", and that variable is defined at the
+# beginning of this file.  The surrounding 'W' and 'D' ensure that
+# CondParser_FuncCallEmpty keeps track of the parsing position, both before
+# and after the call to Var_Parse.
 .if empty(W${:UOR}D)
 .  error
 .endif
 
-# There may be spaces at the outside of the parentheses.
+# There may be spaces outside the parentheses.
 # Spaces inside the parentheses are interpreted as part of the variable name.
 .if ! empty ( WORD )
 .  error
@@ -149,7 +163,8 @@ ${:U WORD }=	variable name with spaces
 .  error
 .endif
 
-# Parse error: missing closing parenthesis.
+# expect+2: Unclosed variable "WORD"
+# expect+1: Malformed conditional (empty(WORD)
 .if empty(WORD
 .  error
 .else
@@ -173,20 +188,20 @@ ${:U WORD }=	variable name with spaces
 # side containing the '!empty' was evaluated though, as it had always been.
 #
 # When evaluating the !empty condition, the variable name was parsed as
-# "VARNAME${:U2}", but without expanding any nested variable expression, in
+# "VARNAME${:U2}", but without expanding any nested expression, in
 # this case the ${:U2}.  The expression '${:U2}' was replaced with an empty
 # string, the resulting variable name was thus "VARNAME".  This conceptually
 # wrong variable name should have been discarded quickly after parsing it, to
 # prevent it from doing any harm.
 #
-# The variable expression was expanded though, and this was wrong.  The
-# expansion was done without VARE_WANTRES (called VARF_WANTRES back
-# then) though.  This had the effect that the ${:U1} from the value of VARNAME
+# The expression was expanded, and this was wrong.  The
+# expansion was done without VARE_WANTRES (called VARF_WANTRES back then)
+# though.  This had the effect that the ${:U1} from the value of VARNAME
 # expanded to an empty string.  This in turn created the seemingly recursive
 # definition VARNAME=${VARNAME}, and that definition was never meant to be
 # expanded.
 #
-# This was fixed by expanding nested variable expressions in the variable name
+# This was fixed by expanding nested expressions in the variable name
 # only if the flag VARE_WANTRES is given.
 VARNAME=	${VARNAME${:U1}}
 .if defined(VARNAME${:U2}) && !empty(VARNAME${:U2})

@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 .include <src.opts.mk>
 
@@ -10,14 +9,10 @@ PACKAGE=	lld
 PROG_CXX=	ld.lld
 # Man page directory
 .PATH:		${LLD_SRCS}/docs
-.if (!defined(TOOLS_PREFIX) && ${MK_LLD_IS_LD} != "no") || \
+.if !defined(TOOLS_PREFIX) || \
     (defined(TOOLS_PREFIX) && ${MK_LLD_BOOTSTRAP} != "no")
 SYMLINKS=	${PROG_CXX} ${BINDIR}/ld
 MLINKS=		ld.lld.1 ld.1
-.endif
-
-.if ${MK_SHARED_TOOLCHAIN} == "no"
-NO_SHARED?= yes
 .endif
 
 .include "${SRCTOP}/lib/clang/llvm.pre.mk"
@@ -26,11 +21,13 @@ CFLAGS+=	-I${LLD_SRCS}/ELF
 CFLAGS+=	-I${LLD_SRCS}/include
 CFLAGS+=	-I${.OBJDIR}
 CFLAGS+=	-I${OBJTOP}/lib/clang/libllvm
+CFLAGS+=	-I${SRCTOP}/sys/contrib/zstd/lib
 
 SRCDIR=		lld
 SRCS+=		Common/Args.cpp
 SRCS+=		Common/CommonLinkerContext.cpp
 SRCS+=		Common/DWARF.cpp
+SRCS+=		Common/DriverDispatcher.cpp
 SRCS+=		Common/ErrorHandler.cpp
 SRCS+=		Common/Filesystem.cpp
 SRCS+=		Common/Memory.cpp
@@ -45,6 +42,7 @@ SRCS+=		ELF/Arch/AMDGPU.cpp
 SRCS+=		ELF/Arch/ARM.cpp
 SRCS+=		ELF/Arch/AVR.cpp
 SRCS+=		ELF/Arch/Hexagon.cpp
+SRCS+=		ELF/Arch/LoongArch.cpp
 SRCS+=		ELF/Arch/MSP430.cpp
 SRCS+=		ELF/Arch/Mips.cpp
 SRCS+=		ELF/Arch/MipsArchTree.cpp
@@ -76,6 +74,7 @@ SRCS+=		ELF/SyntheticSections.cpp
 SRCS+=		ELF/Target.cpp
 SRCS+=		ELF/Thunks.cpp
 SRCS+=		ELF/Writer.cpp
+SRCS+=		lld-driver.cpp
 SRCS+=		tools/lld/lld.cpp
 
 .include "${SRCTOP}/lib/clang/llvm.build.mk"
@@ -105,5 +104,6 @@ LIBADD+=	tinfow
 .endif
 LIBADD+=	pthread
 LIBADD+=	z
+LIBADD+=	zstd
 
 .include <bsd.prog.mk>

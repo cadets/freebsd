@@ -1,5 +1,4 @@
 #!/bin/sh
-# $FreeBSD$
 
 . $(atf_get_srcdir)/conf.sh
 
@@ -43,7 +42,7 @@ online_resize_body()
 			psize30="33776997205278720"
 		fi
 
-		md=$(attach_md -t malloc -s40${prefix})
+		attach_md md -t malloc -s40${prefix}
 
 		# Initialise
 		atf_check -s exit:0 -o ignore gpart create -s GPT ${md}

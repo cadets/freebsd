@@ -29,9 +29,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/fcntl.h>
 #include <sys/jail.h>
@@ -47,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/reboot.h>
 #include <sys/random.h>
 #include <sys/resourcevar.h>
+#include <sys/rtprio.h>
 #include <sys/sched.h>
 #include <sys/smp.h>
 #include <sys/stat.h>
@@ -77,10 +75,10 @@ __FBSDID("$FreeBSD$");
 #include <compat/linux/linux_dtrace.h>
 #include <compat/linux/linux_file.h>
 #include <compat/linux/linux_mib.h>
+#include <compat/linux/linux_mmap.h>
 #include <compat/linux/linux_signal.h>
 #include <compat/linux/linux_time.h>
 #include <compat/linux/linux_util.h>
-#include <compat/linux/linux_sysproto.h>
 #include <compat/linux/linux_emul.h>
 #include <compat/linux/linux_misc.h>
 
@@ -350,6 +348,39 @@ linux_msync(struct thread *td, struct linux_msync_args *args)
 	    args->fl & ~LINUX_MS_SYNC));
 }
 
+int
+linux_mprotect(struct thread *td, struct linux_mprotect_args *uap)
+{
+
+	return (linux_mprotect_common(td, PTROUT(uap->addr), uap->len,
+	    uap->prot));
+}
+
+int
+linux_madvise(struct thread *td, struct linux_madvise_args *uap)
+{
+
+	return (linux_madvise_common(td, PTROUT(uap->addr), uap->len,
+	    uap->behav));
+}
+
+int
+linux_mmap2(struct thread *td, struct linux_mmap2_args *uap)
+{
+#if defined(LINUX_ARCHWANT_MMAP2PGOFF)
+	/*
+	 * For architectures with sizeof (off_t) < sizeof (loff_t) mmap is
+	 * implemented with mmap2 syscall and the offset is represented in
+	 * multiples of page size.
+	 */
+	return (linux_mmap_common(td, PTROUT(uap->addr), uap->len, uap->prot,
+	    uap->flags, uap->fd, (uint64_t)(uint32_t)uap->pgoff * PAGE_SIZE));
+#else
+	return (linux_mmap_common(td, PTROUT(uap->addr), uap->len, uap->prot,
+	    uap->flags, uap->fd, uap->pgoff));
+#endif
+}
+
 #ifdef LINUX_LEGACY_SYSCALLS
 int
 linux_time(struct thread *td, struct linux_time_args *args)
@@ -474,7 +505,6 @@ linux_utime(struct thread *td, struct linux_utime_args *args)
 {
 	struct timeval tv[2], *tvp;
 	struct l_utimbuf lut;
-	char *fname;
 	int error;
 
 	if (args->times) {
@@ -488,16 +518,8 @@ linux_utime(struct thread *td, struct linux_utime_args *args)
 	} else
 		tvp = NULL;
 
-	if (!LUSECONVPATH(td)) {
-		error = kern_utimesat(td, AT_FDCWD, args->fname, UIO_USERSPACE,
-		    tvp, UIO_SYSSPACE);
-	} else {
-		LCONVPATHEXIST(args->fname, &fname);
-		error = kern_utimesat(td, AT_FDCWD, fname, UIO_SYSSPACE, tvp,
-		    UIO_SYSSPACE);
-		LFREEPATH(fname);
-	}
-	return (error);
+	return (kern_utimesat(td, AT_FDCWD, args->fname, UIO_USERSPACE,
+	    tvp, UIO_SYSSPACE));
 }
 #endif
 
@@ -507,7 +529,6 @@ linux_utimes(struct thread *td, struct linux_utimes_args *args)
 {
 	l_timeval ltv[2];
 	struct timeval tv[2], *tvp = NULL;
-	char *fname;
 	int error;
 
 	if (args->tptr != NULL) {
@@ -520,16 +541,8 @@ linux_utimes(struct thread *td, struct linux_utimes_args *args)
 		tvp = tv;
 	}
 
-	if (!LUSECONVPATH(td)) {
-		error = kern_utimesat(td, AT_FDCWD, args->fname, UIO_USERSPACE,
-		    tvp, UIO_SYSSPACE);
-	} else {
-		LCONVPATHEXIST(args->fname, &fname);
-		error = kern_utimesat(td, AT_FDCWD, fname, UIO_SYSSPACE,
-		    tvp, UIO_SYSSPACE);
-		LFREEPATH(fname);
-	}
-	return (error);
+	return (kern_utimesat(td, AT_FDCWD, args->fname, UIO_USERSPACE,
+	    tvp, UIO_SYSSPACE));
 }
 #endif
 
@@ -562,8 +575,7 @@ static int
 linux_common_utimensat(struct thread *td, int ldfd, const char *pathname,
     struct timespec *timesp, int lflags)
 {
-	char *path = NULL;
-	int error, dfd, flags = 0;
+	int dfd, flags = 0;
 
 	dfd = (ldfd == LINUX_AT_FDCWD) ? AT_FDCWD : ldfd;
 
@@ -584,27 +596,14 @@ linux_common_utimensat(struct thread *td, int ldfd, const char *pathname,
 	if (lflags & LINUX_AT_EMPTY_PATH)
 		flags |= AT_EMPTY_PATH;
 
-	if (!LUSECONVPATH(td)) {
-		if (pathname != NULL) {
-			return (kern_utimensat(td, dfd, pathname,
-			    UIO_USERSPACE, timesp, UIO_SYSSPACE, flags));
-		}
-	}
-
 	if (pathname != NULL)
-		LCONVPATHEXIST_AT(pathname, &path, dfd);
-	else if (lflags != 0)
+		return (kern_utimensat(td, dfd, pathname,
+		    UIO_USERSPACE, timesp, UIO_SYSSPACE, flags));
+
+	if (lflags != 0)
 		return (EINVAL);
 
-	if (path == NULL)
-		error = kern_futimens(td, dfd, timesp, UIO_SYSSPACE);
-	else {
-		error = kern_utimensat(td, dfd, path, UIO_SYSSPACE, timesp,
-			UIO_SYSSPACE, flags);
-		LFREEPATH(path);
-	}
-
-	return (error);
+	return (kern_futimens(td, dfd, timesp, UIO_SYSSPACE));
 }
 
 int
@@ -695,7 +694,6 @@ linux_futimesat(struct thread *td, struct linux_futimesat_args *args)
 {
 	l_timeval ltv[2];
 	struct timeval tv[2], *tvp = NULL;
-	char *fname;
 	int error, dfd;
 
 	dfd = (args->dfd == LINUX_AT_FDCWD) ? AT_FDCWD : args->dfd;
@@ -710,16 +708,8 @@ linux_futimesat(struct thread *td, struct linux_futimesat_args *args)
 		tvp = tv;
 	}
 
-	if (!LUSECONVPATH(td)) {
-		error = kern_utimesat(td, dfd, args->filename, UIO_USERSPACE,
-		    tvp, UIO_SYSSPACE);
-	} else {
-		LCONVPATHEXIST_AT(args->filename, &fname, dfd);
-		error = kern_utimesat(td, dfd, fname, UIO_SYSSPACE,
-		    tvp, UIO_SYSSPACE);
-		LFREEPATH(fname);
-	}
-	return (error);
+	return (kern_utimesat(td, dfd, args->filename, UIO_USERSPACE,
+	    tvp, UIO_SYSSPACE));
 }
 #endif
 
@@ -877,30 +867,18 @@ linux_waitid(struct thread *td, struct linux_waitid_args *args)
 int
 linux_mknod(struct thread *td, struct linux_mknod_args *args)
 {
-	char *path;
 	int error;
-	enum uio_seg seg;
-	bool convpath;
-
-	convpath = LUSECONVPATH(td);
-	if (!convpath) {
-		path = args->path;
-		seg = UIO_USERSPACE;
-	} else {
-		LCONVPATHCREAT(args->path, &path);
-		seg = UIO_SYSSPACE;
-	}
 
 	switch (args->mode & S_IFMT) {
 	case S_IFIFO:
 	case S_IFSOCK:
-		error = kern_mkfifoat(td, AT_FDCWD, path, seg,
+		error = kern_mkfifoat(td, AT_FDCWD, args->path, UIO_USERSPACE,
 		    args->mode);
 		break;
 
 	case S_IFCHR:
 	case S_IFBLK:
-		error = kern_mknodat(td, AT_FDCWD, path, seg,
+		error = kern_mknodat(td, AT_FDCWD, args->path, UIO_USERSPACE,
 		    args->mode, linux_decode_dev(args->dev));
 		break;
 
@@ -912,7 +890,7 @@ linux_mknod(struct thread *td, struct linux_mknod_args *args)
 		args->mode |= S_IFREG;
 		/* FALLTHROUGH */
 	case S_IFREG:
-		error = kern_openat(td, AT_FDCWD, path, seg,
+		error = kern_openat(td, AT_FDCWD, args->path, UIO_USERSPACE,
 		    O_WRONLY | O_CREAT | O_TRUNC, args->mode);
 		if (error == 0)
 			kern_close(td, td->td_retval[0]);
@@ -922,8 +900,6 @@ linux_mknod(struct thread *td, struct linux_mknod_args *args)
 		error = EINVAL;
 		break;
 	}
-	if (convpath)
-		LFREEPATH(path);
 	return (error);
 }
 #endif
@@ -931,32 +907,21 @@ linux_mknod(struct thread *td, struct linux_mknod_args *args)
 int
 linux_mknodat(struct thread *td, struct linux_mknodat_args *args)
 {
-	char *path;
 	int error, dfd;
-	enum uio_seg seg;
-	bool convpath;
 
 	dfd = (args->dfd == LINUX_AT_FDCWD) ? AT_FDCWD : args->dfd;
-
-	convpath = LUSECONVPATH(td);
-	if (!convpath) {
-		path = __DECONST(char *, args->filename);
-		seg = UIO_USERSPACE;
-	} else {
-		LCONVPATHCREAT_AT(args->filename, &path, dfd);
-		seg = UIO_SYSSPACE;
-	}
 
 	switch (args->mode & S_IFMT) {
 	case S_IFIFO:
 	case S_IFSOCK:
-		error = kern_mkfifoat(td, dfd, path, seg, args->mode);
+		error = kern_mkfifoat(td, dfd, args->filename, UIO_USERSPACE,
+		    args->mode);
 		break;
 
 	case S_IFCHR:
 	case S_IFBLK:
-		error = kern_mknodat(td, dfd, path, seg, args->mode,
-		    linux_decode_dev(args->dev));
+		error = kern_mknodat(td, dfd, args->filename, UIO_USERSPACE,
+		    args->mode, linux_decode_dev(args->dev));
 		break;
 
 	case S_IFDIR:
@@ -967,7 +932,7 @@ linux_mknodat(struct thread *td, struct linux_mknodat_args *args)
 		args->mode |= S_IFREG;
 		/* FALLTHROUGH */
 	case S_IFREG:
-		error = kern_openat(td, dfd, path, seg,
+		error = kern_openat(td, dfd, args->filename, UIO_USERSPACE,
 		    O_WRONLY | O_CREAT | O_TRUNC, args->mode);
 		if (error == 0)
 			kern_close(td, td->td_retval[0]);
@@ -977,8 +942,6 @@ linux_mknodat(struct thread *td, struct linux_mknodat_args *args)
 		error = EINVAL;
 		break;
 	}
-	if (convpath)
-		LFREEPATH(path);
 	return (error);
 }
 
@@ -1543,13 +1506,6 @@ linux_getsid(struct thread *td, struct linux_getsid_args *args)
 }
 
 int
-linux_nosys(struct thread *td, struct nosys_args *ignore)
-{
-
-	return (ENOSYS);
-}
-
-int
 linux_getpriority(struct thread *td, struct linux_getpriority_args *args)
 {
 	int error;
@@ -2019,7 +1975,7 @@ linux_sched_setaffinity(struct thread *td,
 	PROC_UNLOCK(tdt->td_proc);
 
 	len = min(args->len, sizeof(cpuset_t));
-	mask = malloc(sizeof(cpuset_t), M_TEMP, M_WAITOK | M_ZERO);;
+	mask = malloc(sizeof(cpuset_t), M_TEMP, M_WAITOK | M_ZERO);
 	error = copyin(args->user_mask_ptr, mask, len);
 	if (error != 0)
 		goto out;
@@ -2623,28 +2579,370 @@ linux_seccomp(struct thread *td, struct linux_seccomp_args *args)
 	}
 }
 
-#ifndef COMPAT_LINUX32
+/*
+ * Custom version of exec_copyin_args(), to copy out argument and environment
+ * strings from the old process address space into the temporary string buffer.
+ * Based on freebsd32_exec_copyin_args.
+ */
+static int
+linux_exec_copyin_args(struct image_args *args, const char *fname,
+    enum uio_seg segflg, l_uintptr_t *argv, l_uintptr_t *envv)
+{
+	char *argp, *envp;
+	l_uintptr_t *ptr, arg;
+	int error;
+
+	bzero(args, sizeof(*args));
+	if (argv == NULL)
+		return (EFAULT);
+
+	/*
+	 * Allocate demand-paged memory for the file name, argument, and
+	 * environment strings.
+	 */
+	error = exec_alloc_args(args);
+	if (error != 0)
+		return (error);
+
+	/*
+	 * Copy the file name.
+	 */
+	error = exec_args_add_fname(args, fname, segflg);
+	if (error != 0)
+		goto err_exit;
+
+	/*
+	 * extract arguments first
+	 */
+	ptr = argv;
+	for (;;) {
+		error = copyin(ptr++, &arg, sizeof(arg));
+		if (error)
+			goto err_exit;
+		if (arg == 0)
+			break;
+		argp = PTRIN(arg);
+		error = exec_args_add_arg(args, argp, UIO_USERSPACE);
+		if (error != 0)
+			goto err_exit;
+	}
+
+	/*
+	 * This comment is from Linux do_execveat_common:
+	 * When argv is empty, add an empty string ("") as argv[0] to
+	 * ensure confused userspace programs that start processing
+	 * from argv[1] won't end up walking envp.
+	 */
+	if (args->argc == 0 &&
+	    (error = exec_args_add_arg(args, "", UIO_SYSSPACE) != 0))
+		goto err_exit;
+
+	/*
+	 * extract environment strings
+	 */
+	if (envv) {
+		ptr = envv;
+		for (;;) {
+			error = copyin(ptr++, &arg, sizeof(arg));
+			if (error)
+				goto err_exit;
+			if (arg == 0)
+				break;
+			envp = PTRIN(arg);
+			error = exec_args_add_env(args, envp, UIO_USERSPACE);
+			if (error != 0)
+				goto err_exit;
+		}
+	}
+
+	return (0);
+
+err_exit:
+	exec_free_args(args);
+	return (error);
+}
+
 int
 linux_execve(struct thread *td, struct linux_execve_args *args)
 {
 	struct image_args eargs;
-	char *path;
 	int error;
 
 	LINUX_CTR(execve);
 
-	if (!LUSECONVPATH(td)) {
-		error = exec_copyin_args(&eargs, args->path, UIO_USERSPACE,
-		    args->argp, args->envp);
-	} else {
-		LCONVPATHEXIST(args->path, &path);
-		error = exec_copyin_args(&eargs, path, UIO_SYSSPACE, args->argp,
-		    args->envp);
-		LFREEPATH(path);
-	}
+	error = linux_exec_copyin_args(&eargs, args->path, UIO_USERSPACE,
+	    args->argp, args->envp);
 	if (error == 0)
 		error = linux_common_execve(td, &eargs);
 	AUDIT_SYSCALL_EXIT(error == EJUSTRETURN ? 0 : error, td);
 	return (error);
 }
-#endif
+
+static void
+linux_up_rtprio_if(struct thread *td1, struct rtprio *rtp)
+{
+	struct rtprio rtp2;
+
+	pri_to_rtp(td1, &rtp2);
+	if (rtp2.type <  rtp->type ||
+	    (rtp2.type == rtp->type &&
+	    rtp2.prio < rtp->prio)) {
+		rtp->type = rtp2.type;
+		rtp->prio = rtp2.prio;
+	}
+}
+
+#define	LINUX_PRIO_DIVIDER	RTP_PRIO_MAX / LINUX_IOPRIO_MAX
+
+static int
+linux_rtprio2ioprio(struct rtprio *rtp)
+{
+	int ioprio, prio;
+
+	switch (rtp->type) {
+	case RTP_PRIO_IDLE:
+		prio = RTP_PRIO_MIN;
+		ioprio = LINUX_IOPRIO_PRIO(LINUX_IOPRIO_CLASS_IDLE, prio);
+		break;
+	case RTP_PRIO_NORMAL:
+		prio = rtp->prio / LINUX_PRIO_DIVIDER;
+		ioprio = LINUX_IOPRIO_PRIO(LINUX_IOPRIO_CLASS_BE, prio);
+		break;
+	case RTP_PRIO_REALTIME:
+		prio = rtp->prio / LINUX_PRIO_DIVIDER;
+		ioprio = LINUX_IOPRIO_PRIO(LINUX_IOPRIO_CLASS_RT, prio);
+		break;
+	default:
+		prio = RTP_PRIO_MIN;
+		ioprio = LINUX_IOPRIO_PRIO(LINUX_IOPRIO_CLASS_NONE, prio);
+		break;
+	}
+	return (ioprio);
+}
+
+static int
+linux_ioprio2rtprio(int ioprio, struct rtprio *rtp)
+{
+
+	switch (LINUX_IOPRIO_PRIO_CLASS(ioprio)) {
+	case LINUX_IOPRIO_CLASS_IDLE:
+		rtp->prio = RTP_PRIO_MIN;
+		rtp->type = RTP_PRIO_IDLE;
+		break;
+	case LINUX_IOPRIO_CLASS_BE:
+		rtp->prio = LINUX_IOPRIO_PRIO_DATA(ioprio) * LINUX_PRIO_DIVIDER;
+		rtp->type = RTP_PRIO_NORMAL;
+		break;
+	case LINUX_IOPRIO_CLASS_RT:
+		rtp->prio = LINUX_IOPRIO_PRIO_DATA(ioprio) * LINUX_PRIO_DIVIDER;
+		rtp->type = RTP_PRIO_REALTIME;
+		break;
+	default:
+		return (EINVAL);
+	}
+	return (0);
+}
+#undef LINUX_PRIO_DIVIDER
+
+int
+linux_ioprio_get(struct thread *td, struct linux_ioprio_get_args *args)
+{
+	struct thread *td1;
+	struct rtprio rtp;
+	struct pgrp *pg;
+	struct proc *p;
+	int error, found;
+
+	p = NULL;
+	td1 = NULL;
+	error = 0;
+	found = 0;
+	rtp.type = RTP_PRIO_IDLE;
+	rtp.prio = RTP_PRIO_MAX;
+	switch (args->which) {
+	case LINUX_IOPRIO_WHO_PROCESS:
+		if (args->who == 0) {
+			td1 = td;
+			p = td1->td_proc;
+			PROC_LOCK(p);
+		} else if (args->who > PID_MAX) {
+			td1 = linux_tdfind(td, args->who, -1);
+			if (td1 != NULL)
+				p = td1->td_proc;
+		} else
+			p = pfind(args->who);
+		if (p == NULL)
+			return (ESRCH);
+		if ((error = p_cansee(td, p))) {
+			PROC_UNLOCK(p);
+			break;
+		}
+		if (td1 != NULL) {
+			pri_to_rtp(td1, &rtp);
+		} else {
+			FOREACH_THREAD_IN_PROC(p, td1) {
+				linux_up_rtprio_if(td1, &rtp);
+			}
+		}
+		found++;
+		PROC_UNLOCK(p);
+		break;
+	case LINUX_IOPRIO_WHO_PGRP:
+		sx_slock(&proctree_lock);
+		if (args->who == 0) {
+			pg = td->td_proc->p_pgrp;
+			PGRP_LOCK(pg);
+		} else {
+			pg = pgfind(args->who);
+			if (pg == NULL) {
+				sx_sunlock(&proctree_lock);
+				error = ESRCH;
+				break;
+			}
+		}
+		sx_sunlock(&proctree_lock);
+		LIST_FOREACH(p, &pg->pg_members, p_pglist) {
+			PROC_LOCK(p);
+			if (p->p_state == PRS_NORMAL &&
+			    p_cansee(td, p) == 0) {
+				FOREACH_THREAD_IN_PROC(p, td1) {
+					linux_up_rtprio_if(td1, &rtp);
+					found++;
+				}
+			}
+			PROC_UNLOCK(p);
+		}
+		PGRP_UNLOCK(pg);
+		break;
+	case LINUX_IOPRIO_WHO_USER:
+		if (args->who == 0)
+			args->who = td->td_ucred->cr_uid;
+		sx_slock(&allproc_lock);
+		FOREACH_PROC_IN_SYSTEM(p) {
+			PROC_LOCK(p);
+			if (p->p_state == PRS_NORMAL &&
+			    p->p_ucred->cr_uid == args->who &&
+			    p_cansee(td, p) == 0) {
+				FOREACH_THREAD_IN_PROC(p, td1) {
+					linux_up_rtprio_if(td1, &rtp);
+					found++;
+				}
+			}
+			PROC_UNLOCK(p);
+		}
+		sx_sunlock(&allproc_lock);
+		break;
+	default:
+		error = EINVAL;
+		break;
+	}
+	if (error == 0) {
+		if (found != 0)
+			td->td_retval[0] = linux_rtprio2ioprio(&rtp);
+		else
+			error = ESRCH;
+	}
+	return (error);
+}
+
+int
+linux_ioprio_set(struct thread *td, struct linux_ioprio_set_args *args)
+{
+	struct thread *td1;
+	struct rtprio rtp;
+	struct pgrp *pg;
+	struct proc *p;
+	int error;
+
+	if ((error = linux_ioprio2rtprio(args->ioprio, &rtp)) != 0)
+		return (error);
+	/* Attempts to set high priorities (REALTIME) require su privileges. */
+	if (RTP_PRIO_BASE(rtp.type) == RTP_PRIO_REALTIME &&
+	    (error = priv_check(td, PRIV_SCHED_RTPRIO)) != 0)
+		return (error);
+
+	p = NULL;
+	td1 = NULL;
+	switch (args->which) {
+	case LINUX_IOPRIO_WHO_PROCESS:
+		if (args->who == 0) {
+			td1 = td;
+			p = td1->td_proc;
+			PROC_LOCK(p);
+		} else if (args->who > PID_MAX) {
+			td1 = linux_tdfind(td, args->who, -1);
+			if (td1 != NULL)
+				p = td1->td_proc;
+		} else
+			p = pfind(args->who);
+		if (p == NULL)
+			return (ESRCH);
+		if ((error = p_cansched(td, p))) {
+			PROC_UNLOCK(p);
+			break;
+		}
+		if (td1 != NULL) {
+			error = rtp_to_pri(&rtp, td1);
+		} else {
+			FOREACH_THREAD_IN_PROC(p, td1) {
+				if ((error = rtp_to_pri(&rtp, td1)) != 0)
+					break;
+			}
+		}
+		PROC_UNLOCK(p);
+		break;
+	case LINUX_IOPRIO_WHO_PGRP:
+		sx_slock(&proctree_lock);
+		if (args->who == 0) {
+			pg = td->td_proc->p_pgrp;
+			PGRP_LOCK(pg);
+		} else {
+			pg = pgfind(args->who);
+			if (pg == NULL) {
+				sx_sunlock(&proctree_lock);
+				error = ESRCH;
+				break;
+			}
+		}
+		sx_sunlock(&proctree_lock);
+		LIST_FOREACH(p, &pg->pg_members, p_pglist) {
+			PROC_LOCK(p);
+			if (p->p_state == PRS_NORMAL &&
+			    p_cansched(td, p) == 0) {
+				FOREACH_THREAD_IN_PROC(p, td1) {
+					if ((error = rtp_to_pri(&rtp, td1)) != 0)
+						break;
+				}
+			}
+			PROC_UNLOCK(p);
+			if (error != 0)
+				break;
+		}
+		PGRP_UNLOCK(pg);
+		break;
+	case LINUX_IOPRIO_WHO_USER:
+		if (args->who == 0)
+			args->who = td->td_ucred->cr_uid;
+		sx_slock(&allproc_lock);
+		FOREACH_PROC_IN_SYSTEM(p) {
+			PROC_LOCK(p);
+			if (p->p_state == PRS_NORMAL &&
+			    p->p_ucred->cr_uid == args->who &&
+			    p_cansched(td, p) == 0) {
+				FOREACH_THREAD_IN_PROC(p, td1) {
+					if ((error = rtp_to_pri(&rtp, td1)) != 0)
+						break;
+				}
+			}
+			PROC_UNLOCK(p);
+			if (error != 0)
+				break;
+		}
+		sx_sunlock(&allproc_lock);
+		break;
+	default:
+		error = EINVAL;
+		break;
+	}
+	return (error);
+}

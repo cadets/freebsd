@@ -38,9 +38,6 @@
  * John Polstra <jdp@polstra.com>.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/mount.h>
 #include <sys/mman.h>
@@ -227,6 +224,8 @@ static Obj_Entry *obj_main;	/* The main program shared object */
 static Obj_Entry obj_rtld;	/* The dynamic linker shared object */
 static unsigned int obj_count;	/* Number of objects in obj_list */
 static unsigned int obj_loads;	/* Number of loads of objects (gen count) */
+size_t ld_static_tls_extra =	/* Static TLS extra space (bytes) */
+  RTLD_STATIC_TLS_EXTRA;
 
 static Objlist list_global =	/* Objects dlopened with RTLD_GLOBAL */
   STAILQ_HEAD_INITIALIZER(list_global);
@@ -367,6 +366,7 @@ enum {
 	LD_TRACE_LOADED_OBJECTS_FMT2,
 	LD_TRACE_LOADED_OBJECTS_ALL,
 	LD_SHOW_AUXV,
+	LD_STATIC_TLS_EXTRA,
 };
 
 struct ld_env_var_desc {
@@ -400,6 +400,7 @@ static struct ld_env_var_desc ld_env_vars[] = {
 	LD_ENV_DESC(TRACE_LOADED_OBJECTS_FMT2, false),
 	LD_ENV_DESC(TRACE_LOADED_OBJECTS_ALL, false),
 	LD_ENV_DESC(SHOW_AUXV, false),
+	LD_ENV_DESC(STATIC_TLS_EXTRA, false),
 };
 
 static const char *
@@ -517,7 +518,7 @@ _rtld(Elf_Addr *sp, func_ptr_type *exit_proc, Obj_Entry **objp)
     struct stat st;
     Elf_Addr *argcp;
     char **argv, **env, **envp, *kexecpath;
-    const char *argv0, *binpath, *library_path_rpath;
+    const char *argv0, *binpath, *library_path_rpath, *static_tls_extra;
     struct ld_env_var_desc *lvd;
     caddr_t imgentry;
     char buf[MAXPATHLEN];
@@ -740,9 +741,16 @@ _rtld(Elf_Addr *sp, func_ptr_type *exit_proc, Obj_Entry **objp)
 	    else
 		    ld_library_path_rpath = false;
     }
+    static_tls_extra = ld_get_env_var(LD_STATIC_TLS_EXTRA);
+    if (static_tls_extra != NULL && static_tls_extra[0] != '\0') {
+	sz = parse_integer(static_tls_extra);
+	if (sz >= RTLD_STATIC_TLS_EXTRA && sz <= SIZE_T_MAX)
+	    ld_static_tls_extra = sz;
+    }
     dangerous_ld_env = libmap_disable || libmap_override != NULL ||
 	ld_library_path != NULL || ld_preload != NULL ||
-	ld_elf_hints_path != NULL || ld_loadfltr || !ld_dynamic_weak;
+	ld_elf_hints_path != NULL || ld_loadfltr || !ld_dynamic_weak ||
+	static_tls_extra != NULL;
     ld_tracing = ld_get_env_var(LD_TRACE_LOADED_OBJECTS);
     ld_utrace = ld_get_env_var(LD_UTRACE);
 
@@ -804,7 +812,7 @@ _rtld(Elf_Addr *sp, func_ptr_type *exit_proc, Obj_Entry **objp)
       aux_info[AT_STACKPROT]->a_un.a_val != 0)
 	    stack_prot = aux_info[AT_STACKPROT]->a_un.a_val;
 
-#ifndef COMPAT_32BIT
+#ifndef COMPAT_libcompat
     /*
      * Get the actual dynamic linker pathname from the executable if
      * possible.  (It should always be possible.)  That ensures that
@@ -1075,6 +1083,7 @@ _rtld_error(const char *fmt, ...)
 	    fmt, ap);
 	va_end(ap);
 	*lockinfo.dlerror_seen() = 0;
+	dbg("rtld_error: %s", lockinfo.dlerror_loc());
 	LD_UTRACE(UTRACE_RTLD_ERROR, NULL, NULL, 0, 0, lockinfo.dlerror_loc());
 }
 
@@ -2041,6 +2050,9 @@ find_symdef(unsigned long symnum, const Obj_Entry *refobj,
     return (def);
 }
 
+/* Convert between native byte order and forced little resp. big endian. */
+#define COND_SWAP(n) (is_le ? le32toh(n) : be32toh(n))
+
 /*
  * Return the search path from the ldconfig hints file, reading it if
  * necessary.  If nostdlib is true, then the default search paths are
@@ -2064,6 +2076,12 @@ gethints(bool nostdlib)
 	int fd;
 	size_t flen;
 	uint32_t dl;
+	uint32_t magic;		/* Magic number */
+	uint32_t version;	/* File version (1) */
+	uint32_t strtab;	/* Offset of string table in file */
+	uint32_t dirlist;	/* Offset of directory list in string table */
+	uint32_t dirlistlen;	/* strlen(dirlist) */
+	bool is_le;		/* Does the hints file use little endian */
 	bool skip;
 
 	/* First call, read the hints file */
@@ -2071,8 +2089,10 @@ gethints(bool nostdlib)
 		/* Keep from trying again in case the hints file is bad. */
 		hints = "";
 
-		if ((fd = open(ld_elf_hints_path, O_RDONLY | O_CLOEXEC)) == -1)
+		if ((fd = open(ld_elf_hints_path, O_RDONLY | O_CLOEXEC)) == -1) {
+			dbg("failed to open hints file \"%s\"", ld_elf_hints_path);
 			return (NULL);
+		}
 
 		/*
 		 * Check of hdr.dirlistlen value against type limit
@@ -2080,29 +2100,65 @@ gethints(bool nostdlib)
 		 * paranoia leads to checks that dirlist is fully
 		 * contained in the file range.
 		 */
-		if (read(fd, &hdr, sizeof hdr) != sizeof hdr ||
-		    hdr.magic != ELFHINTS_MAGIC ||
-		    hdr.version != 1 || hdr.dirlistlen > UINT_MAX / 2 ||
-		    fstat(fd, &hint_stat) == -1) {
+		if (read(fd, &hdr, sizeof hdr) != sizeof hdr) {
+			dbg("failed to read %lu bytes from hints file \"%s\"",
+			    (u_long)sizeof hdr, ld_elf_hints_path);
 cleanup1:
 			close(fd);
 			hdr.dirlistlen = 0;
 			return (NULL);
 		}
-		dl = hdr.strtab;
-		if (dl + hdr.dirlist < dl)
+		dbg("host byte-order: %s-endian", le32toh(1) == 1 ? "little" : "big");
+		dbg("hints file byte-order: %s-endian",
+		    hdr.magic == htole32(ELFHINTS_MAGIC) ? "little" : "big");
+		is_le = /*htole32(1) == 1 || */ hdr.magic == htole32(ELFHINTS_MAGIC);
+		magic = COND_SWAP(hdr.magic);
+		version = COND_SWAP(hdr.version);
+		strtab = COND_SWAP(hdr.strtab);
+		dirlist = COND_SWAP(hdr.dirlist);
+		dirlistlen = COND_SWAP(hdr.dirlistlen);
+		if (magic != ELFHINTS_MAGIC) {
+			dbg("invalid magic number %#08x (expected: %#08x)",
+			    magic, ELFHINTS_MAGIC);
 			goto cleanup1;
-		dl += hdr.dirlist;
-		if (dl + hdr.dirlistlen < dl)
+		}
+		if (version != 1) {
+			dbg("hints file version %d (expected: 1)", version);
 			goto cleanup1;
-		dl += hdr.dirlistlen;
-		if (dl > hint_stat.st_size)
+		}
+		if (dirlistlen > UINT_MAX / 2) {
+			dbg("directory list is to long: %d > %d",
+			    dirlistlen, UINT_MAX / 2);
 			goto cleanup1;
-		p = xmalloc(hdr.dirlistlen + 1);
-		if (pread(fd, p, hdr.dirlistlen + 1,
-		    hdr.strtab + hdr.dirlist) != (ssize_t)hdr.dirlistlen + 1 ||
-		    p[hdr.dirlistlen] != '\0') {
+		}
+		if (fstat(fd, &hint_stat) == -1) {
+			dbg("failed to find length of hints file \"%s\"",
+			    ld_elf_hints_path);
+			goto cleanup1;
+		}
+		dl = strtab;
+		if (dl + dirlist < dl) {
+			dbg("invalid string table position %d", dl);
+			goto cleanup1;
+		}
+		dl += dirlist;
+		if (dl + dirlistlen < dl) {
+			dbg("invalid directory list offset %d", dirlist);
+			goto cleanup1;
+		}
+		dl += dirlistlen;
+		if (dl > hint_stat.st_size) {
+			dbg("hints file \"%s\" is truncated (%d vs. %jd bytes)",
+			    ld_elf_hints_path, dl, (uintmax_t)hint_stat.st_size);
+			goto cleanup1;
+		}
+		p = xmalloc(dirlistlen + 1);
+		if (pread(fd, p, dirlistlen + 1,
+		    strtab + dirlist) != (ssize_t)dirlistlen + 1 ||
+		    p[dirlistlen] != '\0') {
 			free(p);
+			dbg("failed to read %d bytes starting at %d from hints file \"%s\"",
+			    dirlistlen + 1, strtab + dirlist, ld_elf_hints_path);
 			goto cleanup1;
 		}
 		hints = p;
@@ -2165,7 +2221,7 @@ cleanup1:
 	 */
 	fndx = 0;
 	fcount = 0;
-	filtered_path = xmalloc(hdr.dirlistlen + 1);
+	filtered_path = xmalloc(dirlistlen + 1);
 	hintpath = &hintinfo->dls_serpath[0];
 	for (hintndx = 0; hintndx < hmeta.dls_cnt; hintndx++, hintpath++) {
 		skip = false;
@@ -2573,13 +2629,14 @@ load_filtee1(Obj_Entry *obj, Needed_Entry *needed, int flags,
 static void
 load_filtees(Obj_Entry *obj, int flags, RtldLockState *lockstate)
 {
-
-    lock_restart_for_upgrade(lockstate);
-    if (!obj->filtees_loaded) {
+	if (obj->filtees_loaded || obj->filtees_loading)
+		return;
+	lock_restart_for_upgrade(lockstate);
+	obj->filtees_loading = true;
 	load_filtee1(obj, obj->needed_filtees, flags, lockstate);
 	load_filtee1(obj, obj->needed_aux_filtees, flags, lockstate);
 	obj->filtees_loaded = true;
-    }
+	obj->filtees_loading = false;
 }
 
 static int
@@ -2742,8 +2799,9 @@ load_object(const char *name, int fd_u, const Obj_Entry *refobj, int flags)
 	if (obj->ino == sb.st_ino && obj->dev == sb.st_dev)
 	    break;
     }
-    if (obj != NULL && name != NULL) {
-	object_add_name(obj, name);
+    if (obj != NULL) {
+	if (name != NULL)
+	    object_add_name(obj, name);
 	free(path);
 	close(fd);
 	return (obj);
@@ -3714,7 +3772,6 @@ static Obj_Entry *
 dlopen_object(const char *name, int fd, Obj_Entry *refobj, int lo_flags,
     int mode, RtldLockState *lockstate)
 {
-    Obj_Entry *old_obj_tail;
     Obj_Entry *obj;
     Objlist initlist;
     RtldLockState mlockstate;
@@ -3731,7 +3788,6 @@ dlopen_object(const char *name, int fd, Obj_Entry *refobj, int lo_flags,
     }
     GDB_STATE(RT_ADD,NULL);
 
-    old_obj_tail = globallist_curr(TAILQ_LAST(&obj_list, obj_entry_q));
     obj = NULL;
     if (name == NULL && fd == -1) {
 	obj = obj_main;
@@ -3744,11 +3800,11 @@ dlopen_object(const char *name, int fd, Obj_Entry *refobj, int lo_flags,
 	obj->dl_refcount++;
 	if (mode & RTLD_GLOBAL && objlist_find(&list_global, obj) == NULL)
 	    objlist_push_tail(&list_global, obj);
-	if (globallist_next(old_obj_tail) != NULL) {
-	    /* We loaded something new. */
-	    assert(globallist_next(old_obj_tail) == obj);
+
+	if (!obj->init_done) {
+	    /* We loaded something new and have to init something. */
 	    if ((lo_flags & RTLD_LO_DEEPBIND) != 0)
-		obj->symbolic = true;
+		obj->deepbind = true;
 	    result = 0;
 	    if ((lo_flags & (RTLD_LO_EARLY | RTLD_LO_IGNSTLS)) == 0 &&
 	      obj->static_tls && !allocate_tls_offset(obj)) {
@@ -4574,7 +4630,8 @@ symlook_default(SymLook *req, const Obj_Entry *refobj)
     if (refobj->symbolic || req->defobj_out != NULL)
 	donelist_check(&donelist, refobj);
 
-    symlook_global(req, &donelist);
+    if (!refobj->deepbind)
+        symlook_global(req, &donelist);
 
     /* Search all dlopened DAGs containing the referencing object. */
     STAILQ_FOREACH(elm, &refobj->dldags, link) {
@@ -4589,6 +4646,9 @@ symlook_default(SymLook *req, const Obj_Entry *refobj)
 	    assert(req->defobj_out != NULL);
 	}
     }
+
+    if (refobj->deepbind)
+        symlook_global(req, &donelist);
 
     /*
      * Search the dynamic linker itself, and possibly resolve the
@@ -4679,6 +4739,20 @@ symlook_needed(SymLook *req, const Needed_Entry *needed, DoneList *dlp)
     return (ESRCH);
 }
 
+static int
+symlook_obj_load_filtees(SymLook *req, SymLook *req1, const Obj_Entry *obj,
+    Needed_Entry *needed)
+{
+	DoneList donelist;
+	int flags;
+
+	flags = (req->flags & SYMLOOK_EARLY) != 0 ? RTLD_LO_EARLY : 0;
+	load_filtees(__DECONST(Obj_Entry *, obj), flags, req->lockstate);
+	donelist_init(&donelist);
+	symlook_init_from_req(req1, req);
+	return (symlook_needed(req1, needed, &donelist));
+}
+
 /*
  * Search the symbol table of a single shared object for a symbol of
  * the given name and version, if requested.  Returns a pointer to the
@@ -4691,9 +4765,8 @@ symlook_needed(SymLook *req, const Needed_Entry *needed, DoneList *dlp)
 int
 symlook_obj(SymLook *req, const Obj_Entry *obj)
 {
-    DoneList donelist;
     SymLook req1;
-    int flags, res, mres;
+    int res, mres;
 
     /*
      * If there is at least one valid hash at this point, we prefer to
@@ -4708,11 +4781,8 @@ symlook_obj(SymLook *req, const Obj_Entry *obj)
 
     if (mres == 0) {
 	if (obj->needed_filtees != NULL) {
-	    flags = (req->flags & SYMLOOK_EARLY) ? RTLD_LO_EARLY : 0;
-	    load_filtees(__DECONST(Obj_Entry *, obj), flags, req->lockstate);
-	    donelist_init(&donelist);
-	    symlook_init_from_req(&req1, req);
-	    res = symlook_needed(&req1, obj->needed_filtees, &donelist);
+	    res = symlook_obj_load_filtees(req, &req1, obj,
+		obj->needed_filtees);
 	    if (res == 0) {
 		req->sym_out = req1.sym_out;
 		req->defobj_out = req1.defobj_out;
@@ -4720,11 +4790,8 @@ symlook_obj(SymLook *req, const Obj_Entry *obj)
 	    return (res);
 	}
 	if (obj->needed_aux_filtees != NULL) {
-	    flags = (req->flags & SYMLOOK_EARLY) ? RTLD_LO_EARLY : 0;
-	    load_filtees(__DECONST(Obj_Entry *, obj), flags, req->lockstate);
-	    donelist_init(&donelist);
-	    symlook_init_from_req(&req1, req);
-	    res = symlook_needed(&req1, obj->needed_aux_filtees, &donelist);
+	    res = symlook_obj_load_filtees(req, &req1, obj,
+		obj->needed_aux_filtees);
 	    if (res == 0) {
 		req->sym_out = req1.sym_out;
 		req->defobj_out = req1.defobj_out;
@@ -5258,13 +5325,13 @@ allocate_tls(Obj_Entry *objs, void *oldtcb, size_t tcbsize, size_t tcbalign)
     tls_block_size += pre_size + tls_static_space - TLS_TCB_SIZE - post_size;
 
     /* Allocate whole TLS block */
-    tls_block = malloc_aligned(tls_block_size, maxalign, 0);
+    tls_block = xmalloc_aligned(tls_block_size, maxalign, 0);
     tcb = (Elf_Addr **)(tls_block + pre_size + extra_size);
 
     if (oldtcb != NULL) {
 	memcpy(tls_block, get_tls_block_ptr(oldtcb, tcbsize),
 	    tls_static_space);
-	free_aligned(get_tls_block_ptr(oldtcb, tcbsize));
+	free(get_tls_block_ptr(oldtcb, tcbsize));
 
 	/* Adjust the DTV. */
 	dtv = tcb[0];
@@ -5309,7 +5376,7 @@ free_tls(void *tcb, size_t tcbsize, size_t tcbalign __unused)
     Elf_Addr *dtv;
     Elf_Addr tlsstart, tlsend;
     size_t post_size;
-    size_t dtvsize, i, tls_init_align;
+    size_t dtvsize, i, tls_init_align __unused;
 
     assert(tcbsize >= TLS_TCB_SIZE);
     tls_init_align = MAX(obj_main->tlsalign, 1);
@@ -5328,7 +5395,7 @@ free_tls(void *tcb, size_t tcbsize, size_t tcbalign __unused)
 	}
     }
     free(dtv);
-    free_aligned(get_tls_block_ptr(tcb, tcbsize));
+    free(get_tls_block_ptr(tcb, tcbsize));
 }
 
 #endif	/* TLS_VARIANT_I */
@@ -5354,7 +5421,7 @@ allocate_tls(Obj_Entry *objs, void *oldtls, size_t tcbsize, size_t tcbalign)
     size = roundup(tls_static_space, ralign) + roundup(tcbsize, ralign);
 
     assert(tcbsize >= 2*sizeof(Elf_Addr));
-    tls = malloc_aligned(size, ralign, 0 /* XXX */);
+    tls = xmalloc_aligned(size, ralign, 0 /* XXX */);
     dtv = xcalloc(tls_max_index + 2, sizeof(Elf_Addr));
 
     segbase = (Elf_Addr)(tls + roundup(tls_static_space, ralign));
@@ -5433,11 +5500,11 @@ free_tls(void *tls, size_t tcbsize  __unused, size_t tcbalign)
     for (i = 0; i < dtvsize; i++) {
 	    if (dtv[i + 2] != 0 && (dtv[i + 2] < tlsstart ||
 	        dtv[i + 2] > tlsend)) {
-		    free_aligned((void *)dtv[i + 2]);
+		    free((void *)dtv[i + 2]);
 	}
     }
 
-    free_aligned((void *)tlsstart);
+    free((void *)tlsstart);
     free((void *)dtv);
 }
 
@@ -5463,7 +5530,18 @@ allocate_module_tls(int index)
 		rtld_die();
 	}
 
-	p = malloc_aligned(obj->tlssize, obj->tlsalign, obj->tlspoffset);
+	if (obj->tls_static) {
+#ifdef TLS_VARIANT_I
+		p = (char *)_tcb_get() + obj->tlsoffset + TLS_TCB_SIZE;
+#else
+		p = (char *)_tcb_get() - obj->tlsoffset;
+#endif
+		return (p);
+	}
+
+	obj->tls_dynamic = true;
+
+	p = xmalloc_aligned(obj->tlssize, obj->tlsalign, obj->tlspoffset);
 	memcpy(p, obj->tlsinit, obj->tlsinitsize);
 	memset(p + obj->tlsinitsize, 0, obj->tlssize - obj->tlsinitsize);
 	return (p);
@@ -5474,11 +5552,14 @@ allocate_tls_offset(Obj_Entry *obj)
 {
     size_t off;
 
-    if (obj->tls_done)
+    if (obj->tls_dynamic)
+	return (false);
+
+    if (obj->tls_static)
 	return (true);
 
     if (obj->tlssize == 0) {
-	obj->tls_done = true;
+	obj->tls_static = true;
 	return (true);
     }
 
@@ -5509,7 +5590,7 @@ allocate_tls_offset(Obj_Entry *obj)
 
     tls_last_offset = off;
     tls_last_size = obj->tlssize;
-    obj->tls_done = true;
+    obj->tls_static = true;
 
     return (true);
 }
@@ -5885,10 +5966,12 @@ distribute_static_tls(Objlist *list, RtldLockState *lockstate)
 		return;
 	STAILQ_FOREACH(elm, list, link) {
 		obj = elm->obj;
-		if (obj->marker || !obj->tls_done || obj->static_tls_copied)
+		if (obj->marker || !obj->tls_static || obj->static_tls_copied)
 			continue;
+		lock_release(rtld_bind_lock, lockstate);
 		distrib(obj->tlsoffset, obj->tlsinit, obj->tlsinitsize,
 		    obj->tlssize);
+		wlock_acquire(rtld_bind_lock, lockstate);
 		obj->static_tls_copied = true;
 	}
 }
@@ -6092,13 +6175,15 @@ parse_args(char* argv[], int argc, bool *use_pathp, int *fdp,
 				    "Env prefix %s\n"
 				    "Default hint file %s\n"
 				    "Hint file %s\n"
-				    "libmap file %s\n",
+				    "libmap file %s\n"
+				    "Optional static TLS size %zd bytes\n",
 				    machine,
 				    __FreeBSD_version, ld_standard_library_path,
 				    gethints(false),
 				    ld_env_prefix, ld_elf_hints_default,
 				    ld_elf_hints_path,
-				    ld_path_libmap_conf);
+				    ld_path_libmap_conf,
+				    ld_static_tls_extra);
 				_exit(0);
 			} else {
 				_rtld_error("Invalid argument: '%s'", arg);

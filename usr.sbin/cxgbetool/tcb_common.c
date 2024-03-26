@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "tcb_common.h"
 
 /***:-----------------------------------------------------------------------
@@ -300,7 +298,7 @@ decompress_val(_TCBVAR *tvp,unsigned ulp_type,unsigned tx_max,
 	  PM_MODE_IANDP==ulp_type) {
 	/* TP does this internally.  Not sure if I should show the
 	 *  unaltered value or the raw value.  For now I
-	 *  will diplay the raw value.  For now I've added the code
+	 *  will display the raw value.  For now I've added the code
 	 *  mainly to stop windows compiler from warning about ulp_type
 	 *  being an unreferenced parameter.
 	 */

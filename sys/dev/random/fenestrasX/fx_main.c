@@ -92,9 +92,6 @@
  *  - In particular, VM migration/copy detection
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/domainset.h>
 #include <sys/fail.h>

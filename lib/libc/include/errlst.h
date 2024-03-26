@@ -24,14 +24,11 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef __ERRLST_H__
 #define __ERRLST_H__
 
-#include <sys/cdefs.h>
 
 #ifdef PIC
 /* If the main executable imports these, do not use its copy from libc.so. */

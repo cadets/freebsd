@@ -31,8 +31,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- *	from: @(#)vm_kern.c	8.3 (Berkeley) 1/12/94
- *
  *
  * Copyright (c) 1987, 1990 Carnegie-Mellon University.
  * All rights reserved.
@@ -65,8 +63,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_vm.h"
 
 #include <sys/param.h>
@@ -80,6 +76,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/msan.h>
 #include <sys/proc.h>
 #include <sys/rwlock.h>
+#include <sys/smp.h>
 #include <sys/sysctl.h>
 #include <sys/vmem.h>
 #include <sys/vmmeter.h>
@@ -150,7 +147,29 @@ kva_alloc(vm_size_t size)
 
 	TSENTER();
 	size = round_page(size);
-	if (vmem_alloc(kernel_arena, size, M_BESTFIT | M_NOWAIT, &addr))
+	if (vmem_xalloc(kernel_arena, size, 0, 0, 0, VMEM_ADDR_MIN,
+	    VMEM_ADDR_MAX, M_BESTFIT | M_NOWAIT, &addr))
+		return (0);
+	TSEXIT();
+
+	return (addr);
+}
+
+/*
+ *	kva_alloc_aligned:
+ *
+ *	Allocate a virtual address range as in kva_alloc where the base
+ *	address is aligned to align.
+ */
+vm_offset_t
+kva_alloc_aligned(vm_size_t size, vm_size_t align)
+{
+	vm_offset_t addr;
+
+	TSENTER();
+	size = round_page(size);
+	if (vmem_xalloc(kernel_arena, size, align, 0, 0, VMEM_ADDR_MIN,
+	    VMEM_ADDR_MAX, M_BESTFIT | M_NOWAIT, &addr))
 		return (0);
 	TSEXIT();
 
@@ -171,7 +190,7 @@ kva_free(vm_offset_t addr, vm_size_t size)
 {
 
 	size = round_page(size);
-	vmem_free(kernel_arena, addr, size);
+	vmem_xfree(kernel_arena, addr, size);
 }
 
 /*
@@ -213,8 +232,8 @@ kmem_alloc_contig_pages(vm_object_t object, vm_pindex_t pindex, int domain,
 			break;
 
 		VM_OBJECT_WUNLOCK(object);
-		if (!vm_page_reclaim_contig_domain(domain, pflags, npages,
-		    low, high, alignment, boundary) && wait)
+		if (vm_page_reclaim_contig_domain(domain, pflags, npages,
+		    low, high, alignment, boundary) == ENOMEM && wait)
 			vm_wait_domain(domain);
 		VM_OBJECT_WLOCK(object);
 	}
@@ -287,8 +306,12 @@ kmem_alloc_attr_domainset(struct domainset *ds, vm_size_t size, int flags,
     vm_paddr_t low, vm_paddr_t high, vm_memattr_t memattr)
 {
 	struct vm_domainset_iter di;
+	vm_page_t bounds[2];
 	void *addr;
 	int domain;
+	int start_segind;
+
+	start_segind = -1;
 
 	vm_domainset_iter_policy_init(&di, ds, &domain, &flags);
 	do {
@@ -296,6 +319,12 @@ kmem_alloc_attr_domainset(struct domainset *ds, vm_size_t size, int flags,
 		    memattr);
 		if (addr != NULL)
 			break;
+		if (start_segind == -1)
+			start_segind = vm_phys_lookup_segind(low);
+		if (vm_phys_find_range(bounds, start_segind, domain,
+		    atop(round_page(size)), low, high) == -1) {
+			vm_domainset_iter_ignore(&di, domain);
+		}
 	} while (vm_domainset_iter_policy(&di, &domain) == 0);
 
 	return (addr);
@@ -371,8 +400,12 @@ kmem_alloc_contig_domainset(struct domainset *ds, vm_size_t size, int flags,
     vm_memattr_t memattr)
 {
 	struct vm_domainset_iter di;
+	vm_page_t bounds[2];
 	void *addr;
 	int domain;
+	int start_segind;
+
+	start_segind = -1;
 
 	vm_domainset_iter_policy_init(&di, ds, &domain, &flags);
 	do {
@@ -380,6 +413,12 @@ kmem_alloc_contig_domainset(struct domainset *ds, vm_size_t size, int flags,
 		    alignment, boundary, memattr);
 		if (addr != NULL)
 			break;
+		if (start_segind == -1)
+			start_segind = vm_phys_lookup_segind(low);
+		if (vm_phys_find_range(bounds, start_segind, domain,
+		    atop(round_page(size)), low, high) == -1) {
+			vm_domainset_iter_ignore(&di, domain);
+		}
 	} while (vm_domainset_iter_policy(&di, &domain) == 0);
 
 	return (addr);
@@ -451,8 +490,12 @@ kmem_malloc_domain(int domain, vm_size_t size, int flags)
 void *
 kmem_malloc(vm_size_t size, int flags)
 {
+	void * p;
 
-	return (kmem_malloc_domainset(DOMAINSET_RR(), size, flags));
+	TSENTER();
+	p = kmem_malloc_domainset(DOMAINSET_RR(), size, flags);
+	TSEXIT();
+	return (p);
 }
 
 void *
@@ -731,17 +774,21 @@ kva_import(void *unused, vmem_size_t size, int flags, vmem_addr_t *addrp)
 	vm_offset_t addr;
 	int result;
 
+	TSENTER();
 	KASSERT((size % KVA_QUANTUM) == 0,
 	    ("kva_import: Size %jd is not a multiple of %d",
 	    (intmax_t)size, (int)KVA_QUANTUM));
 	addr = vm_map_min(kernel_map);
 	result = vm_map_find(kernel_map, NULL, 0, &addr, size, 0,
 	    VMFS_SUPER_SPACE, VM_PROT_ALL, VM_PROT_ALL, MAP_NOFAULT);
-	if (result != KERN_SUCCESS)
+	if (result != KERN_SUCCESS) {
+		TSEXIT();
                 return (ENOMEM);
+	}
 
 	*addrp = addr;
 
+	TSEXIT();
 	return (0);
 }
 
@@ -900,6 +947,31 @@ kmem_bootstrap_free(vm_offset_t start, vm_size_t size)
 	(void)vmem_add(kernel_arena, start, end - start, M_WAITOK);
 #endif
 }
+
+#ifdef PMAP_WANT_ACTIVE_CPUS_NAIVE
+void
+pmap_active_cpus(pmap_t pmap, cpuset_t *res)
+{
+	struct thread *td;
+	struct proc *p;
+	struct vmspace *vm;
+	int c;
+
+	CPU_ZERO(res);
+	CPU_FOREACH(c) {
+		td = cpuid_to_pcpu[c]->pc_curthread;
+		p = td->td_proc;
+		if (p == NULL)
+			continue;
+		vm = vmspace_acquire_ref(p);
+		if (vm == NULL)
+			continue;
+		if (pmap == vmspace_pmap(vm))
+			CPU_SET(c, res);
+		vmspace_free(vm);
+	}
+}
+#endif
 
 /*
  * Allow userspace to directly trigger the VM drain routine for testing

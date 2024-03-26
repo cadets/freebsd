@@ -29,9 +29,6 @@
  * Arpan Palit <Arpan.Palit@amd.com>
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/sysctl.h>
 #include <sys/sbuf.h>

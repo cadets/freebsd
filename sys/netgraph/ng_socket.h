@@ -36,8 +36,6 @@
  * OF SUCH DAMAGE.
  *
  * Author: Julian Elischer <julian@freebsd.org>
- *
- * $FreeBSD$
  * $Whistle: ng_socket.h,v 1.5 1999/01/20 00:22:14 archie Exp $
  */
 
@@ -62,7 +60,7 @@ enum {
 struct sockaddr_ng {
 	unsigned char	sg_len;		/* total length */
 	sa_family_t	sg_family;	/* address family */
-	char		sg_data[14];	/* actually longer; address value */
+	char		sg_data[32];	/* see NG_NODESIZ in ng_message.h */
 };
 
 #endif /* _NETGRAPH_NG_SOCKET_H_ */

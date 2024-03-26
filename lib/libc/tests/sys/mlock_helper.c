@@ -28,9 +28,6 @@
  * Helper for mlock(3) to avoid EAGAIN errors
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/sysctl.h>
 

@@ -25,11 +25,6 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char rcsid[] =
-  "$FreeBSD$";
-#endif
-
 #include <sys/param.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -59,9 +54,9 @@ static void
 gif_status(if_ctx *ctx)
 {
 	int opts;
+	struct ifreq ifr = { .ifr_data = (caddr_t)&opts };
 
-	ifr.ifr_data = (caddr_t)&opts;
-	if (ioctl_ctx(ctx, GIFGOPTS, &ifr) == -1)
+	if (ioctl_ctx_ifr(ctx, GIFGOPTS, &ifr) == -1)
 		return;
 	if (opts == 0)
 		return;
@@ -70,12 +65,12 @@ gif_status(if_ctx *ctx)
 }
 
 static void
-setgifopts(if_ctx *ctx, const char *val, int d)
+setgifopts(if_ctx *ctx, const char *val __unused, int d)
 {
 	int opts;
+	struct ifreq ifr = { .ifr_data = (caddr_t)&opts };
 
-	ifr.ifr_data = (caddr_t)&opts;
-	if (ioctl_ctx(ctx, GIFGOPTS, &ifr) == -1) {
+	if (ioctl_ctx_ifr(ctx, GIFGOPTS, &ifr) == -1) {
 		warn("ioctl(GIFGOPTS)");
 		return;
 	}

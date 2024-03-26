@@ -29,14 +29,6 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-#ifndef lint
-__COPYRIGHT(
-"@(#) Copyright (c) 1999\
- The NetBSD Foundation, Inc.  All rights reserved.");
-__RCSID("$FreeBSD$");
-#endif    
-
 #include <sys/types.h>
 
 #include <err.h>

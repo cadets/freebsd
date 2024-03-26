@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 /*	$KAME: rrenum.c,v 1.12 2002/06/10 19:59:47 itojun Exp $	*/
 
 /*-
@@ -432,7 +431,6 @@ rr_command_input(int len, struct icmp6_router_renum *rr,
 
     failed:
 	syslog(LOG_ERR, "<%s> received RR was invalid", __func__);
-	return;
 }
 
 void
@@ -500,6 +498,4 @@ rr_input(int len, struct icmp6_router_renum *rr, struct in6_pktinfo *pi,
 		break;
 
 	}
-
-	return;
 }

@@ -29,11 +29,6 @@
  * mptable.c
  */
 
-#ifndef lint
-static const char rcsid[] =
-  "$FreeBSD$";
-#endif /* not lint */
-
 /*
  * this will cause the raw mp table to be dumped to /tmp/mpdump
  *
@@ -188,19 +183,21 @@ main( int argc, char *argv[] )
 	    if ( strcmp( optarg, "mesg") == 0 )
 	        dmesg = 1;
 	    else
-	        dmesg = 0;
+		usage();
 	    break;
 	case 'h':
-	    if ( strcmp( optarg, "elp") == 0 )
-	        usage();
-	    break;
+	    usage();
 	case 'g':
 	    if ( strcmp( optarg, "rope") == 0 )
 	        grope = 1;
+	    else
+		usage();
 	    break;
 	case 'v':
 	    if ( strcmp( optarg, "erbose") == 0 )
 	        verbose = 1;
+	    else
+		usage();
 	    break;
 	default:
 	    usage();
@@ -530,7 +527,6 @@ MPConfigTableHeader( u_int32_t pap )
 {
     mpcth_t	cth;
     int		x;
-    int		totalSize;
     int		c;
     int		oldtype, entrytype;
     u_int8_t	*entry;
@@ -573,8 +569,6 @@ MPConfigTableHeader( u_int32_t pap )
 
     printf( "  extended table length:\t%d\n", cth->extended_table_length );
     printf( "  extended table checksum:\t%d\n", cth->extended_table_checksum );
-
-    totalSize = cth->base_table_length - sizeof( struct MPCTH );
 
     puts( SEP_LINE );
 

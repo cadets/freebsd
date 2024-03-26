@@ -1,5 +1,4 @@
 #!/bin/sh
-# $FreeBSD$
 
 . $(atf_get_srcdir)/conf.sh
 
@@ -16,7 +15,7 @@ resize_body()
 	BLK=512
 	BLKS_PER_MB=2048
 
-	md=$(attach_md -t malloc -s40m)
+	attach_md md -t malloc -s40m
 
 	# Initialise
 	atf_check -s exit:0 -o ignore gpart create -s BSD ${md}

@@ -20,14 +20,9 @@
 # CDDL HEADER END
 #
 
-# $FreeBSD$
-
 #
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
-#
-# ident	"@(#)zpool_set_002_neg.ksh	1.3	09/01/12 SMI"
-#
 
 . $STF_SUITE/include/libtest.kshlib
 

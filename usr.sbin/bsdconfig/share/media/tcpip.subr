@@ -24,7 +24,6 @@ if [ ! "$_MEDIA_TCPIP_SUBR" ]; then _MEDIA_TCPIP_SUBR=1
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD$
 #
 ############################################################ INCLUDES
 
@@ -1030,7 +1029,6 @@ f_host_lookup()
 	{ f_quietly f_getvar $VAR_HTTP_PATH ||
 	  f_quietly f_getvar $VAR_HTTP_PROXY_PATH
 	} && __srvtypes="$__srvtypes _http._tcp"
-	f_quietly f_getvar $VAR_FTP_PATH && __srvtypes="$__srvtypes _ftp._tcp"
 	f_quietly f_getvar $VAR_NFS_PATH &&
 		__srvtypes="$__srvtypes _nfs._tcp _nfs._udp"
 

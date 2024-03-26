@@ -15,8 +15,6 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- *
- * $FreeBSD$
  */
 #ifndef _ATH_AR5210_H_
 #define _ATH_AR5210_H_
@@ -280,7 +278,7 @@ extern	HAL_BOOL ar5210SetKeyCacheEntry(struct ath_hal *, uint16_t entry,
 extern	HAL_BOOL ar5210SetKeyCacheEntryMac(struct ath_hal *,
 			uint16_t, const uint8_t *);
 
-extern	HAL_BOOL ar5210SetPowerMode(struct ath_hal *, uint32_t powerRequest,
+extern	HAL_BOOL ar5210SetPowerMode(struct ath_hal *, HAL_POWER_MODE mode,
 		int setChip);
 extern	HAL_POWER_MODE ar5210GetPowerMode(struct ath_hal *);
 

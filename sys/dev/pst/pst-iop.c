@@ -28,9 +28,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -434,7 +431,7 @@ iop_queue_wait_msg(struct iop_softc *sc, int mfa, struct i2o_basic_message *msg)
     int status, timeout = 10000;
 
     mtx_lock(&sc->mtx);
-    if (!(sc->reg->oqueue_intr_mask & 0x08)) {
+    if ((sc->reg->oqueue_intr_mask & I2O_OUT_INTR_QUEUE) == 0) {
         msg->transaction_context = (u_int32_t)&request;
         msg->initiator_context = (u_int32_t)iop_done;
         sc->reg->iqueue = mfa;

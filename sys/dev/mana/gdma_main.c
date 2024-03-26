@@ -27,8 +27,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -473,7 +471,7 @@ void
 mana_gd_wq_ring_doorbell(struct gdma_context *gc, struct gdma_queue *queue)
 {
 	mana_gd_ring_doorbell(gc, queue->gdma_dev->doorbell, queue->type,
-	    queue->id, queue->head * GDMA_WQE_BU_SIZE, 1);
+	    queue->id, queue->head * GDMA_WQE_BU_SIZE, 0);
 }
 
 void
@@ -1564,7 +1562,7 @@ alloc_bar_out:
 static void
 mana_gd_free_pci_res(struct gdma_context *gc)
 {
-	if (!gc || gc->dev)
+	if (!gc || !gc->dev)
 		return;
 
 	if (gc->bar0 != NULL) {

@@ -25,9 +25,6 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\"	@(#)beyond43.ms	5.1 (Berkeley) 6/5/90
-.\" $FreeBSD$
-.\"
 .\" *troff -ms
 .rm CM
 .sp 2

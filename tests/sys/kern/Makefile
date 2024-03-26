@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 .include <src.opts.mk>
 
@@ -22,15 +21,19 @@ ATF_TESTS_C+=	kill_zombie
 .if ${MK_OPENSSL} != "no"
 ATF_TESTS_C+=	ktls_test
 .endif
+ATF_TESTS_C+=	listener_wakeup
 ATF_TESTS_C+=	module_test
 ATF_TESTS_C+=	ptrace_test
 TEST_METADATA.ptrace_test+=		timeout="15"
 ATF_TESTS_C+=	reaper
 ATF_TESTS_C+=	sched_affinity
+ATF_TESTS_C+=	shutdown_dgram
 ATF_TESTS_C+=	sigaltstack
 ATF_TESTS_C+=	sigwait
+ATF_TESTS_C+=	socket_accept
 ATF_TESTS_C+=	socket_accf
 ATF_TESTS_C+=	socket_msg_trunc
+ATF_TESTS_C+=	socket_msg_waitall
 TEST_METADATA.sigwait+=	is_exclusive="true"
 .if ${MACHINE_ARCH} != "i386" && ${MACHINE_ARCH:Mpowerpc*} == ""
 ATF_TESTS_C+=	subr_physmem_test
@@ -38,6 +41,7 @@ ATF_TESTS_C+=	subr_physmem_test
 PLAIN_TESTS_C+=	subr_unit_test
 ATF_TESTS_C+=	sysctl_kern_proc
 ATF_TESTS_C+=	sys_getrandom
+ATF_TESTS_C+=	tty_pts
 ATF_TESTS_C+=	unix_dgram
 ATF_TESTS_C+=	unix_passfd_dgram
 TEST_METADATA.unix_passfd_dgram+=	is_exclusive="true"
@@ -48,12 +52,16 @@ TEST_METADATA.unix_seqpacket_test+=	timeout="15"
 ATF_TESTS_C+=	unix_socketpair_test
 ATF_TESTS_C+=	waitpid_nohang
 ATF_TESTS_C+=	pdeathsig
+ATF_TESTS_C+=	sigsys
+TEST_METADATA.sigsys+=	is_exclusive="true"
 
 ATF_TESTS_SH+=	coredump_phnum_test
 ATF_TESTS_SH+=	sonewconn_overflow
 TEST_METADATA.sonewconn_overflow+=	required_programs="python"
 TEST_METADATA.sonewconn_overflow+=	required_user="root"
 ATF_TESTS_SH+=	sendfile_test
+ATF_TESTS_SH+=	sysctl_security_jail_children
+TEST_METADATA.sysctl_security_jail_children+=	is_exclusive="true"
 
 ${PACKAGE}FILES+=	sonewconn_overflow.py
 ${PACKAGE}FILESMODE_sonewconn_overflow.py=0555
@@ -72,6 +80,9 @@ LIBADD.unix_seqpacket_test+=		pthread
 LIBADD.kcov+=				pthread
 CFLAGS.ktls_test+=			-DOPENSSL_API_COMPAT=0x10100000L
 LIBADD.ktls_test+=			crypto util
+LIBADD.listener_wakeup+=		pthread
+LIBADD.shutdown_dgram+=			pthread
+LIBADD.socket_msg_waitall+=		pthread
 LIBADD.sendfile_helper+=		pthread
 LIBADD.fdgrowtable_test+=		util pthread kvm procstat
 LIBADD.sigwait+=			rt
@@ -82,6 +93,8 @@ NETBSD_ATF_TESTS_C+=	sysv_test
 
 CFLAGS.mqueue_test+=	-I${SRCTOP}/tests
 LIBADD.mqueue_test+=	rt
+
+LIBADD.tty_pts+=	atf_c util
 
 ATF_TESTS_C+=	libkern_crc32
 SRCS.libkern_crc32+=	libkern_crc32.c

@@ -47,9 +47,6 @@
  * PURPOSE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <crypto/sha2/sha224.h>
 #include <crypto/sha2/sha256.h>

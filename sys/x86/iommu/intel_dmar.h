@@ -26,8 +26,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef __X86_IOMMU_INTEL_DMAR_H
@@ -321,6 +319,7 @@ extern iommu_haddr_t dmar_high;
 extern int haw;
 extern int dmar_tbl_pagecnt;
 extern int dmar_batch_coalesce;
+extern int dmar_rmrr_enable;
 
 static inline uint32_t
 dmar_read4(const struct dmar_unit *unit, int reg)

@@ -37,9 +37,6 @@
 #include "opt_acpi.h"
 #include "opt_platform.h"
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
@@ -86,7 +83,7 @@ EARLY_DRIVER_MODULE(gic, acpi, gic_acpi_driver, 0, 0,
 struct madt_table_data {
 	device_t parent;
 	ACPI_MADT_GENERIC_DISTRIBUTOR *dist;
-	ACPI_MADT_GENERIC_INTERRUPT *intr[MAXCPU];
+	ACPI_MADT_GENERIC_INTERRUPT *intr[GIC_MAXCPU];
 };
 
 static void
@@ -109,7 +106,7 @@ madt_handler(ACPI_SUBTABLE_HEADER *entry, void *arg)
 		break;
 	case ACPI_MADT_TYPE_GENERIC_INTERRUPT:
 		intr = (ACPI_MADT_GENERIC_INTERRUPT *)entry;
-		if (intr->CpuInterfaceNumber < MAXCPU)
+		if (intr->CpuInterfaceNumber < GIC_MAXCPU)
 			madt_data->intr[intr->CpuInterfaceNumber] = intr;
 		break;
 	}
@@ -153,7 +150,7 @@ gic_acpi_identify(driver_t *driver, device_t parent)
 	}
 
 	intr = NULL;
-	for (i = 0; i < MAXCPU; i++) {
+	for (i = 0; i < GIC_MAXCPU; i++) {
 		if (madt_data.intr[i] != NULL) {
 			if (intr == NULL) {
 				intr = madt_data.intr[i];
@@ -230,12 +227,19 @@ gic_acpi_attach(device_t dev)
 	/*
 	 * Controller is root:
 	 */
-	if (intr_pic_claim_root(dev, xref, arm_gic_intr, sc,
-	    GIC_LAST_SGI - GIC_FIRST_SGI + 1) != 0) {
+	if (intr_pic_claim_root(dev, xref, arm_gic_intr, sc) != 0) {
 		device_printf(dev, "could not set PIC as a root\n");
 		intr_pic_deregister(dev, xref);
 		goto cleanup;
 	}
+
+#ifdef SMP
+	if (intr_ipi_pic_register(dev, 0) != 0) {
+		device_printf(dev, "could not register for IPIs\n");
+		goto cleanup;
+	}
+#endif
+
 	/* If we have children probe and attach them */
 	if (arm_gic_add_children(dev)) {
 		bus_generic_probe(dev);

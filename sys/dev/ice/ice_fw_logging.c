@@ -28,7 +28,6 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-/*$FreeBSD$*/
 
 /**
  * @file ice_fw_logging.c
@@ -108,12 +107,12 @@ ice_reconfig_fw_log(struct ice_softc *sc, struct ice_fwlog_cfg *cfg)
 "\t\nMax: 128"
 
 #define ICE_SYSCTL_HELP_FWLOG_ARQ_ENA					\
-"\nControl whether to enable/disable reporing to admin Rx queue"	\
+"\nControl whether to enable/disable reporting to admin Rx queue"	\
 "\n0 - Enable firmware reporting via ARQ"				\
 "\n1 - Disable firmware reporting via ARQ"
 
 #define ICE_SYSCTL_HELP_FWLOG_UART_ENA					\
-"\nControl whether to enable/disable reporing to UART"			\
+"\nControl whether to enable/disable reporting to UART"			\
 "\n0 - Enable firmware reporting via UART"				\
 "\n1 - Disable firmware reporting via UART"
 

@@ -28,8 +28,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_kern_tls.h"
@@ -1354,8 +1352,6 @@ do_peer_close(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 	if (toep->flags & TPF_ABORT_SHUTDOWN)
 		goto done;
 
-	so = inp->inp_socket;
-	socantrcvmore(so);
 	if (ulp_mode(toep) == ULP_MODE_TCPDDP) {
 		DDP_LOCK(toep);
 		if (__predict_false(toep->ddp.flags &
@@ -1363,6 +1359,8 @@ do_peer_close(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 			handle_ddp_close(toep, tp, cpl->rcv_nxt);
 		DDP_UNLOCK(toep);
 	}
+	so = inp->inp_socket;
+	socantrcvmore(so);
 
 	if (ulp_mode(toep) == ULP_MODE_RDMA ||
 	    (ulp_mode(toep) == ULP_MODE_ISCSI && chip_id(sc) >= CHELSIO_T6)) {
@@ -1649,7 +1647,7 @@ do_rx_data(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 	struct socket *so;
 	struct sockbuf *sb;
 	struct epoch_tracker et;
-	int len, rx_credits;
+	int len;
 	uint32_t ddp_placed = 0;
 
 	if (__predict_false(toep->flags & TPF_SYNQE)) {
@@ -1755,17 +1753,18 @@ do_rx_data(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 		if (changed) {
 			if (toep->ddp.flags & DDP_SC_REQ)
 				toep->ddp.flags ^= DDP_ON | DDP_SC_REQ;
-			else {
-				KASSERT(cpl->ddp_off == 1,
-				    ("%s: DDP switched on by itself.",
-				    __func__));
-
+			else if (cpl->ddp_off == 1) {
 				/* Fell out of DDP mode */
 				toep->ddp.flags &= ~DDP_ON;
 				CTR1(KTR_CXGBE, "%s: fell out of DDP mode",
 				    __func__);
 
 				insert_ddp_data(toep, ddp_placed);
+			} else {
+				/*
+				 * Data was received while still
+				 * ULP_MODE_NONE, just fall through.
+				 */
 			}
 		}
 
@@ -1781,14 +1780,10 @@ do_rx_data(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 	}
 
 	sbappendstream_locked(sb, m, 0);
-	rx_credits = sbspace(sb) > tp->rcv_wnd ? sbspace(sb) - tp->rcv_wnd : 0;
-	if (rx_credits > 0 && sbused(sb) + tp->rcv_wnd < sb->sb_lowat) {
-		rx_credits = send_rx_credits(sc, toep, rx_credits);
-		tp->rcv_wnd += rx_credits;
-		tp->rcv_adv += rx_credits;
-	}
+	t4_rcvd_locked(&toep->td->tod, tp);
 
-	if (ulp_mode(toep) == ULP_MODE_TCPDDP && toep->ddp.waiting_count > 0 &&
+	if (ulp_mode(toep) == ULP_MODE_TCPDDP &&
+	    (toep->ddp.flags & DDP_AIO) != 0 && toep->ddp.waiting_count > 0 &&
 	    sbavail(sb) != 0) {
 		CTR2(KTR_CXGBE, "%s: tid %u queueing AIO task", __func__,
 		    tid);
@@ -2180,6 +2175,7 @@ t4_aiotx_process_job(struct toepcb *toep, struct socket *so, struct kaiocb *job)
 	struct inpcb *inp;
 	struct tcpcb *tp;
 	struct mbuf *m;
+	u_int sent;
 	int error, len;
 	bool moretocome, sendmore;
 
@@ -2282,7 +2278,9 @@ sendanother:
 		goto out;
 	}
 
-	job->aio_sent += m_length(m, NULL);
+	sent = m_length(m, NULL);
+	job->aio_sent += sent;
+	counter_u64_add(toep->ofld_txq->tx_aio_octets, sent);
 
 	sbappendstream(sb, m, 0);
 	m = NULL;
@@ -2335,6 +2333,7 @@ sendanother:
 	 * socket.
 	 */
 	aiotx_free_job(job);
+	counter_u64_add(toep->ofld_txq->tx_aio_jobs, 1);
 
 out:
 	if (error) {

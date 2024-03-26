@@ -27,13 +27,9 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)uipc_socket2.c	8.1 (Berkeley) 6/10/93
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_kern_tls.h"
 #include "opt_param.h"
 
@@ -1330,7 +1326,8 @@ sbappendcontrol_locked(struct sockbuf *sb, struct mbuf *m0,
 {
 	struct mbuf *m, *mlast;
 
-	kmsan_check_mbuf(m0, "sbappend");
+	if (m0 != NULL)
+		kmsan_check_mbuf(m0, "sbappend");
 	kmsan_check_mbuf(control, "sbappend");
 
 	sbm_clrprotoflags(m0, flags);

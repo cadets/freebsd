@@ -26,9 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <stand.h>
 #include <string.h>
 #include <sys/param.h>
@@ -334,7 +331,10 @@ bi_load(char *args, vm_offset_t *modulep, vm_offset_t *kernendp, bool exit_bs)
 	struct devdesc *rootdev;
 	struct file_metadata *md;
 	vm_offset_t addr;
-	uint64_t kernend, module;
+	uint64_t kernend;
+#ifdef MODINFOMD_MODULEP
+	uint64_t module;
+#endif
 	uint64_t envp;
 	vm_offset_t size;
 	char *rootdevname;
@@ -385,10 +385,12 @@ bi_load(char *args, vm_offset_t *modulep, vm_offset_t *kernendp, bool exit_bs)
 	/* Pad to a page boundary. */
 	addr = roundup(addr, PAGE_SIZE);
 
+#ifdef EFI
 	addr = build_font_module(addr);
 
 	/* Pad to a page boundary. */
 	addr = roundup(addr, PAGE_SIZE);
+#endif
 
 	/* Copy our environment. */
 	envp = addr;
@@ -415,7 +417,7 @@ bi_load(char *args, vm_offset_t *modulep, vm_offset_t *kernendp, bool exit_bs)
 	kernend = 0;	/* fill it in later */
 
 	/* Figure out the size and location of the metadata. */
-	module = *modulep = addr;
+	*modulep = addr;
 
 	file_addmetadata(kfp, MODINFOMD_HOWTO, sizeof(howto), &howto);
 	file_addmetadata(kfp, MODINFOMD_ENVP, sizeof(envp), &envp);
@@ -428,6 +430,7 @@ bi_load(char *args, vm_offset_t *modulep, vm_offset_t *kernendp, bool exit_bs)
 #endif
 	file_addmetadata(kfp, MODINFOMD_KERNEND, sizeof(kernend), &kernend);
 #ifdef MODINFOMD_MODULEP
+	module = *modulep;
 	file_addmetadata(kfp, MODINFOMD_MODULEP, sizeof(module), &module);
 #endif
 #ifdef EFI

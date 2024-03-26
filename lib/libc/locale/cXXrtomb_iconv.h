@@ -26,9 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/queue.h>
 
 #include <assert.h>
@@ -77,8 +74,6 @@ cXXrtomb_l(char * __restrict s, charXX_t c, mbstate_t * __restrict ps,
 			errno = EINVAL;
 			return (-1);
 		}
-		handle->cv_shared->ci_discard_ilseq = true;
-		handle->cv_shared->ci_hooks = NULL;
 		cs->srcbuf_len = 0;
 		cs->initialized = true;
 		if (s == NULL)
@@ -94,7 +89,7 @@ cXXrtomb_l(char * __restrict s, charXX_t c, mbstate_t * __restrict ps,
 	dst = s;
 	dstleft = MB_CUR_MAX_L(locale);
 	err = _citrus_iconv_convert(handle, &src, &srcleft, &dst, &dstleft,
-	    0, &invlen);
+	    _CITRUS_ICONV_F_HIDE_INVALID, &invlen);
 
 	/* Character is part of a surrogate pair. We need more input. */
 	if (err == EINVAL)

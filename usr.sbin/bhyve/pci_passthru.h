@@ -7,8 +7,11 @@
 
 #pragma once
 
+#include <sys/linker_set.h>
+
 #include <vmmapi.h>
 
+#include "config.h"
 #include "pci_emul.h"
 
 struct passthru_mmio_mapping {
@@ -21,13 +24,22 @@ struct passthru_mmio_mapping {
 
 struct passthru_softc;
 
+struct passthru_dev {
+    int (*probe)(struct pci_devinst *pi);
+    int (*init)(struct pci_devinst *pi, nvlist_t *nvl);
+    void (*deinit)(struct pci_devinst *pi);
+};
+#define PASSTHRU_DEV_SET(x) DATA_SET(passthru_dev_set, x)
+
 typedef int (*cfgread_handler)(struct passthru_softc *sc,
     struct pci_devinst *pi, int coff, int bytes, uint32_t *rv);
 typedef int (*cfgwrite_handler)(struct passthru_softc *sc,
     struct pci_devinst *pi, int coff, int bytes, uint32_t val);
 
-uint32_t read_config(const struct pcisel *sel, long reg, int width);
-void write_config(const struct pcisel *sel, long reg, int width, uint32_t data);
+uint32_t pci_host_read_config(const struct pcisel *sel, long reg, int width);
+void pci_host_write_config(const struct pcisel *sel, long reg, int width,
+    uint32_t data);
+
 int passthru_cfgread_emulate(struct passthru_softc *sc, struct pci_devinst *pi,
     int coff, int bytes, uint32_t *rv);
 int passthru_cfgwrite_emulate(struct passthru_softc *sc, struct pci_devinst *pi,

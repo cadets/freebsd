@@ -25,8 +25,6 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
- *
- * $FreeBSD$
  */
 
 /*
@@ -195,9 +193,6 @@ routename(struct sockaddr *sa)
 	{
 		struct sockaddr_in6 sin6; /* use static var for safety */
 		int niflags = 0;
-#ifdef NI_WITHSCOPEID
-		niflags = NI_WITHSCOPEID;
-#endif
 
 		memset(&sin6, 0, sizeof(sin6));
 		memcpy(&sin6, sa, sa->sa_len);

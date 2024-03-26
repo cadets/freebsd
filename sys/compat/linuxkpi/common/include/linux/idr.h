@@ -25,14 +25,13 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 #ifndef	_LINUXKPI_LINUX_IDR_H_
 #define	_LINUXKPI_LINUX_IDR_H_
 
 #include <sys/param.h>
 #include <sys/lock.h>
+#include <sys/limits.h>
 #include <sys/mutex.h>
 
 #include <linux/types.h>
@@ -131,6 +130,12 @@ ida_get_new(struct ida *ida, int *p_id)
 {
 
 	return (ida_get_new_above(ida, 0, p_id));
+}
+
+static inline int
+ida_alloc_min(struct ida *ida, unsigned int min, gfp_t gfp)
+{
+	return (ida_simple_get(ida, min, UINT_MAX, gfp));
 }
 
 static inline int

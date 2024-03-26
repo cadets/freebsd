@@ -26,8 +26,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * DPAA2 MC command portal and helper routines.
  */
@@ -42,7 +40,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/systm.h>
-#include <sys/condvar.h>
 #include <sys/lock.h>
 
 #include <machine/bus.h>

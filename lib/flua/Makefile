@@ -1,5 +1,4 @@
-# $FreeBSD$
-
-SUBDIR=	libjail
+SUBDIR+=	libhash
+SUBDIR+=	libjail
 
 .include <bsd.subdir.mk>

@@ -22,8 +22,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _BOOTSTRAP_H_
@@ -383,9 +381,5 @@ void	delay(int delay);
 int gen_setcurrdev(struct env_var *ev, int flags, const void *value);
 int mount_currdev(struct env_var *, int, const void *);
 void set_currdev(const char *devname);
-
-#ifndef CTASSERT
-#define	CTASSERT(x)	_Static_assert(x, "compile-time assertion failed")
-#endif
 
 #endif /* !_BOOTSTRAP_H_ */

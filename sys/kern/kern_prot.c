@@ -35,8 +35,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)kern_prot.c	8.6 (Berkeley) 1/21/94
  */
 
 /*
@@ -44,8 +42,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_inet6.h"
 
@@ -92,6 +88,10 @@ SYSCTL_NODE(_security, OID_AUTO, bsd, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
 static void crfree_final(struct ucred *cr);
 static void crsetgroups_locked(struct ucred *cr, int ngrp,
     gid_t *groups);
+
+static int cr_canseeotheruids(struct ucred *u1, struct ucred *u2);
+static int cr_canseeothergids(struct ucred *u1, struct ucred *u2);
+static int cr_canseejailproc(struct ucred *u1, struct ucred *u2);
 
 #ifndef _SYS_SYSPROTO_H_
 struct getpid_args {
@@ -332,12 +332,13 @@ sys_setsid(struct thread *td, struct setsid_args *uap)
 	struct pgrp *newpgrp;
 	struct session *newsess;
 
-	error = 0;
 	pgrp = NULL;
 
 	newpgrp = uma_zalloc(pgrp_zone, M_WAITOK);
 	newsess = malloc(sizeof(struct session), M_SESSION, M_WAITOK | M_ZERO);
 
+again:
+	error = 0;
 	sx_xlock(&proctree_lock);
 
 	if (p->p_pgid == p->p_pid || (pgrp = pgfind(p->p_pid)) != NULL) {
@@ -345,7 +346,10 @@ sys_setsid(struct thread *td, struct setsid_args *uap)
 			PGRP_UNLOCK(pgrp);
 		error = EPERM;
 	} else {
-		(void)enterpgrp(p, p->p_pid, newpgrp, newsess);
+		error = enterpgrp(p, p->p_pid, newpgrp, newsess);
+		if (error == ERESTART)
+			goto again;
+		MPASS(error == 0);
 		td->td_retval[0] = p->p_pid;
 		newpgrp = NULL;
 		newsess = NULL;
@@ -391,9 +395,10 @@ sys_setpgid(struct thread *td, struct setpgid_args *uap)
 	if (uap->pgid < 0)
 		return (EINVAL);
 
-	error = 0;
-
 	newpgrp = uma_zalloc(pgrp_zone, M_WAITOK);
+
+again:
+	error = 0;
 
 	sx_xlock(&proctree_lock);
 	if (uap->pid != 0 && uap->pid != curp->p_pid) {
@@ -453,9 +458,11 @@ sys_setpgid(struct thread *td, struct setpgid_args *uap)
 		error = enterthispgrp(targp, pgrp);
 	}
 done:
-	sx_xunlock(&proctree_lock);
-	KASSERT((error == 0) || (newpgrp != NULL),
+	KASSERT(error == 0 || newpgrp != NULL,
 	    ("setpgid failed and newpgrp is NULL"));
+	if (error == ERESTART)
+		goto again;
+	sx_xunlock(&proctree_lock);
 	uma_zfree(pgrp_zone, newpgrp);
 	return (error);
 }
@@ -1268,36 +1275,56 @@ sys___setugid(struct thread *td, struct __setugid_args *uap)
 }
 
 /*
- * Check if gid is a member of the group set.
+ * Returns whether gid designates a supplementary group in cred.
  */
-int
-groupmember(gid_t gid, struct ucred *cred)
+static bool
+supplementary_group_member(gid_t gid, struct ucred *cred)
 {
-	int l;
-	int h;
-	int m;
-
-	if (cred->cr_groups[0] == gid)
-		return(1);
+	int l, h, m;
 
 	/*
-	 * If gid was not our primary group, perform a binary search
-	 * of the supplemental groups.  This is possible because we
-	 * sort the groups in crsetgroups().
+	 * Perform a binary search of the supplemental groups.  This is possible
+	 * because we sort the groups in crsetgroups().
 	 */
 	l = 1;
 	h = cred->cr_ngroups;
-	while (l < h) {
-		m = l + ((h - l) / 2);
-		if (cred->cr_groups[m] < gid)
-			l = m + 1; 
-		else
-			h = m; 
-	}
-	if ((l < cred->cr_ngroups) && (cred->cr_groups[l] == gid))
-		return (1);
 
-	return (0);
+	while (l < h) {
+		m = l + (h - l) / 2;
+		if (cred->cr_groups[m] < gid)
+			l = m + 1;
+		else
+			h = m;
+	}
+
+	return (l < cred->cr_ngroups && cred->cr_groups[l] == gid);
+}
+
+/*
+ * Check if gid is a member of the (effective) group set (i.e., effective and
+ * supplementary groups).
+ */
+bool
+groupmember(gid_t gid, struct ucred *cred)
+{
+
+	if (gid == cred->cr_groups[0])
+		return (true);
+
+	return (supplementary_group_member(gid, cred));
+}
+
+/*
+ * Check if gid is a member of the real group set (i.e., real and supplementary
+ * groups).
+ */
+bool
+realgroupmember(gid_t gid, struct ucred *cred)
+{
+	if (gid == cred->cr_rgid)
+		return (true);
+
+	return (supplementary_group_member(gid, cred));
 }
 
 /*
@@ -1346,7 +1373,7 @@ SYSCTL_INT(_security_bsd, OID_AUTO, see_other_uids, CTLFLAG_RW,
  * References: *u1 and *u2 must not change during the call
  *             u1 may equal u2, in which case only one reference is required
  */
-int
+static int
 cr_canseeotheruids(struct ucred *u1, struct ucred *u2)
 {
 
@@ -1376,24 +1403,21 @@ SYSCTL_INT(_security_bsd, OID_AUTO, see_other_gids, CTLFLAG_RW,
  * References: *u1 and *u2 must not change during the call
  *             u1 may equal u2, in which case only one reference is required
  */
-int
+static int
 cr_canseeothergids(struct ucred *u1, struct ucred *u2)
 {
-	int i, match;
-
 	if (!see_other_gids) {
-		match = 0;
-		for (i = 0; i < u1->cr_ngroups; i++) {
-			if (groupmember(u1->cr_groups[i], u2))
-				match = 1;
-			if (match)
-				break;
-		}
-		if (!match) {
-			if (priv_check_cred(u1, PRIV_SEEOTHERGIDS) != 0)
-				return (ESRCH);
-		}
+		if (realgroupmember(u1->cr_rgid, u2))
+			return (0);
+
+		for (int i = 1; i < u1->cr_ngroups; i++)
+			if (realgroupmember(u1->cr_groups[i], u2))
+				return (0);
+
+		if (priv_check_cred(u1, PRIV_SEEOTHERGIDS) != 0)
+			return (ESRCH);
 	}
+
 	return (0);
 }
 
@@ -1418,12 +1442,37 @@ SYSCTL_INT(_security_bsd, OID_AUTO, see_jail_proc, CTLFLAG_RW,
  * References: *u1 and *u2 must not change during the call
  *             u1 may equal u2, in which case only one reference is required
  */
-int
+static int
 cr_canseejailproc(struct ucred *u1, struct ucred *u2)
 {
-	if (u1->cr_uid == 0)
+	if (see_jail_proc || /* Policy deactivated. */
+	    u1->cr_prison == u2->cr_prison || /* Same jail. */
+	    priv_check_cred(u1, PRIV_SEEJAILPROC) == 0) /* Privileged. */
 		return (0);
-	return (!see_jail_proc && u1->cr_prison != u2->cr_prison ? ESRCH : 0);
+
+	return (ESRCH);
+}
+
+/*
+ * Helper for cr_cansee*() functions to abide by system-wide security.bsd.see_*
+ * policies.  Determines if u1 "can see" u2 according to these policies.
+ * Returns: 0 for permitted, ESRCH otherwise
+ */
+int
+cr_bsd_visible(struct ucred *u1, struct ucred *u2)
+{
+	int error;
+
+	error = cr_canseeotheruids(u1, u2);
+	if (error != 0)
+		return (error);
+	error = cr_canseeothergids(u1, u2);
+	if (error != 0)
+		return (error);
+	error = cr_canseejailproc(u1, u2);
+	if (error != 0)
+		return (error);
+	return (0);
 }
 
 /*-
@@ -1444,11 +1493,7 @@ cr_cansee(struct ucred *u1, struct ucred *u2)
 	if ((error = mac_cred_check_visible(u1, u2)))
 		return (error);
 #endif
-	if ((error = cr_canseeotheruids(u1, u2)))
-		return (error);
-	if ((error = cr_canseeothergids(u1, u2)))
-		return (error);
-	if ((error = cr_canseejailproc(u1, u2)))
+	if ((error = cr_bsd_visible(u1, u2)))
 		return (error);
 	return (0);
 }
@@ -1509,9 +1554,7 @@ cr_cansignal(struct ucred *cred, struct proc *proc, int signum)
 	if ((error = mac_proc_check_signal(cred, proc, signum)))
 		return (error);
 #endif
-	if ((error = cr_canseeotheruids(cred, proc->p_ucred)))
-		return (error);
-	if ((error = cr_canseeothergids(cred, proc->p_ucred)))
+	if ((error = cr_bsd_visible(cred, proc->p_ucred)))
 		return (error);
 
 	/*
@@ -1626,10 +1669,9 @@ p_cansched(struct thread *td, struct proc *p)
 	if ((error = mac_proc_check_sched(td->td_ucred, p)))
 		return (error);
 #endif
-	if ((error = cr_canseeotheruids(td->td_ucred, p->p_ucred)))
+	if ((error = cr_bsd_visible(td->td_ucred, p->p_ucred)))
 		return (error);
-	if ((error = cr_canseeothergids(td->td_ucred, p->p_ucred)))
-		return (error);
+
 	if (td->td_ucred->cr_ruid != p->p_ucred->cr_ruid &&
 	    td->td_ucred->cr_uid != p->p_ucred->cr_ruid) {
 		error = priv_check(td, PRIV_SCHED_DIFFCRED);
@@ -1696,9 +1738,7 @@ p_candebug(struct thread *td, struct proc *p)
 	if ((error = mac_proc_check_debug(td->td_ucred, p)))
 		return (error);
 #endif
-	if ((error = cr_canseeotheruids(td->td_ucred, p->p_ucred)))
-		return (error);
-	if ((error = cr_canseeothergids(td->td_ucred, p->p_ucred)))
+	if ((error = cr_bsd_visible(td->td_ucred, p->p_ucred)))
 		return (error);
 
 	/*
@@ -1788,9 +1828,7 @@ cr_canseesocket(struct ucred *cred, struct socket *so)
 	if (error)
 		return (error);
 #endif
-	if (cr_canseeotheruids(cred, so->so_cred))
-		return (ENOENT);
-	if (cr_canseeothergids(cred, so->so_cred))
+	if (cr_bsd_visible(cred, so->so_cred))
 		return (ENOENT);
 
 	return (0);
@@ -1820,7 +1858,7 @@ p_canwait(struct thread *td, struct proc *p)
 #endif
 #if 0
 	/* XXXMAC: This could have odd effects on some shells. */
-	if ((error = cr_canseeotheruids(td->td_ucred, p->p_ucred)))
+	if ((error = cr_bsd_visible(td->td_ucred, p->p_ucred)))
 		return (error);
 #endif
 
@@ -2155,17 +2193,6 @@ cru2xt(struct thread *td, struct xucred *xcr)
 
 	cru2x(td->td_ucred, xcr);
 	xcr->cr_pid = td->td_proc->p_pid;
-}
-
-/*
- * Set initial process credentials.
- * Callers are responsible for providing the reference for provided credentials.
- */
-void
-proc_set_cred_init(struct proc *p, struct ucred *newcred)
-{
-
-	p->p_ucred = crcowget(newcred);
 }
 
 /*

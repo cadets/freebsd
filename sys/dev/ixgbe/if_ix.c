@@ -30,7 +30,6 @@
   POSSIBILITY OF SUCH DAMAGE.
 
 ******************************************************************************/
-/*$FreeBSD$*/
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -46,7 +45,7 @@
 /************************************************************************
  * Driver version
  ************************************************************************/
-char ixgbe_driver_version[] = "4.0.1-k";
+static const char ixgbe_driver_version[] = "4.0.1-k";
 
 /************************************************************************
  * PCI Device ID Table
@@ -57,7 +56,7 @@ char ixgbe_driver_version[] = "4.0.1-k";
  *
  *   { Vendor ID, Device ID, SubVendor ID, SubDevice ID, String Index }
  ************************************************************************/
-static pci_vendor_info_t ixgbe_vendor_info_array[] =
+static const pci_vendor_info_t ixgbe_vendor_info_array[] =
 {
   PVID(IXGBE_INTEL_VENDOR_ID, IXGBE_DEV_ID_82598AF_DUAL_PORT,  "Intel(R) 82598EB AF (Dual Fiber)"),
   PVID(IXGBE_INTEL_VENDOR_ID, IXGBE_DEV_ID_82598AF_SINGLE_PORT,  "Intel(R) 82598EB AF (Fiber)"),
@@ -76,6 +75,7 @@ static pci_vendor_info_t ixgbe_vendor_info_array[] =
   PVID(IXGBE_INTEL_VENDOR_ID, IXGBE_DEV_ID_82599_XAUI_LOM,  "Intel(R) X520 82599 (XAUI/BX4)"),
   PVID(IXGBE_INTEL_VENDOR_ID, IXGBE_DEV_ID_82599_CX4,  "Intel(R) X520 82599 (Dual CX4)"),
   PVID(IXGBE_INTEL_VENDOR_ID, IXGBE_DEV_ID_82599_T3_LOM,  "Intel(R) X520-T 82599 LOM"),
+  PVID(IXGBE_INTEL_VENDOR_ID, IXGBE_DEV_ID_82599_LS,  "Intel(R) X520 82599 LS"),
   PVID(IXGBE_INTEL_VENDOR_ID, IXGBE_DEV_ID_82599_COMBO_BACKPLANE,  "Intel(R) X520 82599 (Combined Backplane)"),
   PVID(IXGBE_INTEL_VENDOR_ID, IXGBE_DEV_ID_82599_BACKPLANE_FCOE,  "Intel(R) X520 82599 (Backplane w/FCoE)"),
   PVID(IXGBE_INTEL_VENDOR_ID, IXGBE_DEV_ID_82599_SFP_SF2,  "Intel(R) X520 82599 (Dual SFP+)"),
@@ -919,6 +919,15 @@ ixgbe_if_attach_pre(if_ctx_t ctx)
 		goto err_pci;
 	}
 
+	if (hw->mac.ops.fw_recovery_mode && hw->mac.ops.fw_recovery_mode(hw)) {
+		device_printf(dev, "Firmware recovery mode detected. Limiting "
+		    "functionality.\nRefer to the Intel(R) Ethernet Adapters "
+		    "and Devices User Guide for details on firmware recovery "
+		    "mode.");
+		error = ENOSYS;
+		goto err_pci;
+	}
+
 	if (hw->mbx.ops.init_params)
 		hw->mbx.ops.init_params(hw);
 
@@ -1247,7 +1256,7 @@ ixgbe_if_i2c_req(if_ctx_t ctx, struct ifi2creq *req)
  * @ctx: iflib context
  * @event: event code to check
  *
- * Defaults to returning true for unknown events.
+ * Defaults to returning false for unknown events.
  *
  * @returns true if iflib needs to reinit the interface
  */
@@ -1256,9 +1265,8 @@ ixgbe_if_needs_restart(if_ctx_t ctx __unused, enum iflib_restart_event event)
 {
 	switch (event) {
 	case IFLIB_RESTART_VLAN_CONFIG:
-		return (false);
 	default:
-		return (true);
+		return (false);
 	}
 }
 
@@ -2845,8 +2853,8 @@ ixgbe_setup_low_power_mode(if_ctx_t ctx)
 	if (hw->device_id == IXGBE_DEV_ID_X550EM_X_10G_T &&
 	    hw->phy.ops.enter_lplu) {
 		/* Turn off support for APM wakeup. (Using ACPI instead) */
-		IXGBE_WRITE_REG(hw, IXGBE_GRC,
-		    IXGBE_READ_REG(hw, IXGBE_GRC) & ~(u32)2);
+		IXGBE_WRITE_REG(hw, IXGBE_GRC_BY_MAC(hw),
+		    IXGBE_READ_REG(hw, IXGBE_GRC_BY_MAC(hw)) & ~(u32)2);
 
 		/*
 		 * Clear Wake Up Status register to prevent any previous wakeup
@@ -3678,8 +3686,8 @@ ixgbe_if_update_admin_status(if_ctx_t ctx)
 			ixgbe_fc_enable(&sc->hw);
 			/* Update DMA coalescing config */
 			ixgbe_config_dmac(sc);
-			/* should actually be negotiated value */
-			iflib_link_state_change(ctx, LINK_STATE_UP, IF_Gbps(10));
+			iflib_link_state_change(ctx, LINK_STATE_UP,
+			    ixgbe_link_speed_to_baudrate(sc->link_speed));
 
 			if (sc->feat_en & IXGBE_FEATURE_SRIOV)
 				ixgbe_ping_all_vfs(sc);

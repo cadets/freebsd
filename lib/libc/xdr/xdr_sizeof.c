@@ -37,9 +37,6 @@
  * when serialized using XDR.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "namespace.h"
 #include <rpc/types.h>
 #include <rpc/xdr.h>

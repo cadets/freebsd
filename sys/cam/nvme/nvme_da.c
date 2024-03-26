@@ -28,9 +28,6 @@
  * Copyright (c) 2009 Alexander Motin <mav@FreeBSD.org>
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 
 #ifdef _KERNEL
@@ -149,7 +146,7 @@ static	disk_ioctl_t	ndaioctl;
 static	disk_strategy_t	ndastrategy;
 static	dumper_t	ndadump;
 static	periph_init_t	ndainit;
-static	void		ndaasync(void *callback_arg, u_int32_t code,
+static	void		ndaasync(void *callback_arg, uint32_t code,
 				struct cam_path *path, void *arg);
 static	void		ndasysctlinit(void *context, int pending);
 static	int		ndaflagssysctl(SYSCTL_HANDLER_ARGS);
@@ -159,8 +156,8 @@ static	periph_start_t	ndastart;
 static	periph_oninv_t	ndaoninvalidate;
 static	void		ndadone(struct cam_periph *periph,
 			       union ccb *done_ccb);
-static  int		ndaerror(union ccb *ccb, u_int32_t cam_flags,
-				u_int32_t sense_flags);
+static  int		ndaerror(union ccb *ccb, uint32_t cam_flags,
+				uint32_t sense_flags);
 static void		ndashutdown(void *arg, int howto);
 static void		ndasuspend(void *arg);
 
@@ -440,8 +437,9 @@ ndaioctl(struct disk *dp, u_long cmd, void *data, int fflag,
 		 * Tear down mapping and return status.
 		 */
 		cam_periph_unlock(periph);
-		cam_periph_unmapmem(ccb, &mapinfo);
-		error = cam_ccb_success(ccb) ? 0 : EIO;
+		error = cam_periph_unmapmem(ccb, &mapinfo);
+		if (!cam_ccb_success(ccb))
+			error = EIO;
 out:
 		cam_periph_lock(periph);
 		xpt_release_ccb(ccb);
@@ -646,7 +644,7 @@ ndacleanup(struct cam_periph *periph)
 }
 
 static void
-ndaasync(void *callback_arg, u_int32_t code,
+ndaasync(void *callback_arg, uint32_t code,
 	struct cam_path *path, void *arg)
 {
 	struct cam_periph *periph;
@@ -813,7 +811,7 @@ ndaflagssysctl(SYSCTL_HANDLER_ARGS)
 	if (softc->flags != 0)
 		sbuf_printf(&sbuf, "0x%b", (unsigned)softc->flags, NDA_FLAG_STRING);
 	else
-		sbuf_printf(&sbuf, "0");
+		sbuf_putc(&sbuf, '0');
 	error = sbuf_finish(&sbuf);
 	sbuf_delete(&sbuf);
 
@@ -913,18 +911,15 @@ ndaregister(struct cam_periph *periph, void *arg)
 	else if (maxio > maxphys)
 		maxio = maxphys;	/* for safety */
 	disk->d_maxsize = maxio;
-	flbas_fmt = (nsd->flbas >> NVME_NS_DATA_FLBAS_FORMAT_SHIFT) &
-		NVME_NS_DATA_FLBAS_FORMAT_MASK;
-	lbads = (nsd->lbaf[flbas_fmt] >> NVME_NS_DATA_LBAF_LBADS_SHIFT) &
-		NVME_NS_DATA_LBAF_LBADS_MASK;
+	flbas_fmt = NVMEV(NVME_NS_DATA_FLBAS_FORMAT, nsd->flbas);
+	lbads = NVMEV(NVME_NS_DATA_LBAF_LBADS, nsd->lbaf[flbas_fmt]);
 	disk->d_sectorsize = 1 << lbads;
 	disk->d_mediasize = (off_t)(disk->d_sectorsize * nsd->nsze);
 	disk->d_delmaxsize = disk->d_mediasize;
 	disk->d_flags = DISKFLAG_DIRECT_COMPLETION;
 	if (nvme_ctrlr_has_dataset_mgmt(cd))
 		disk->d_flags |= DISKFLAG_CANDELETE;
-	vwc_present = (cd->vwc >> NVME_CTRLR_DATA_VWC_PRESENT_SHIFT) &
-		NVME_CTRLR_DATA_VWC_PRESENT_MASK;
+	vwc_present = NVMEV(NVME_CTRLR_DATA_VWC_PRESENT, cd->vwc);
 	if (vwc_present)
 		disk->d_flags |= DISKFLAG_CANFLUSHCACHE;
 	if ((cpi.hba_misc & PIM_UNMAPPED) != 0) {
@@ -947,8 +942,8 @@ ndaregister(struct cam_periph *periph, void *arg)
 	disk->d_hba_subdevice = cpi.hba_subdevice;
 	snprintf(disk->d_attachment, sizeof(disk->d_attachment),
 	    "%s%d", cpi.dev_name, cpi.unit_number);
-	if (((nsd->nsfeat >> NVME_NS_DATA_NSFEAT_NPVALID_SHIFT) &
-	    NVME_NS_DATA_NSFEAT_NPVALID_MASK) != 0 && nsd->npwg != 0)
+	if (NVMEV(NVME_NS_DATA_NSFEAT_NPVALID, nsd->nsfeat) != 0 &&
+	    nsd->npwg != 0)
 		disk->d_stripesize = ((nsd->npwg + 1) * disk->d_sectorsize);
 	else
 		disk->d_stripesize = nsd->noiob * disk->d_sectorsize;
@@ -1268,7 +1263,7 @@ ndadone(struct cam_periph *periph, union ccb *done_ccb)
 }
 
 static int
-ndaerror(union ccb *ccb, u_int32_t cam_flags, u_int32_t sense_flags)
+ndaerror(union ccb *ccb, uint32_t cam_flags, uint32_t sense_flags)
 {
 #ifdef CAM_IO_STATS
 	struct nda_softc *softc;
@@ -1284,12 +1279,8 @@ ndaerror(union ccb *ccb, u_int32_t cam_flags, u_int32_t sense_flags)
 		softc->timeouts++;
 #endif
 		break;
-	case CAM_REQ_ABORTED:
 	case CAM_REQ_CMP_ERR:
-	case CAM_REQ_TERMIO:
-	case CAM_UNREC_HBA_ERROR:
-	case CAM_DATA_RUN_ERR:
-	case CAM_ATA_STATUS_ERROR:
+	case CAM_NVME_STATUS_ERROR:
 #ifdef CAM_IO_STATS
 		softc->errors++;
 #endif

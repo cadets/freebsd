@@ -36,8 +36,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #define	LINUXKPI_PARAM_PREFIX ibcore_
 
 #include "opt_inet.h"
@@ -789,6 +787,7 @@ struct rdma_cm_id *rdma_create_id(struct vnet *net,
 	INIT_LIST_HEAD(&id_priv->listen_list);
 	INIT_LIST_HEAD(&id_priv->mc_list);
 	get_random_bytes(&id_priv->seq_num, sizeof id_priv->seq_num);
+	id_priv->seq_num &= 0x00ffffff;
 	id_priv->id.route.addr.dev_addr.net = net;
 
 	return &id_priv->id;

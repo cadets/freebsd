@@ -26,8 +26,6 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _DEV_QUICC_BFE_H_
@@ -66,7 +64,7 @@ struct resource *quicc_bus_alloc_resource(device_t, device_t, int, int *,
 int quicc_bus_get_resource(device_t, device_t, int, int,
     rman_res_t *, rman_res_t *);
 int quicc_bus_read_ivar(device_t, device_t, int, uintptr_t *);
-int quicc_bus_release_resource(device_t, device_t, int, int, struct resource *);
+int quicc_bus_release_resource(device_t, device_t, struct resource *);
 int quicc_bus_setup_intr(device_t, device_t, struct resource *, int,
     driver_filter_t *, void (*)(void *), void *, void **);
 int quicc_bus_teardown_intr(device_t, device_t, struct resource *, void *);

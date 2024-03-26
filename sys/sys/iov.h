@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SYS_IOV_H_
@@ -211,7 +209,7 @@ struct pci_iov_schema
  *    (PF or individual VF).
  *         Note: We will refer to the section of the configuration schema that
  *               specifies the parameters for this subsystem and device
- *               configuration as the device/subystem schema.
+ *               configuration as the device/subsystem schema.
  * 2) The subsystem node must contain only keys that correspond to parameters
  *    that are specified in the device/subsystem schema.
  * 3) Every parameter specified as required in the device/subsystem schema is

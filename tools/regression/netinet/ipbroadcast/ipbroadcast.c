@@ -28,9 +28,6 @@
  * Test utility for IPv4 broadcast sockets.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>

@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 
 /*
  * Copyright (C) 2012 by Darren Reed.
@@ -11,10 +10,6 @@
 #include <sys/ioctl.h>
 #include "netinet/ipl.h"
 
-#if !defined(lint)
-static const char sccsid[] = "@(#)ipf.c	1.23 6/5/96 (C) 1993-2000 Darren Reed";
-static const char rcsid[] = "@(#)$Id$";
-#endif
 
 #if !defined(__SVR4) && defined(__GNUC__)
 extern	char	*index(const char *, int);
@@ -367,7 +362,7 @@ flushfilter(char *arg, int *filter)
 		if (!(opts & OPT_DONOTHING)) {
 			if (use_inet6) {
 				fprintf(stderr,
-					"IPv6 rules are no longer seperate\n");
+					"IPv6 rules are no longer separate\n");
 			} else if (filter != NULL) {
 				ipfobj_t obj;
 

@@ -27,12 +27,7 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)ffs_subr.c	8.5 (Berkeley) 3/21/95
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/endian.h>
@@ -200,7 +195,7 @@ ffs_sbget(void *devfd, struct fs **fsp, off_t sblock, int flags,
 	blks = howmany(size, fs->fs_fsize);
 	if (fs->fs_contigsumsize > 0)
 		size += fs->fs_ncg * sizeof(int32_t);
-	size += fs->fs_ncg * sizeof(u_int8_t);
+	size += fs->fs_ncg * sizeof(uint8_t);
 	if ((fs_si = UFS_MALLOC(sizeof(*fs_si), filltype, M_NOWAIT)) == NULL) {
 		UFS_FREE(fs, filltype);
 		return (ENOMEM);
@@ -238,8 +233,8 @@ ffs_sbget(void *devfd, struct fs **fsp, off_t sblock, int flags,
 			*lp++ = fs->fs_contigsumsize;
 		space = (uint8_t *)lp;
 	}
-	size = fs->fs_ncg * sizeof(u_int8_t);
-	fs->fs_contigdirs = (u_int8_t *)space;
+	size = fs->fs_ncg * sizeof(uint8_t);
+	fs->fs_contigdirs = (uint8_t *)space;
 	bzero(fs->fs_contigdirs, size);
 	*fsp = fs;
 	return (0);
@@ -366,8 +361,8 @@ readsuper(void *devfd, struct fs **fsp, off_t sblockloc, int flags,
 static int
 validate_sblock(struct fs *fs, int flags)
 {
-	u_long i, sectorsize;
-	u_int64_t maxfilesize, sizepb;
+	uint64_t i, sectorsize;
+	uint64_t maxfilesize, sizepb;
 	int error, prtmsg, warnerr;
 	char *wmsg;
 
@@ -400,7 +395,6 @@ validate_sblock(struct fs *fs, int flags)
 		} else if (fs->fs_magic == FS_UFS1_MAGIC) {
 			FCHK(fs->fs_sblockloc, <, 0, %jd);
 			FCHK(fs->fs_sblockloc, >, SBLOCK_UFS1, %jd);
-			FCHK(fs->fs_old_ncyl, !=, fs->fs_ncg, %jd);
 		}
 		FCHK(fs->fs_frag, <, 1, %jd);
 		FCHK(fs->fs_frag, >, MAXFRAG, %jd);
@@ -428,13 +422,13 @@ validate_sblock(struct fs *fs, int flags)
 		/* Only need to validate these if reading in csum data */
 		if ((flags & UFS_NOCSUM) != 0)
 			return (error);
-		FCHK((u_int64_t)fs->fs_ipg * fs->fs_ncg, >,
+		FCHK((uint64_t)fs->fs_ipg * fs->fs_ncg, >,
 		    (((int64_t)(1)) << 32) - INOPB(fs), %jd);
 		FCHK(fs->fs_cstotal.cs_nifree, <, 0, %jd);
 		FCHK(fs->fs_cstotal.cs_nifree, >,
-		    (u_int64_t)fs->fs_ipg * fs->fs_ncg, %jd);
+		    (uint64_t)fs->fs_ipg * fs->fs_ncg, %jd);
 		FCHK(fs->fs_cstotal.cs_ndir, >,
-		    ((u_int64_t)fs->fs_ipg * fs->fs_ncg) -
+		    ((uint64_t)fs->fs_ipg * fs->fs_ncg) -
 		    fs->fs_cstotal.cs_nifree, %jd);
 		FCHK(fs->fs_size, <, 8 * fs->fs_frag, %jd);
 		FCHK(fs->fs_size, <=, ((int64_t)fs->fs_ncg - 1) * fs->fs_fpg,
@@ -443,7 +437,8 @@ validate_sblock(struct fs *fs, int flags)
 		FCHK(fs->fs_csaddr, <, 0, %jd);
 		FCHK(fs->fs_cssize, !=,
 		    fragroundup(fs, fs->fs_ncg * sizeof(struct csum)), %jd);
-		FCHK(dtog(fs, fs->fs_csaddr), >, fs->fs_ncg, %jd);
+		FCHK(fs->fs_csaddr + howmany(fs->fs_cssize, fs->fs_fsize), >,
+		    fs->fs_size, %jd);
 		FCHK(fs->fs_csaddr, <, cgdmin(fs, dtog(fs, fs->fs_csaddr)),
 		    %jd);
 		FCHK(dtog(fs, fs->fs_csaddr + howmany(fs->fs_cssize,
@@ -476,16 +471,13 @@ validate_sblock(struct fs *fs, int flags)
 		WCHK(fs->fs_old_rotdelay, !=, 0, %jd);
 		WCHK(fs->fs_old_rps, !=, 60, %jd);
 		WCHK(fs->fs_old_nspf, !=, fs->fs_fsize / sectorsize, %jd);
-		FCHK(fs->fs_old_cpg, !=, 1, %jd);
 		WCHK(fs->fs_old_interleave, !=, 1, %jd);
 		WCHK(fs->fs_old_trackskew, !=, 0, %jd);
 		WCHK(fs->fs_old_cpc, !=, 0, %jd);
 		WCHK(fs->fs_old_postblformat, !=, 1, %jd);
 		FCHK(fs->fs_old_nrpos, !=, 1, %jd);
-		WCHK(fs->fs_old_spc, !=, fs->fs_fpg * fs->fs_old_nspf, %jd);
 		WCHK(fs->fs_old_nsect, !=, fs->fs_old_spc, %jd);
 		WCHK(fs->fs_old_npsect, !=, fs->fs_old_spc, %jd);
-		FCHK(fs->fs_old_ncyl, !=, fs->fs_ncg, %jd);
 	} else {
 		/* Bad magic number, so assume not a superblock */
 		return (ENOENT);
@@ -503,14 +495,14 @@ validate_sblock(struct fs *fs, int flags)
 	FCHK(fs->fs_fpg, <, 3 * fs->fs_frag, %jd);
 	FCHK(fs->fs_ncg, <, 1, %jd);
 	FCHK(fs->fs_ipg, <, fs->fs_inopb, %jd);
-	FCHK((u_int64_t)fs->fs_ipg * fs->fs_ncg, >,
+	FCHK((uint64_t)fs->fs_ipg * fs->fs_ncg, >,
 	    (((int64_t)(1)) << 32) - INOPB(fs), %jd);
 	FCHK(fs->fs_cstotal.cs_nifree, <, 0, %jd);
-	FCHK(fs->fs_cstotal.cs_nifree, >, (u_int64_t)fs->fs_ipg * fs->fs_ncg,
+	FCHK(fs->fs_cstotal.cs_nifree, >, (uint64_t)fs->fs_ipg * fs->fs_ncg,
 	    %jd);
 	FCHK(fs->fs_cstotal.cs_ndir, <, 0, %jd);
 	FCHK(fs->fs_cstotal.cs_ndir, >,
-	    ((u_int64_t)fs->fs_ipg * fs->fs_ncg) - fs->fs_cstotal.cs_nifree,
+	    ((uint64_t)fs->fs_ipg * fs->fs_ncg) - fs->fs_cstotal.cs_nifree,
 	    %jd);
 	FCHK(fs->fs_sbsize, >, SBLOCKSIZE, %jd);
 	FCHK(fs->fs_sbsize, <, (signed)sizeof(struct fs), %jd);
@@ -594,7 +586,8 @@ validate_sblock(struct fs *fs, int flags)
 	FCHK(fs->fs_csaddr, <, 0, %jd);
 	FCHK(fs->fs_cssize, !=,
 	    fragroundup(fs, fs->fs_ncg * sizeof(struct csum)), %jd);
-	FCHK(dtog(fs, fs->fs_csaddr), >, fs->fs_ncg, %jd);
+	FCHK(fs->fs_csaddr + howmany(fs->fs_cssize, fs->fs_fsize), >,
+	    fs->fs_size, %jd);
 	FCHK(fs->fs_csaddr, <, cgdmin(fs, dtog(fs, fs->fs_csaddr)), %jd);
 	FCHK(dtog(fs, fs->fs_csaddr + howmany(fs->fs_cssize, fs->fs_fsize)), >,
 	    dtog(fs, fs->fs_csaddr), %jd);
@@ -942,7 +935,7 @@ ffs_isblock(struct fs *fs, unsigned char *cp, ufs1_daddr_t h)
  * check if a block is free
  */
 int
-ffs_isfreeblock(struct fs *fs, u_char *cp, ufs1_daddr_t h)
+ffs_isfreeblock(struct fs *fs, uint8_t *cp, ufs1_daddr_t h)
 {
 
 	switch ((int)fs->fs_frag) {
@@ -967,7 +960,7 @@ ffs_isfreeblock(struct fs *fs, u_char *cp, ufs1_daddr_t h)
  * take a block out of the map
  */
 void
-ffs_clrblock(struct fs *fs, u_char *cp, ufs1_daddr_t h)
+ffs_clrblock(struct fs *fs, uint8_t *cp, ufs1_daddr_t h)
 {
 
 	switch ((int)fs->fs_frag) {
@@ -1029,9 +1022,9 @@ ffs_clusteracct(struct fs *fs, struct cg *cgp, ufs1_daddr_t blkno, int cnt)
 {
 	int32_t *sump;
 	int32_t *lp;
-	u_char *freemapp, *mapp;
+	uint8_t *freemapp, *mapp;
 	int i, start, end, forw, back, map;
-	u_int bit;
+	uint64_t bit;
 
 	if (fs->fs_contigsumsize <= 0)
 		return;

@@ -67,9 +67,6 @@
  * rights to redistribute these changes.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  *	Stand-alone file reading package.
  */

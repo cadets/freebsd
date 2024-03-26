@@ -31,7 +31,6 @@
  * POSSIBILITY OF SUCH DAMAGES.
  *
  * $Id: //depot/users/kenm/FreeBSD-test2/sys/cam/ctl/ctl_io.h#5 $
- * $FreeBSD$
  */
 /*
  * CAM Target Layer data movement structures/interface.
@@ -45,6 +44,9 @@
 #ifndef _KERNEL
 #include <stdbool.h>
 #endif
+
+#include <sys/queue.h>
+#include <cam/scsi/scsi_all.h>
 
 #define	CTL_MAX_CDBLEN	32
 /*
@@ -104,7 +106,7 @@ typedef enum {
 	CTL_FLAG_IO_CONT	= 0x00100000,	/* Continue I/O instead of
 						   completing */
 #if 0
-	CTL_FLAG_ALREADY_DONE	= 0x00200000	/* I/O already completed */
+	CTL_FLAG_ALREADY_DONE	= 0x00200000,	/* I/O already completed */
 #endif
 	CTL_FLAG_NO_DATAMOVE	= 0x00400000,
 	CTL_FLAG_DMA_QUEUED	= 0x00800000,	/* DMA queued but not started*/

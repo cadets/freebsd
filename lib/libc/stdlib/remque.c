@@ -6,9 +6,6 @@
  * As long as the above copyright statement and this notice remain
  * unchanged, you can do what ever you want with this file. 
  */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #define	_SEARCH_PRIVATE
 #include <search.h>
 #include <stdlib.h>	/* for NULL */

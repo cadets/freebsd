@@ -33,9 +33,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-__SCCSID("@(#)kvm_proc.c	8.3 (Berkeley) 9/23/93");
 
 /*
  * Proc traversal interface for kvm.  ps and w are (probably) the exclusive

@@ -1,5 +1,4 @@
 /*	$NetBSD: rpcbind.h,v 1.1 2000/06/03 00:47:21 fvdl Exp $	*/
-/*	$FreeBSD$ */
 
 /*-
  * SPDX-License-Identifier: BSD-3-Clause
@@ -33,8 +32,6 @@
 /*
  * Copyright (c) 1986 - 1991 by Sun Microsystems, Inc.
  */
-
-/* #ident	"@(#)rpcbind.h 1.4 90/04/12 SMI" */
 
 /*
  * rpcbind.h

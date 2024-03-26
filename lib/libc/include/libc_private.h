@@ -28,8 +28,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
- *
  * Private definitions for libc, libc_r and libpthread.
  *
  */
@@ -186,6 +184,7 @@ typedef enum {
 	PJT_MUTEXATTR_SETROBUST,
 	PJT_GETTHREADID_NP,
 	PJT_ATTR_GET_NP,
+	PJT_GETNAME_NP,
 	PJT_MAX
 } pjt_index_t;
 
@@ -201,6 +200,7 @@ int	_pthread_mutex_init_calloc_cb_stub(pthread_mutex_t *mutex,
 typedef int (*interpos_func_t)(void);
 interpos_func_t *__libc_interposing_slot(int interposno);
 extern interpos_func_t __libc_interposing[] __hidden;
+interpos_func_t *__libsys_interposing_slot(int interposno);
 
 enum {
 	INTERPOS_accept,
@@ -344,7 +344,7 @@ int		__sys_clock_nanosleep(__clockid_t, int,
 int		__sys_close(int);
 int		__sys_close_range(unsigned, unsigned, int);
 int		__sys_connect(int, const struct sockaddr *, __socklen_t);
-int		__sys_fcntl(int, int, ...);
+int		__sys_fcntl(int, int, __intptr_t);
 int		__sys_fdatasync(int);
 int		__sys_fstat(int fd, struct stat *);
 int		__sys_fstatfs(int fd, struct statfs *);
@@ -413,18 +413,13 @@ int		__libc_sigaction(int, const struct sigaction *,
 int		__libc_sigprocmask(int, const __sigset_t *, __sigset_t *)
 		    __hidden;
 int		__libc_sigsuspend(const __sigset_t *) __hidden;
-int		__libc_sigwait(const __sigset_t * __restrict,
-		    int * restrict sig);
+int		__libsys_sigwait(const __sigset_t *, int *) __hidden;
 int		__libc_system(const char *);
 int		__libc_tcdrain(int);
-int		__fcntl_compat(int fd, int cmd, ...);
 
 int		__sys_futimens(int fd, const struct timespec *times) __hidden;
 int		__sys_utimensat(int fd, const char *path,
 		    const struct timespec *times, int flag) __hidden;
-
-/* execve() with PATH processing to implement posix_spawnp() */
-int _execvpe(const char *, char * const *, char * const *);
 
 int _elf_aux_info(int aux, void *buf, int buflen);
 struct dl_phdr_info;

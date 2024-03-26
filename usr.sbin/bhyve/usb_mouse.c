@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/time.h>
 
 #include <machine/vmm_snapshot.h>
@@ -156,7 +154,7 @@ static struct usb_device_descriptor umouse_dev_desc = {
 	.bLength = sizeof(umouse_dev_desc),
 	.bDescriptorType = UDESC_DEVICE,
 	MSETW(.bcdUSB, UD_USB_3_0),
-	.bMaxPacketSize = 8,			/* max packet size */
+	.bMaxPacketSize = 9,			/* max pkt size, 2^9 = 512 */
 	MSETW(.idVendor, 0xFB5D),		/* vendor */
 	MSETW(.idProduct, 0x0001),		/* product */
 	MSETW(.bcdDevice, 0),			/* device version */

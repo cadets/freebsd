@@ -23,7 +23,6 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD$
 
 #
 # These tests exercise a few basic cases for the sendfile() syscall:
@@ -55,7 +54,7 @@ io_success_body()
 	    atf_skip "Sendfile(4) unimplemented. https://github.com/qemu-bsd-user/qemu-bsd-user/issues/25"
 	fi
 
-	md=$(alloc_md)
+	alloc_md md
 	common_body_setup $md
 
 	atf_check $HELPER $FILE 0 0x10000 0x10000
@@ -78,7 +77,7 @@ io_fail_sync_body()
 	    atf_skip "Sendfile(4) unimplemented. https://github.com/qemu-bsd-user/qemu-bsd-user/issues/25"
 	fi
 
-	md=$(alloc_md)
+	alloc_md md
 	common_body_setup $md
 
 	atf_check gnop configure -r 100 -e 5 ${md}.nop
@@ -102,7 +101,7 @@ io_fail_async_body()
 	    atf_skip "Sendfile(4) unimplemented. https://github.com/qemu-bsd-user/qemu-bsd-user/issues/25"
 	fi
 
-	md=$(alloc_md)
+	alloc_md md
 	common_body_setup $md
 
 	atf_check gnop configure -r 100 -e 5 ${md}.nop
@@ -123,11 +122,12 @@ atf_init_test_cases()
 
 alloc_md()
 {
-	local md
+	local _md
 
-	md=$(mdconfig -a -t swap -s 256M) || atf_fail "mdconfig -a failed"
-	echo ${md} >> $MD_DEVS
-	echo ${md}
+	[ -c /dev/mdctl ] || atf_skip "no /dev/mdctl to create md devices"
+	_md=$(mdconfig -a -t swap -s 256M) || atf_fail "mdconfig -a failed"
+	echo ${_md} >> $MD_DEVS
+	eval "${1}='${_md}'"
 }
 
 common_body_setup()

@@ -32,20 +32,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1980, 1987, 1993\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#ifndef lint
-#if 0
-static char sccsid[] = "@(#)lock.c	8.1 (Berkeley) 6/6/93";
-#endif
-#endif /* not lint */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Lock a terminal up until the given key is entered or the given
  * interval times out.
@@ -81,7 +67,7 @@ __FBSDID("$FreeBSD$");
 static void quit(int);
 static void bye(int);
 static void hi(int);
-static void usage(void);
+static void usage(void) __dead2;
 
 static struct timeval	timeout;
 static struct timeval	zerotime;

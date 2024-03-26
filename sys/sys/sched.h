@@ -57,8 +57,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SCHED_H_
@@ -215,7 +213,7 @@ SYSINIT(name, SI_SUB_LAST, SI_ORDER_MIDDLE, name ## _add_proc, NULL);
     SCHED_STAT_DEFINE_VAR(name, &DPCPU_NAME(name), descr)
 /*
  * Sched stats are always incremented in critical sections so no atomic
- * is necesssary to increment them.
+ * is necessary to increment them.
  */
 #define SCHED_STAT_INC(var)     DPCPU_GET(var)++;
 #else

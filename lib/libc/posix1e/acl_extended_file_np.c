@@ -29,9 +29,6 @@
  * acl_extended_file_np: Check if the file has extended ACLs set.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/errno.h>
 #include <sys/acl.h>

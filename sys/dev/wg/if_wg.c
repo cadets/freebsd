@@ -562,7 +562,7 @@ wg_aip_add(struct wg_softc *sc, struct wg_peer *peer, sa_family_t af, const void
 		node = root->rnh_lookup(&aip->a_addr, &aip->a_mask, &root->rh);
 	if (!node) {
 		free(aip, M_WG);
-		return (ENOMEM);
+		ret = ENOMEM;
 	} else if (node != aip->a_nodes) {
 		free(aip, M_WG);
 		aip = (struct wg_aip *)node;
@@ -806,14 +806,15 @@ wg_socket_bind(struct socket **in_so4, struct socket **in_so6, in_port_t *reques
 		if (ret4 && ret4 != EADDRNOTAVAIL)
 			return (ret4);
 		if (!ret4 && !sin.sin_port) {
-			struct sockaddr_in *bound_sin;
-			int ret = so4->so_proto->pr_sockaddr(so4,
-			    (struct sockaddr **)&bound_sin);
+			struct sockaddr_in bound_sin =
+			    { .sin_len = sizeof(bound_sin) };
+			int ret;
+
+			ret = sosockaddr(so4, (struct sockaddr *)&bound_sin);
 			if (ret)
 				return (ret);
-			port = ntohs(bound_sin->sin_port);
-			sin6.sin6_port = bound_sin->sin_port;
-			free(bound_sin, M_SONAME);
+			port = ntohs(bound_sin.sin_port);
+			sin6.sin6_port = bound_sin.sin_port;
 		}
 	}
 
@@ -822,13 +823,14 @@ wg_socket_bind(struct socket **in_so4, struct socket **in_so6, in_port_t *reques
 		if (ret6 && ret6 != EADDRNOTAVAIL)
 			return (ret6);
 		if (!ret6 && !sin6.sin6_port) {
-			struct sockaddr_in6 *bound_sin6;
-			int ret = so6->so_proto->pr_sockaddr(so6,
-			    (struct sockaddr **)&bound_sin6);
+			struct sockaddr_in6 bound_sin6 =
+			    { .sin6_len = sizeof(bound_sin6) };
+			int ret;
+
+			ret = sosockaddr(so6, (struct sockaddr *)&bound_sin6);
 			if (ret)
 				return (ret);
-			port = ntohs(bound_sin6->sin6_port);
-			free(bound_sin6, M_SONAME);
+			port = ntohs(bound_sin6.sin6_port);
 		}
 	}
 
@@ -1461,8 +1463,12 @@ calculate_padding(struct wg_packet *pkt)
 {
 	unsigned int padded_size, last_unit = pkt->p_mbuf->m_pkthdr.len;
 
-	if (__predict_false(!pkt->p_mtu))
-		return (last_unit + (WG_PKT_PADDING - 1)) & ~(WG_PKT_PADDING - 1);
+	/* Keepalive packets don't set p_mtu, but also have a length of zero. */
+	if (__predict_false(pkt->p_mtu == 0)) {
+		padded_size = (last_unit + (WG_PKT_PADDING - 1)) &
+		    ~(WG_PKT_PADDING - 1);
+		return (padded_size - last_unit);
+	}
 
 	if (__predict_false(last_unit > pkt->p_mtu))
 		last_unit %= pkt->p_mtu;
@@ -1470,7 +1476,7 @@ calculate_padding(struct wg_packet *pkt)
 	padded_size = (last_unit + (WG_PKT_PADDING - 1)) & ~(WG_PKT_PADDING - 1);
 	if (pkt->p_mtu < padded_size)
 		padded_size = pkt->p_mtu;
-	return padded_size - last_unit;
+	return (padded_size - last_unit);
 }
 
 static void
@@ -1511,8 +1517,7 @@ wg_encrypt(struct wg_softc *sc, struct wg_packet *pkt)
 	state = WG_PACKET_CRYPTED;
 out:
 	pkt->p_mbuf = m;
-	wmb();
-	pkt->p_state = state;
+	atomic_store_rel_int(&pkt->p_state, state);
 	GROUPTASK_ENQUEUE(&peer->p_send);
 	noise_remote_put(remote);
 }
@@ -1584,8 +1589,7 @@ wg_decrypt(struct wg_softc *sc, struct wg_packet *pkt)
 	state = WG_PACKET_CRYPTED;
 out:
 	pkt->p_mbuf = m;
-	wmb();
-	pkt->p_state = state;
+	atomic_store_rel_int(&pkt->p_state, state);
 	GROUPTASK_ENQUEUE(&peer->p_recv);
 	noise_remote_put(remote);
 }
@@ -1641,7 +1645,7 @@ wg_deliver_out(struct wg_peer *peer)
 	wg_peer_get_endpoint(peer, &endpoint);
 
 	while ((pkt = wg_queue_dequeue_serial(&peer->p_encrypt_serial)) != NULL) {
-		if (pkt->p_state != WG_PACKET_CRYPTED)
+		if (atomic_load_acq_int(&pkt->p_state) != WG_PACKET_CRYPTED)
 			goto error;
 
 		m = pkt->p_mbuf;
@@ -1683,7 +1687,7 @@ wg_deliver_in(struct wg_peer *peer)
 	struct epoch_tracker	 et;
 
 	while ((pkt = wg_queue_dequeue_serial(&peer->p_decrypt_serial)) != NULL) {
-		if (pkt->p_state != WG_PACKET_CRYPTED)
+		if (atomic_load_acq_int(&pkt->p_state) != WG_PACKET_CRYPTED)
 			goto error;
 
 		m = pkt->p_mbuf;
@@ -2870,6 +2874,7 @@ wg_clone_destroy(struct if_clone *ifc, if_t ifp, uint32_t flags)
 
 	if (cred != NULL)
 		crfree(cred);
+	bpfdetach(sc->sc_ifp);
 	if_detach(sc->sc_ifp);
 	if_free(sc->sc_ifp);
 
@@ -2984,38 +2989,27 @@ static inline bool wg_run_selftests(void) { return true; }
 static int
 wg_module_init(void)
 {
-	int ret = ENOMEM;
-
+	int ret;
 	osd_method_t methods[PR_MAXMETHOD] = {
 		[PR_METHOD_REMOVE] = wg_prison_remove,
 	};
 
 	if ((wg_packet_zone = uma_zcreate("wg packet", sizeof(struct wg_packet),
 	     NULL, NULL, NULL, NULL, 0, 0)) == NULL)
-		goto free_none;
+		return (ENOMEM);
 	ret = crypto_init();
 	if (ret != 0)
-		goto free_zone;
-	if (cookie_init() != 0)
-		goto free_crypto;
+		return (ret);
+	ret = cookie_init();
+	if (ret != 0)
+		return (ret);
 
 	wg_osd_jail_slot = osd_jail_register(NULL, methods);
 
-	ret = ENOTRECOVERABLE;
 	if (!wg_run_selftests())
-		goto free_all;
+		return (ENOTRECOVERABLE);
 
 	return (0);
-
-free_all:
-	osd_jail_deregister(wg_osd_jail_slot);
-	cookie_deinit();
-free_crypto:
-	crypto_deinit();
-free_zone:
-	uma_zdestroy(wg_packet_zone);
-free_none:
-	return (ret);
 }
 
 static void
@@ -3033,10 +3027,12 @@ wg_module_deinit(void)
 	VNET_LIST_RUNLOCK();
 	NET_EPOCH_WAIT();
 	MPASS(LIST_EMPTY(&wg_list));
-	osd_jail_deregister(wg_osd_jail_slot);
+	if (wg_osd_jail_slot != 0)
+		osd_jail_deregister(wg_osd_jail_slot);
 	cookie_deinit();
 	crypto_deinit();
-	uma_zdestroy(wg_packet_zone);
+	if (wg_packet_zone != NULL)
+		uma_zdestroy(wg_packet_zone);
 }
 
 static int

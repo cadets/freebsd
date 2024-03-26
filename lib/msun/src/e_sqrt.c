@@ -1,5 +1,4 @@
 
-/* @(#)e_sqrt.c 1.3 95/01/18 */
 /*
  * ====================================================
  * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
@@ -11,9 +10,6 @@
  * ====================================================
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <float.h>
 
 #include "math.h"
@@ -21,12 +17,12 @@ __FBSDID("$FreeBSD$");
 
 #ifdef USE_BUILTIN_SQRT
 double
-__ieee754_sqrt(double x)
+sqrt(double x)
 {
 	return (__builtin_sqrt(x));
 }
 #else
-/* __ieee754_sqrt(x)
+/* sqrt(x)
  * Return correctly rounded sqrt.
  *           ------------------------------------------
  *	     |  Use the hardware sqrt if you have one |
@@ -99,7 +95,7 @@ __ieee754_sqrt(double x)
 static	const double	one	= 1.0, tiny=1.0e-300;
 
 double
-__ieee754_sqrt(double x)
+sqrt(double x)
 {
 	double z;
 	int32_t sign = (int)0x80000000;

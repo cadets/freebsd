@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 SRCDIR=${SRCTOP}/sys/contrib/openzfs/module
 INCDIR=${SRCTOP}/sys/contrib/openzfs/include
@@ -38,7 +37,7 @@ CFLAGS+= -I${.CURDIR}
 
 CFLAGS+= -D__KERNEL__ -DFREEBSD_NAMECACHE -DBUILDING_ZFS \
 	-DHAVE_UIO_ZEROCOPY -DWITHOUT_NETDUMP -D__KERNEL -D_SYS_CONDVAR_H_ \
-	-D_SYS_VMEM_H_ -DIN_FREEBSD_BASE
+	-D_SYS_VMEM_H_
 
 .if ${MACHINE_ARCH} == "amd64"
 CFLAGS+= -D__x86_64 -DHAVE_SSE2 -DHAVE_SSSE3 -DHAVE_SSE4_1 -DHAVE_SSE4_2 \
@@ -239,6 +238,7 @@ SRCS+=	abd.c \
 	bqueue.c \
 	dataset_kstats.c \
 	ddt.c \
+	ddt_stats.c \
 	ddt_zap.c \
 	dmu.c \
 	dmu_diff.c \
@@ -295,7 +295,6 @@ SRCS+=	abd.c \
 	uberblock.c \
 	unique.c \
 	vdev.c \
-	vdev_cache.c \
 	vdev_draid.c \
 	vdev_draid_rand.c \
 	vdev_indirect.c \
@@ -391,6 +390,7 @@ CFLAGS.gcc+= -Wno-pointer-to-int-cast
 
 CFLAGS.abd.c= -Wno-cast-qual
 CFLAGS.ddt.c= -Wno-cast-qual
+CFLAGS.ddt_zap.c= -Wno-cast-qual
 CFLAGS.dmu.c= -Wno-cast-qual
 CFLAGS.dmu_traverse.c= -Wno-cast-qual
 CFLAGS.dnode.c= ${NO_WUNUSED_BUT_SET_VARIABLE}

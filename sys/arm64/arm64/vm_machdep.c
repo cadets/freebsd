@@ -27,9 +27,6 @@
 
 #include "opt_platform.h"
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/limits.h>
@@ -208,7 +205,7 @@ cpu_copy_thread(struct thread *td, struct thread *td0)
  * Set that machine state for performing an upcall that starts
  * the entry function with the given argument.
  */
-void
+int
 cpu_set_upcall(struct thread *td, void (*entry)(void *), void *arg,
 	stack_t *stack)
 {
@@ -216,13 +213,18 @@ cpu_set_upcall(struct thread *td, void (*entry)(void *), void *arg,
 
 	/* 32bits processes use r13 for sp */
 	if (td->td_frame->tf_spsr & PSR_M_32) {
-		tf->tf_x[13] = STACKALIGN((uintptr_t)stack->ss_sp + stack->ss_size);
+		tf->tf_x[13] = STACKALIGN((uintptr_t)stack->ss_sp +
+		    stack->ss_size);
 		if ((register_t)entry & 1)
 			tf->tf_spsr |= PSR_T;
 	} else
-		tf->tf_sp = STACKALIGN((uintptr_t)stack->ss_sp + stack->ss_size);
+		tf->tf_sp = STACKALIGN((uintptr_t)stack->ss_sp +
+		    stack->ss_size);
 	tf->tf_elr = (register_t)entry;
 	tf->tf_x[0] = (register_t)arg;
+	tf->tf_x[29] = 0;
+	tf->tf_lr = 0;
+	return (0);
 }
 
 int
@@ -309,4 +311,15 @@ cpu_procctl(struct thread *td __unused, int idtype __unused, id_t id __unused,
 {
 
 	return (EINVAL);
+}
+
+void
+cpu_sync_core(void)
+{
+	/*
+	 * Do nothing. According to ARM ARMv8 D1.11 Exception return
+	 * If FEAT_ExS is not implemented, or if FEAT_ExS is
+	 * implemented and the SCTLR_ELx.EOS field is set, exception
+	 * return from ELx is a context synchronization event.
+	 */
 }

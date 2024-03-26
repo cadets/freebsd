@@ -57,6 +57,7 @@
 #include <dt_impl.h>
 #include <dtraced.h>
 #include <dt_hypertrace.h>
+#include <dt_oformat.h>
 
 static const struct {
 	size_t dtps_offset;
@@ -1304,7 +1305,17 @@ dtrace_send_elf_async(dtrace_prog_t *pgp, int fromfd, int tofd,
 	dt_list_append(&_elf_async_queue, entry_to_send);
 	pthread_cond_signal(&_elf_async_cv);
 	pthread_mutex_unlock(&_elf_async_mtx);
+	return (0);
+}
 
+int
+dtrace_oformat_configure(dtrace_hdl_t *dtp)
+{
+
+	dtp->dt_oformat = xo_get_style(NULL) == XO_STYLE_TEXT ?
+	    DTRACE_OFORMAT_TEXT :
+	    DTRACE_OFORMAT_STRUCTURED;
+	xo_set_flags(NULL, XOF_DTRT);
 	return (0);
 }
 
@@ -1457,4 +1468,34 @@ dtrace_hypertrace_errstr(int err)
 		return ("Linking error");
 	}
 	return ("Unknown error");
+}
+
+int
+dtrace_oformat(dtrace_hdl_t *dtp)
+{
+
+	return (dtp->dt_oformat != DTRACE_OFORMAT_TEXT);
+}
+
+void
+dtrace_set_outfp(const FILE *ofp)
+{
+
+	xo_set_file((FILE *)ofp);
+}
+
+void
+dtrace_oformat_setup(dtrace_hdl_t *dtp)
+{
+
+	xo_open_container("dtrace");
+	xo_open_list("probes");
+}
+
+void
+dtrace_oformat_teardown(dtrace_hdl_t *dtp)
+{
+
+	xo_close_list("probes");
+	xo_close_container("dtrace");
 }

@@ -22,13 +22,8 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
-#ifndef	lint
-static char rcsid[] = "$Id: mkfile.c,v 1.5 2013-10-26 10:11:34+09 hatanou Exp $";
-#endif	/* !lint */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -170,7 +165,7 @@ int
 main(int argc, char *argv[])
 {
 	unsigned long long fsize;
-	char ch;
+	int ch;
 
 	/* We have at least 2 arguments. */
 	if (argc < 3) {

@@ -40,8 +40,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- *	from: @(#)vm_fault.c	8.4 (Berkeley) 1/12/94
- *
  *
  * Copyright (c) 1987, 1990 Carnegie-Mellon University.
  * All rights reserved.
@@ -74,8 +72,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_ktrace.h"
 #include "opt_vm.h"
 
@@ -161,7 +157,7 @@ struct faultstate {
  * Return codes for internal fault routines.
  */
 enum fault_status {
-	FAULT_SUCCESS = 1,	/* Return success to user. */
+	FAULT_SUCCESS = 10000,	/* Return success to user. */
 	FAULT_FAILURE,		/* Return failure to user. */
 	FAULT_CONTINUE,		/* Continue faulting. */
 	FAULT_RESTART,		/* Restart fault. */
@@ -388,7 +384,7 @@ vm_fault_soft_fast(struct faultstate *fs)
 	    rounddown2(vaddr, pagesizes[m_super->psind]) >= fs->entry->start &&
 	    roundup2(vaddr + 1, pagesizes[m_super->psind]) <= fs->entry->end &&
 	    (vaddr & (pagesizes[m_super->psind] - 1)) == (VM_PAGE_TO_PHYS(m) &
-	    (pagesizes[m_super->psind] - 1)) && !fs->wired &&
+	    (pagesizes[m_super->psind] - 1)) &&
 	    pmap_ps_enabled(fs->map->pmap)) {
 		flags = PS_ALL_VALID;
 		if ((fs->prot & VM_PROT_WRITE) != 0) {
@@ -539,8 +535,7 @@ vm_fault_populate(struct faultstate *fs)
 	MPASS(pager_last < fs->first_object->size);
 
 	vm_fault_restore_map_lock(fs);
-	bdry_idx = (fs->entry->eflags & MAP_ENTRY_SPLIT_BOUNDARY_MASK) >>
-	    MAP_ENTRY_SPLIT_BOUNDARY_SHIFT;
+	bdry_idx = MAP_ENTRY_SPLIT_BOUNDARY_INDEX(fs->entry);
 	if (fs->map->timestamp != fs->map_generation) {
 		if (bdry_idx == 0) {
 			vm_fault_populate_cleanup(fs->first_object, pager_first,
@@ -622,7 +617,7 @@ vm_fault_populate(struct faultstate *fs)
 		psind = m->psind;
 		if (psind > 0 && ((vaddr & (pagesizes[psind] - 1)) != 0 ||
 		    pidx + OFF_TO_IDX(pagesizes[psind]) - 1 > pager_last ||
-		    !pmap_ps_enabled(fs->map->pmap) || fs->wired))
+		    !pmap_ps_enabled(fs->map->pmap)))
 			psind = 0;
 
 		npages = atop(pagesizes[psind]);

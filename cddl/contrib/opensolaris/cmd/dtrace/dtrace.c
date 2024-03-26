@@ -26,7 +26,7 @@
 /*
  * Copyright (c) 2012 by Delphix. All rights reserved.
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
- * Copyright (c) 2020 Domagoj Stolfa. All rights reserved.
+ * Copyright (c) 2020, 2023, Domagoj Stolfa. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -68,6 +68,9 @@
 #endif
 #include <dtraced.h>
 #include <pthread.h>
+
+#undef NORETURN /* needed because libxo redefines it */
+#include <libxo/xo.h>
 
 typedef struct dtrace_cmd {
 	void (*dc_func)(struct dtrace_cmd *);	/* function to compile arg */
@@ -116,9 +119,8 @@ typedef struct dt_probelist {
 #define	E_USAGE		2
 
 #define	DTRACED_SLEEPTIME	10000	/* us to recv from dtraced again */
-
 static const char DTRACE_OPTSTR[] =
-	"1:3:6:aAb:Bc:CdD:eEf:FGhHi:I:lL:m:Mn:No:p:P:qrs:SuU:vVwx:y:Y:X:Z";
+	"1:3:6:aAb:Bc:CdD:eEf:FGhHi:I:lL:m:Mn:No:Op:P:qrs:SuU:vVwx:y:Y:X:Z";
 
 static char g_bench_path[MAXPATHLEN] = "/root/bench/userspace_e2e.json";
 static char *g_script;
@@ -259,6 +261,7 @@ usage(FILE *fp)
 	    "\t-n  enable or list probes matching the specified probe name\n"
 	    "\t-N  accept only programs with given identifiers (HyperTrace)\n"
 	    "\t-o  set output file\n"
+	    "\t-O  print output upon exiting (specific to oformat)\n"
 	    "\t-p  grab specified process-ID and cache its symbol tables\n"
 	    "\t-P  enable or list probes matching the specified provider name\n"
 	    "\t-q  set quiet mode (only output explicitly traced data)\n"
@@ -2546,7 +2549,10 @@ errhandler(const dtrace_errdata_t *data, void *arg)
 static int
 drophandler(const dtrace_dropdata_t *data, void *arg)
 {
-	error(data->dtdda_msg);
+	if (!dtrace_oformat(g_dtp)) {
+		error(data->dtdda_msg);
+	}
+
 	return (DTRACE_HANDLE_OK);
 }
 
@@ -2710,6 +2716,95 @@ bufhandler(const dtrace_bufdata_t *bufdata, void *arg)
 	return (DTRACE_HANDLE_OK);
 }
 
+/*ARGSUSED*/
+static int
+chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
+{
+	dtrace_actkind_t act;
+	uintptr_t addr;
+
+	if (rec == NULL) {
+		/*
+		 * We have processed the final record; output the newline if
+		 * we're not in quiet mode.
+		 */
+		if (!g_quiet)
+			oprintf("\n");
+
+		return (DTRACE_CONSUME_NEXT);
+	}
+
+	act = rec->dtrd_action;
+	addr = (uintptr_t)data->dtpda_data;
+
+	if (act == DTRACEACT_EXIT) {
+		g_status = *((uint32_t *)addr);
+		return (DTRACE_CONSUME_NEXT);
+	}
+
+	return (DTRACE_CONSUME_THIS);
+}
+
+/*ARGSUSED*/
+static int
+chew(const dtrace_probedata_t *data, void *arg)
+{
+	dtrace_probedesc_t *pd = data->dtpda_pdesc;
+	processorid_t cpu = data->dtpda_cpu;
+	static int heading;
+
+	if (g_impatient) {
+		g_newline = 0;
+		return (DTRACE_CONSUME_ABORT);
+	}
+
+	if (heading == 0) {
+		if (!g_flowindent) {
+			if (!g_quiet) {
+				oprintf("%3s %6s %32s\n",
+				    "CPU", "ID", "FUNCTION:NAME");
+			}
+		} else {
+			oprintf("%3s %-41s\n", "CPU", "FUNCTION");
+		}
+		heading = 1;
+	}
+
+	if (!g_flowindent) {
+		if (dtrace_oformat(g_dtp)) {
+			dtrace_oformat_probe(g_dtp, data, cpu, pd);
+		} else if (!g_quiet) {
+			char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
+
+			(void) snprintf(name, sizeof (name), "%s:%s",
+			    pd->dtpd_func, pd->dtpd_name);
+
+			oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
+		}
+	} else {
+		int indent = data->dtpda_indent;
+		char *name;
+		size_t len;
+
+		if (data->dtpda_flow == DTRACEFLOW_NONE) {
+			len = indent + DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 5;
+			name = alloca(len);
+			(void) snprintf(name, len, "%*s%s%s:%s", indent, "",
+			    data->dtpda_prefix, pd->dtpd_func,
+			    pd->dtpd_name);
+		} else {
+			len = indent + DTRACE_FUNCNAMELEN + 5;
+			name = alloca(len);
+			(void) snprintf(name, len, "%*s%s%s", indent, "",
+			    data->dtpda_prefix, pd->dtpd_func);
+		}
+
+		oprintf("%3d %-41s ", cpu, name);
+	}
+
+	return (DTRACE_CONSUME_THIS);
+}
+
 static void
 go(void)
 {
@@ -2847,7 +2942,8 @@ main(int argc, char *argv[])
 
 	g_ofp = stdout;
 	int done = 0, mode = 0;
-	int err, i, c, rv;
+	int err, i, rv, c, new_argc, libxo_specified;
+	int print_upon_exit = 0;
 	char *p, *p2, **v;
 	struct ps_prochandle *P;
 	pid_t pid;
@@ -2877,6 +2973,15 @@ main(int argc, char *argv[])
 	    (g_cmdv = malloc(sizeof (dtrace_cmd_t) * argc)) == NULL ||
 	    (g_psv = malloc(sizeof (struct ps_prochandle *) * argc)) == NULL)
 		fatal("failed to allocate memory for arguments");
+
+	new_argc = xo_parse_args(argc, argv);
+	if (new_argc < 0)
+		return (usage(stderr));
+
+	if (new_argc != argc)
+		libxo_specified = 1;
+
+	argc = new_argc;
 
 	g_argv[g_argc++] = argv[0];	/* propagate argv[0] to D as $0/$$0 */
 	argv[0] = g_pname;		/* rewrite argv[0] for getopt errors */
@@ -3198,6 +3303,10 @@ main(int argc, char *argv[])
 	} else if (g_mode == DMODE_ANON)
 		(void) dtrace_setopt(g_dtp, "linkmode", "primary");
 
+
+	if (libxo_specified)
+		dtrace_oformat_configure(g_dtp);
+
 	/*
 	 * Now that we have libdtrace open, make a second pass through argv[]
 	 * to perform any dtrace_setopt() calls and change any compiler flags.
@@ -3320,6 +3429,10 @@ main(int argc, char *argv[])
 				dcp->dc_func = compile_str;
 				dcp->dc_spec = DTRACE_PROBESPEC_PROVIDER;
 				dcp->dc_arg = optarg;
+				break;
+
+			case 'O':
+				print_upon_exit = 1;
 				break;
 
 			case 'q':
@@ -3501,6 +3614,11 @@ main(int argc, char *argv[])
 	(void) dtrace_getopt(g_dtp, "quiet", &opt);
 	g_quiet = opt != DTRACEOPT_UNSET;
 
+	if (dtrace_oformat(g_dtp)) {
+		if (dtrace_setopt(g_dtp, "quiet", 0) != 0)
+			dfatal("failed to set quiet (caused by oformat)");
+	}
+
 	/*
 	 * Now make a fifth and final pass over the options that have been
 	 * turned into programs and saved in g_cmdv[], performing any mode-
@@ -3513,6 +3631,8 @@ main(int argc, char *argv[])
 		if (g_ofile != NULL && (g_ofp = fopen(g_ofile, "a")) == NULL)
 			fatal("failed to open output file '%s'", g_ofile);
 
+		if (dtrace_oformat(g_dtp))
+			dtrace_set_outfp(g_ofp);
 
 		for (i = 0; i < g_cmdc; i++)
 			exec_prog(&g_cmdv[i]);
@@ -3566,6 +3686,9 @@ main(int argc, char *argv[])
 
 		if ((g_ofp = fopen(g_ofile, "a")) == NULL)
 			fatal("failed to open output file '%s'", g_ofile);
+
+		if (dtrace_oformat(g_dtp))
+			dtrace_set_outfp(g_ofp);
 
 		for (i = 0; i < g_cmdc; i++) {
 			anon_prog(&g_cmdv[i],
@@ -3709,5 +3832,100 @@ main(int argc, char *argv[])
 	pthread_mutex_unlock(&g_dtpmtx);
 
 	pthread_mutex_destroy(&g_dtpmtx);
+	(void) dtrace_getopt(g_dtp, "flowindent", &opt);
+	g_flowindent = opt != DTRACEOPT_UNSET;
+
+	(void) dtrace_getopt(g_dtp, "grabanon", &opt);
+	g_grabanon = opt != DTRACEOPT_UNSET;
+
+	(void) dtrace_getopt(g_dtp, "quiet", &opt);
+	g_quiet = opt != DTRACEOPT_UNSET;
+
+	(void) dtrace_getopt(g_dtp, "destructive", &opt);
+	if (opt != DTRACEOPT_UNSET)
+		notice("allowing destructive actions\n");
+
+	installsighands();
+
+	/*
+	 * Now that tracing is active and we are ready to consume trace data,
+	 * continue any grabbed or created processes, setting them running
+	 * using the /proc control mechanism inside of libdtrace.
+	 */
+	for (i = 0; i < g_psc; i++)
+		dtrace_proc_continue(g_dtp, g_psv[i]);
+
+	g_pslive = g_psc; /* count for prochandler() */
+
+	dtrace_oformat_setup(g_dtp);
+	do {
+		if (!g_intr && !done)
+			dtrace_sleep(g_dtp);
+
+#ifdef __FreeBSD__
+		/*
+		 * XXX: Supporting SIGINFO with oformat makes little sense, as
+		 * it can't really produce sensible DTrace output.
+		 *
+		 * If needed, we could support it by having an imaginary
+		 * "SIGINFO" probe that we can construct in the output but leave
+		 * it out for now.
+		 */
+		if (g_siginfo && !dtrace_oformat(g_dtp)) {
+			(void)dtrace_aggregate_print(g_dtp, g_ofp, NULL);
+			g_siginfo = 0;
+		}
+#endif
+
+		if (g_newline) {
+			/*
+			 * Output a newline just to make the output look
+			 * slightly cleaner.  Note that we do this even in
+			 * "quiet" mode...
+			 */
+			oprintf("\n");
+			g_newline = 0;
+		}
+
+		if (done || g_intr || (g_psc != 0 && g_pslive == 0)) {
+			done = 1;
+			if (dtrace_stop(g_dtp) == -1)
+				dfatal("couldn't stop tracing");
+		}
+
+		switch (dtrace_work(g_dtp, g_ofp, chew, chewrec, NULL)) {
+		case DTRACE_WORKSTATUS_DONE:
+			done = 1;
+			break;
+		case DTRACE_WORKSTATUS_OKAY:
+			break;
+		default:
+			if (!g_impatient && dtrace_errno(g_dtp) != EINTR)
+				dfatal("processing aborted");
+		}
+
+		if (g_ofp != NULL && fflush(g_ofp) == EOF)
+			clearerr(g_ofp);
+	} while (!done);
+
+	if (!dtrace_oformat(g_dtp))
+		oprintf("\n");
+
+	/*
+	 * Since there is no way to format a probe here and machine-readable
+	 * output makes little sense without explicitly asking for it, we print
+	 * nothing upon Ctrl-C if oformat is specified. If the user wishes to
+	 * get output upon exit, they must write an explicit dtrace:::END probe
+	 * to do so.
+	 */
+	if ((!g_impatient && !dtrace_oformat(g_dtp)) ||
+	    (!g_impatient && print_upon_exit)) {
+		if (dtrace_aggregate_print(g_dtp, g_ofp, NULL) == -1 &&
+		    dtrace_errno(g_dtp) != EINTR)
+			dfatal("failed to print aggregations");
+	}
+
+	dtrace_oformat_teardown(g_dtp);
+	dtrace_close(g_dtp);
 	return (g_status);
 }

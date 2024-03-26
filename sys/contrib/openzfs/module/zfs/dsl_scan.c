@@ -203,7 +203,7 @@ static uint_t zfs_scan_checkpoint_intval = 7200; /* in seconds */
 int zfs_scan_suspend_progress = 0; /* set to prevent scans from progressing */
 static int zfs_no_scrub_io = B_FALSE; /* set to disable scrub i/o */
 static int zfs_no_scrub_prefetch = B_FALSE; /* set to disable scrub prefetch */
-static const enum ddt_class zfs_scrub_ddt_class_max = DDT_CLASS_DUPLICATE;
+static const ddt_class_t zfs_scrub_ddt_class_max = DDT_CLASS_DUPLICATE;
 /* max number of blocks to free in a single TXG */
 static uint64_t zfs_async_block_max_blocks = UINT64_MAX;
 /* max number of dedup blocks to free in a single TXG */
@@ -234,7 +234,7 @@ static int zfs_resilver_disable_defer = B_FALSE;
 static int zfs_free_bpobj_enabled = 1;
 
 /* Error blocks to be scrubbed in one txg. */
-uint_t zfs_scrub_error_blocks_per_txg = 1 << 12;
+static uint_t zfs_scrub_error_blocks_per_txg = 1 << 12;
 
 /* the order has to match pool_scan_type */
 static scan_cb_t *scan_funcs[POOL_SCAN_FUNCS] = {
@@ -573,7 +573,8 @@ dsl_scan_init(dsl_pool_t *dp, uint64_t txg)
 		 * counter to how far we've scanned. We know we're consistent
 		 * up to here.
 		 */
-		scn->scn_issued_before_pass = scn->scn_phys.scn_examined;
+		scn->scn_issued_before_pass = scn->scn_phys.scn_examined -
+		    scn->scn_phys.scn_skipped;
 
 		if (dsl_scan_is_running(scn) &&
 		    spa_prev_software_version(dp->dp_spa) < SPA_VERSION_SCAN) {
@@ -2014,6 +2015,11 @@ dsl_scan_prefetch_cb(zio_t *zio, const zbookmark_phys_t *zb, const blkptr_t *bp,
 		    zb->zb_objset, DMU_META_DNODE_OBJECT);
 
 		if (OBJSET_BUF_HAS_USERUSED(buf)) {
+			if (OBJSET_BUF_HAS_PROJECTUSED(buf)) {
+				dsl_scan_prefetch_dnode(scn,
+				    &osp->os_projectused_dnode, zb->zb_objset,
+				    DMU_PROJECTUSED_OBJECT);
+			}
 			dsl_scan_prefetch_dnode(scn,
 			    &osp->os_groupused_dnode, zb->zb_objset,
 			    DMU_GROUPUSED_OBJECT);
@@ -2074,10 +2080,16 @@ dsl_scan_prefetch_thread(void *arg)
 			zio_flags |= ZIO_FLAG_RAW;
 		}
 
+		/* We don't need data L1 buffer since we do not prefetch L0. */
+		blkptr_t *bp = &spic->spic_bp;
+		if (BP_GET_LEVEL(bp) == 1 && BP_GET_TYPE(bp) != DMU_OT_DNODE &&
+		    BP_GET_TYPE(bp) != DMU_OT_OBJSET)
+			flags |= ARC_FLAG_NO_BUF;
+
 		/* issue the prefetch asynchronously */
-		(void) arc_read(scn->scn_zio_root, scn->scn_dp->dp_spa,
-		    &spic->spic_bp, dsl_scan_prefetch_cb, spic->spic_spc,
-		    ZIO_PRIORITY_SCRUB, zio_flags, &flags, &spic->spic_zb);
+		(void) arc_read(scn->scn_zio_root, spa, bp,
+		    dsl_scan_prefetch_cb, spic->spic_spc, ZIO_PRIORITY_SCRUB,
+		    zio_flags, &flags, &spic->spic_zb);
 
 		kmem_free(spic, sizeof (scan_prefetch_issue_ctx_t));
 	}
@@ -2130,7 +2142,7 @@ dsl_scan_check_resume(dsl_scan_t *scn, const dnode_phys_t *dnp,
 	return (B_FALSE);
 }
 
-static void dsl_scan_visitbp(blkptr_t *bp, const zbookmark_phys_t *zb,
+static void dsl_scan_visitbp(const blkptr_t *bp, const zbookmark_phys_t *zb,
     dnode_phys_t *dnp, dsl_dataset_t *ds, dsl_scan_t *scn,
     dmu_objset_type_t ostype, dmu_tx_t *tx);
 inline __attribute__((always_inline)) static void dsl_scan_visitdnode(
@@ -2295,12 +2307,11 @@ dsl_scan_visitdnode(dsl_scan_t *scn, dsl_dataset_t *ds,
  * first 5; we want them to be useful.
  */
 static void
-dsl_scan_visitbp(blkptr_t *bp, const zbookmark_phys_t *zb,
+dsl_scan_visitbp(const blkptr_t *bp, const zbookmark_phys_t *zb,
     dnode_phys_t *dnp, dsl_dataset_t *ds, dsl_scan_t *scn,
     dmu_objset_type_t ostype, dmu_tx_t *tx)
 {
 	dsl_pool_t *dp = scn->scn_dp;
-	blkptr_t *bp_toread = NULL;
 
 	if (dsl_scan_check_suspend(scn, zb))
 		return;
@@ -2341,11 +2352,8 @@ dsl_scan_visitbp(blkptr_t *bp, const zbookmark_phys_t *zb,
 		return;
 	}
 
-	bp_toread = kmem_alloc(sizeof (blkptr_t), KM_SLEEP);
-	*bp_toread = *bp;
-
-	if (dsl_scan_recurse(scn, ds, ostype, dnp, bp_toread, zb, tx) != 0)
-		goto out;
+	if (dsl_scan_recurse(scn, ds, ostype, dnp, bp, zb, tx) != 0)
+		return;
 
 	/*
 	 * If dsl_scan_ddt() has already visited this block, it will have
@@ -2355,7 +2363,7 @@ dsl_scan_visitbp(blkptr_t *bp, const zbookmark_phys_t *zb,
 	if (ddt_class_contains(dp->dp_spa,
 	    scn->scn_phys.scn_ddt_class_max, bp)) {
 		scn->scn_ddt_contained_this_txg++;
-		goto out;
+		return;
 	}
 
 	/*
@@ -2367,13 +2375,10 @@ dsl_scan_visitbp(blkptr_t *bp, const zbookmark_phys_t *zb,
 	 */
 	if (BP_PHYSICAL_BIRTH(bp) > scn->scn_phys.scn_cur_max_txg) {
 		scn->scn_gt_max_this_txg++;
-		goto out;
+		return;
 	}
 
 	scan_funcs[scn->scn_phys.scn_func](dp, bp, zb);
-
-out:
-	kmem_free(bp_toread, sizeof (blkptr_t));
 }
 
 static void
@@ -2957,7 +2962,7 @@ dsl_scan_ddt_entry(dsl_scan_t *scn, enum zio_checksum checksum,
  * If there are N references to a deduped block, we don't want to scrub it
  * N times -- ideally, we should scrub it exactly once.
  *
- * We leverage the fact that the dde's replication class (enum ddt_class)
+ * We leverage the fact that the dde's replication class (ddt_class_t)
  * is ordered from highest replication class (DDT_CLASS_DITTO) to lowest
  * (DDT_CLASS_UNIQUE) so that we may walk the DDT in that order.
  *
@@ -3054,7 +3059,6 @@ dsl_scan_visit(dsl_scan_t *scn, dmu_tx_t *tx)
 		scn->scn_phys.scn_cur_max_txg = scn->scn_phys.scn_max_txg;
 		dsl_scan_visit_rootbp(scn, NULL,
 		    &dp->dp_meta_rootbp, tx);
-		spa_set_rootblkptr(dp->dp_spa, &dp->dp_meta_rootbp);
 		if (scn->scn_suspending)
 			return;
 
@@ -3437,10 +3441,8 @@ scan_io_queues_run_one(void *arg)
 	 * If we were suspended in the middle of processing,
 	 * requeue any unfinished sios and exit.
 	 */
-	while ((sio = list_head(&sio_list)) != NULL) {
-		list_remove(&sio_list, sio);
+	while ((sio = list_remove_head(&sio_list)) != NULL)
 		scan_io_queue_insert_impl(queue, sio);
-	}
 
 	queue->q_zio = NULL;
 	mutex_exit(q_lock);
@@ -4364,7 +4366,7 @@ dsl_scan_sync(dsl_pool_t *dp, dmu_tx_t *tx)
 	 * Disabled by default, set zfs_scan_report_txgs to report
 	 * average performance over the last zfs_scan_report_txgs TXGs.
 	 */
-	if (!dsl_scan_is_paused_scrub(scn) && zfs_scan_report_txgs != 0 &&
+	if (zfs_scan_report_txgs != 0 &&
 	    tx->tx_txg % zfs_scan_report_txgs == 0) {
 		scn->scn_issued_before_pass += spa->spa_scan_pass_issued;
 		spa_scan_stat_init(spa);
@@ -4567,6 +4569,15 @@ count_block_issued(spa_t *spa, const blkptr_t *bp, boolean_t all)
 }
 
 static void
+count_block_skipped(dsl_scan_t *scn, const blkptr_t *bp, boolean_t all)
+{
+	if (BP_IS_EMBEDDED(bp))
+		return;
+	atomic_add_64(&scn->scn_phys.scn_skipped,
+	    all ? BP_GET_ASIZE(bp) : DVA_GET_ASIZE(&bp->blk_dva[0]));
+}
+
+static void
 count_block(zfs_all_blkstats_t *zab, const blkptr_t *bp)
 {
 	/*
@@ -4711,7 +4722,7 @@ dsl_scan_scrub_cb(dsl_pool_t *dp,
 	count_block(dp->dp_blkstats, bp);
 	if (phys_birth <= scn->scn_phys.scn_min_txg ||
 	    phys_birth >= scn->scn_phys.scn_max_txg) {
-		count_block_issued(spa, bp, B_TRUE);
+		count_block_skipped(scn, bp, B_TRUE);
 		return (0);
 	}
 
@@ -4752,7 +4763,7 @@ dsl_scan_scrub_cb(dsl_pool_t *dp,
 	if (needs_io && !zfs_no_scrub_io) {
 		dsl_scan_enqueue(dp, bp, zio_flags, zb);
 	} else {
-		count_block_issued(spa, bp, B_TRUE);
+		count_block_skipped(scn, bp, B_TRUE);
 	}
 
 	/* do not relocate this block */
@@ -4877,6 +4888,7 @@ scan_exec_io(dsl_pool_t *dp, const blkptr_t *bp, int zio_flags,
  * with single operation.  Plus it makes scrubs more sequential and reduces
  * chances that minor extent change move it within the B-tree.
  */
+__attribute__((always_inline)) inline
 static int
 ext_size_compare(const void *x, const void *y)
 {
@@ -4885,13 +4897,17 @@ ext_size_compare(const void *x, const void *y)
 	return (TREE_CMP(*a, *b));
 }
 
+ZFS_BTREE_FIND_IN_BUF_FUNC(ext_size_find_in_buf, uint64_t,
+    ext_size_compare)
+
 static void
 ext_size_create(range_tree_t *rt, void *arg)
 {
 	(void) rt;
 	zfs_btree_t *size_tree = arg;
 
-	zfs_btree_create(size_tree, ext_size_compare, sizeof (uint64_t));
+	zfs_btree_create(size_tree, ext_size_compare, ext_size_find_in_buf,
+	    sizeof (uint64_t));
 }
 
 static void
@@ -5116,9 +5132,9 @@ dsl_scan_freed_dva(spa_t *spa, const blkptr_t *bp, int dva_i)
 		ASSERT(range_tree_contains(queue->q_exts_by_addr, start, size));
 		range_tree_remove_fill(queue->q_exts_by_addr, start, size);
 
-		/* count the block as though we issued it */
+		/* count the block as though we skipped it */
 		sio2bp(sio, &tmpbp);
-		count_block_issued(spa, &tmpbp, B_FALSE);
+		count_block_skipped(scn, &tmpbp, B_FALSE);
 
 		sio_free(sio);
 	}

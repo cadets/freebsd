@@ -2,7 +2,7 @@
  *
  *   BSD LICENSE
  * 
- *   Copyright(c) 2007-2022 Intel Corporation. All rights reserved.
+ *   Copyright(c) 2007-2023 Intel Corporation. All rights reserved.
  *   All rights reserved.
  * 
  *   Redistribution and use in source and binary forms, with or without
@@ -148,7 +148,7 @@ typedef struct _CpaDcBatchOpData  {
  *
  * @pre
  *      pSessionHandle has been setup using cpaDcInitSession()
- *      Session must be setup as a stateless sesssion.
+ *      Session must be setup as a stateless session.
  * @note
  *     This function passes control to the compression service for processing
  *

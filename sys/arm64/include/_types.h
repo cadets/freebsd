@@ -26,11 +26,11 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	From: @(#)ansi.h	8.2 (Berkeley) 1/4/94
- *	From: @(#)types.h	8.3 (Berkeley) 1/5/94
- * $FreeBSD$
  */
+
+#ifdef __arm__
+#include <arm/_types.h>
+#else /* !__arm__ */
 
 #ifndef _MACHINE__TYPES_H_
 #define	_MACHINE__TYPES_H_
@@ -67,3 +67,5 @@ typedef	unsigned int	___wchar_t;
 #define	__WCHAR_MAX	__UINT_MAX	/* max value for a wchar_t */
 
 #endif /* !_MACHINE__TYPES_H_ */
+
+#endif /* !__arm__ */

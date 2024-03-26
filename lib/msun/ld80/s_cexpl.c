@@ -28,9 +28,6 @@
  * src/s_cexp.c converted to long double complex by Steven G. Kargl
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <complex.h>
 #include <float.h>
 #ifdef __i386__

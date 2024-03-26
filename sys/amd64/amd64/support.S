@@ -31,8 +31,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include "opt_ddb.h"
@@ -1534,6 +1532,7 @@ ENTRY(rdmsr_safe)
 /* int rdmsr_safe(u_int msr, uint64_t *data) */
 	PUSH_FRAME_POINTER
 	movq	PCPU(CURPCB),%r8
+	movq	PCB_ONFAULT(%r8),%r9
 	movq	$msr_onfault,PCB_ONFAULT(%r8)
 	movl	%edi,%ecx
 	rdmsr			/* Read MSR pointed by %ecx. Returns
@@ -1542,8 +1541,8 @@ ENTRY(rdmsr_safe)
 	movl	%eax,%eax	/* zero-extend %eax -> %rax */
 	orq	%rdx,%rax
 	movq	%rax,(%rsi)
-	xorq	%rax,%rax
-	movq	%rax,PCB_ONFAULT(%r8)
+	movq	%r9,PCB_ONFAULT(%r8)
+	xorl	%eax,%eax
 	POP_FRAME_POINTER
 	ret
 
@@ -1555,6 +1554,7 @@ ENTRY(wrmsr_safe)
 /* int wrmsr_safe(u_int msr, uint64_t data) */
 	PUSH_FRAME_POINTER
 	movq	PCPU(CURPCB),%r8
+	movq	PCB_ONFAULT(%r8),%r9
 	movq	$msr_onfault,PCB_ONFAULT(%r8)
 	movl	%edi,%ecx
 	movl	%esi,%eax
@@ -1562,8 +1562,8 @@ ENTRY(wrmsr_safe)
 	movl	%esi,%edx
 	wrmsr			/* Write MSR pointed by %ecx. Accepts
 				   hi byte in edx, lo in %eax. */
-	xorq	%rax,%rax
-	movq	%rax,PCB_ONFAULT(%r8)
+	movq	%r9,PCB_ONFAULT(%r8)
+	xorl	%eax,%eax
 	POP_FRAME_POINTER
 	ret
 
@@ -1572,7 +1572,7 @@ ENTRY(wrmsr_safe)
  */
 	ALIGN_TEXT
 msr_onfault:
-	movq	$0,PCB_ONFAULT(%r8)
+	movq	%r9,PCB_ONFAULT(%r8)
 	movl	$EFAULT,%eax
 	POP_FRAME_POINTER
 	ret
@@ -1971,3 +1971,24 @@ ENTRY(mds_handler_silvermont)
 	popq	%rax
 	retq
 END(mds_handler_silvermont)
+
+/*
+ * Do the same as Linux and execute IRET explicitly, despite IPI
+ * return does it as well.
+ */
+ENTRY(cpu_sync_core)
+/*
+ * Can utilize SERIALIZE when instruction is moved from
+ * 'future extensions' to SDM.
+ */
+	movq	(%rsp), %rdx
+	movl	%ss, %eax
+	pushq	%rax
+	pushq	%rsp
+	addq	$16, (%rsp)
+	pushfq
+	movl	%cs, %eax
+	pushq	%rax
+	pushq	%rdx
+	iretq
+END(cpu_sync_core)

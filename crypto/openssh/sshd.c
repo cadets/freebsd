@@ -1,4 +1,4 @@
-/* $OpenBSD: sshd.c,v 1.600 2023/03/08 04:43:12 guenther Exp $ */
+/* $OpenBSD: sshd.c,v 1.602 2024/01/08 00:34:34 djm Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -142,8 +142,6 @@
 #ifdef LIBWRAP
 #include <tcpd.h>
 #include <syslog.h>
-extern int allow_severity;
-extern int deny_severity;
 #endif /* LIBWRAP */
 
 /* Re-exec fds */
@@ -1299,13 +1297,24 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
 				    SO_LINGER, &l, sizeof(l));
 				(void )close(*newsock);
 				/*
-				 * Mimic message from libwrap's refuse()
-				 * exactly.  sshguard, and supposedly lots
-				 * of custom made scripts rely on it.
+				 * Mimic message from libwrap's refuse() as
+				 * precisely as we can afford.  The authentic
+				 * message prints the IP address and the
+				 * hostname it resolves to in parentheses.  If
+				 * the IP address cannot be resolved to a
+				 * hostname, the IP address will be repeated
+				 * in parentheses.  As name resolution in the
+				 * main server loop could stall, and logging
+				 * resolved names adds little or no value to
+				 * incident investigation, this implementation
+				 * only repeats the IP address in parentheses.
+				 * This should resemble librwap's refuse()
+				 * closely enough not to break auditing
+				 * software like sshguard or custom scripts.
 				 */
-				syslog(deny_severity,
+				syslog(LOG_WARNING,
 				    "refused connect from %s (%s)",
-				    eval_client(&req),
+				    eval_hostaddr(req.client),
 				    eval_hostaddr(req.client));
 				debug("Connection refused by tcp wrapper");
 				continue;
@@ -1754,7 +1763,7 @@ main(int ac, char **av)
 			break;
 		case 'V':
 			fprintf(stderr, "%s, %s\n",
-			    SSH_VERSION, SSH_OPENSSL_VERSION);
+			    SSH_RELEASE, SSH_OPENSSL_VERSION);
 			exit(0);
 		default:
 			usage();
@@ -2112,14 +2121,6 @@ main(int ac, char **av)
 	/* Reinitialize the log (because of the fork above). */
 	log_init(__progname, options.log_level, options.log_facility, log_stderr);
 
-#ifdef LIBWRAP
-	/*
-	 * We log refusals ourselves.  However, libwrap will report
-	 * syntax errors in hosts.allow via syslog(3).
-	 */
-	allow_severity = options.log_facility|LOG_INFO;
-	deny_severity = options.log_facility|LOG_WARNING;
-#endif
 	/* Avoid killing the process in high-pressure swapping environments. */
 	if (!inetd_flag && madvise(NULL, 0, MADV_PROTECT) != 0)
 		debug("madvise(): %.200s", strerror(errno));
@@ -2504,7 +2505,9 @@ do_ssh2_kex(struct ssh *ssh)
 	/* start key exchange */
 	if ((r = kex_setup(ssh, myproposal)) != 0)
 		fatal_r(r, "kex_setup");
+	kex_set_server_sig_algs(ssh, options.pubkey_accepted_algos);
 	kex = ssh->kex;
+
 #ifdef WITH_OPENSSL
 	kex->kex[KEX_DH_GRP1_SHA1] = kex_gen_server;
 	kex->kex[KEX_DH_GRP14_SHA1] = kex_gen_server;
@@ -2525,6 +2528,7 @@ do_ssh2_kex(struct ssh *ssh)
 	kex->sign = sshd_hostkey_sign;
 
 	ssh_dispatch_run_fatal(ssh, DISPATCH_BLOCK, &kex->done);
+	kex_proposal_free_entries(myproposal);
 
 #ifdef DEBUG_KEXDH
 	/* send 1st encrypted/maced/compressed message */
@@ -2534,7 +2538,6 @@ do_ssh2_kex(struct ssh *ssh)
 	    (r = ssh_packet_write_wait(ssh)) != 0)
 		fatal_fr(r, "send test");
 #endif
-	kex_proposal_free_entries(myproposal);
 	debug("KEX done");
 }
 

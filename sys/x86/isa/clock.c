@@ -31,13 +31,9 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	from: @(#)clock.c	7.2 (Berkeley) 5/12/91
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Routines to handle clock hardware.
  */
@@ -413,7 +409,6 @@ startrtclock(void)
 void
 cpu_initclocks(void)
 {
-#ifdef EARLY_AP_STARTUP
 	struct thread *td;
 	int i;
 
@@ -436,13 +431,6 @@ cpu_initclocks(void)
 	if (sched_is_bound(td))
 		sched_unbind(td);
 	thread_unlock(td);
-#else
-	tsc_calibrate();
-#ifdef DEV_APIC
-	lapic_calibrate_timer();
-#endif
-	cpu_initclocks_bsp();
-#endif
 }
 
 static int

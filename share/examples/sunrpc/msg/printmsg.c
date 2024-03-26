@@ -1,5 +1,3 @@
-/* @(#)printmsg.c	2.1 88/08/11 4.0 RPCSRC */
-/* $FreeBSD$ */
 /*
  * printmsg.c: print a message on the console
  */

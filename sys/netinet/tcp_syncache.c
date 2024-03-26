@@ -33,8 +33,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
@@ -624,18 +622,6 @@ syncache_chkrst(struct in_conninfo *inc, struct tcphdr *th, struct mbuf *m,
 	SCH_LOCK_ASSERT(sch);
 
 	/*
-	 * Any RST to our SYN|ACK must not carry ACK, SYN or FIN flags.
-	 * See RFC 793 page 65, section SEGMENT ARRIVES.
-	 */
-	if (tcp_get_flags(th) & (TH_ACK|TH_SYN|TH_FIN)) {
-		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
-			log(LOG_DEBUG, "%s; %s: Spurious RST with ACK, SYN or "
-			    "FIN flag set, segment ignored\n", s, __func__);
-		TCPSTAT_INC(tcps_badrst);
-		goto done;
-	}
-
-	/*
 	 * No corresponding connection was found in syncache.
 	 * If syncookies are enabled and possibly exclusively
 	 * used, or we are under memory pressure, a valid RST
@@ -817,7 +803,6 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 	}
 	inp = sotoinpcb(so);
 	if ((tp = tcp_newtcpcb(inp)) == NULL) {
-		in_pcbdetach(inp);
 		in_pcbfree(inp);
 		sodealloc(so);
 		goto allocfail;
@@ -966,7 +951,8 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 	tp->rcv_adv += tp->rcv_wnd;
 	tp->last_ack_sent = tp->rcv_nxt;
 
-	tp->t_flags = sototcpcb(lso)->t_flags & (TF_NOPUSH|TF_NODELAY);
+	tp->t_flags = sototcpcb(lso)->t_flags &
+	    (TF_LRD|TF_NOPUSH|TF_NODELAY);
 	if (sc->sc_flags & SCF_NOOPT)
 		tp->t_flags |= TF_NOOPT;
 	else {
@@ -1046,7 +1032,10 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 
 	if (!solisten_enqueue(so, SS_ISCONNECTED))
 		tp->t_flags |= TF_SONOTCONN;
-
+	/* Can we inherit anything from the listener? */
+	if (tp->t_fb->tfb_inherit != NULL) {
+		(*tp->t_fb->tfb_inherit)(tp, sotoinpcb(lso));
+	}
 	return (so);
 
 allocfail:
@@ -1064,7 +1053,6 @@ allocfail:
 	return (NULL);
 
 abort:
-	in_pcbdetach(inp);
 	in_pcbfree(inp);
 	sodealloc(so);
 	if ((s = tcp_log_addrs(&sc->sc_inc, NULL, NULL, NULL))) {
@@ -1459,7 +1447,7 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	win = so->sol_sbrcv_hiwat;
 	ltflags = (tp->t_flags & (TF_NOOPT | TF_SIGNATURE));
 
-	if (V_tcp_fastopen_server_enable && IS_FASTOPEN(tp->t_flags) &&
+	if (V_tcp_fastopen_server_enable && (tp->t_flags & TF_FASTOPEN) &&
 	    (tp->t_tfo_pending != NULL) &&
 	    (to->to_flags & TOF_FASTOPEN)) {
 		/*

@@ -37,9 +37,6 @@
  * $Whistle: main.c,v 1.12 1999/11/29 19:17:46 archie Exp $
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/select.h>

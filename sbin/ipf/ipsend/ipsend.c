@@ -1,13 +1,8 @@
-/* $FreeBSD$ */
 /*
  * ipsend.c (C) 1995-1998 Darren Reed
  *
  * See the IPFILTER.LICENCE file for details on licencing.
  */
-#if !defined(lint)
-static const char sccsid[] = "@(#)ipsend.c	1.5 12/10/95 (C)1995 Darren Reed";
-static const char rcsid[] = "@(#)$Id$";
-#endif
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/time.h>

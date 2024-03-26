@@ -33,8 +33,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SYS_KERNELDUMP_H
@@ -163,6 +161,7 @@ void dumpsys_pb_progress(size_t);
 extern int do_minidump;
 
 int livedump_start(int, int, uint8_t);
+int livedump_start_vnode(struct vnode *, int, uint8_t);
 
 /* Live minidump events */
 typedef void (*livedump_start_fn)(void *arg, int *errorp);

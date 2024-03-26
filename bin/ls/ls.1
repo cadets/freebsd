@@ -29,10 +29,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\"     @(#)ls.1	8.7 (Berkeley) 7/29/94
-.\" $FreeBSD$
-.\"
-.Dd October 31, 2022
+.Dd February 21, 2024
 .Dt LS 1
 .Os
 .Sh NAME
@@ -247,9 +244,11 @@ but only if
 .Dv stdout
 is a tty and either the
 .Fl G
-flag is specified or the
+flag is specified or one of the environment variables
 .Ev COLORTERM
-environment variable is set and not empty.
+or
+.Ev CLICOLOR
+is set and not empty.
 .Pp
 .Cm never
 will disable color regardless of environment variables.
@@ -301,14 +300,9 @@ and
 .Fl s
 options.
 .It Fl g
-This option has no effect.
-It is only available for compatibility with
-.Bx 4.3 ,
-where it was used to display the group name in the long
+Display the long
 .Pq Fl l
-format output.
-This option is incompatible with
-.St -p1003.1-2008 .
+format output without the file owner's name or number.
 .It Fl h
 When used with the
 .Fl l
@@ -465,9 +459,9 @@ options all override each other; the last one specified determines
 the file time used.
 .Pp
 The
-.Fl S
+.Fl S , t
 and
-.Fl t
+.Fl v
 options override each other; the last one specified determines
 the sort order used.
 .Pp
@@ -749,7 +743,7 @@ where
 is the foreground color and
 .Ar b
 is the background color.
-When the background color is capitalized, the text will underlined.
+When the background color is capitalized, the text is underlined.
 .Pp
 The color designators are as follows:
 .Pp
@@ -933,7 +927,7 @@ command appeared in
 The
 .Fl v
 option was added in
-.Fx 14.0 .
+.Fx 13.2 .
 .Sh BUGS
 To maintain backward compatibility, the relationships between the many
 options are quite complex.

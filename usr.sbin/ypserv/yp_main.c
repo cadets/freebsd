@@ -33,8 +33,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * ypserv startup function.
  * We need out own main() since we have to do some additional work
@@ -211,7 +209,6 @@ reaper(int sig)
 		exit(0);
 	}
 	errno = saved_errno;
-	return;
 }
 
 static void

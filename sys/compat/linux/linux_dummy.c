@@ -25,9 +25,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/sdt.h>
@@ -78,8 +75,6 @@ DUMMY(add_key);
 DUMMY(request_key);
 DUMMY(keyctl);
 /* Linux 2.6.13: */
-DUMMY(ioprio_set);
-DUMMY(ioprio_get);
 DUMMY(inotify_add_watch);
 DUMMY(inotify_rm_watch);
 /* Linux 2.6.16: */
@@ -128,42 +123,42 @@ DUMMY(pwritev2);
 DUMMY(pkey_mprotect);
 DUMMY(pkey_alloc);
 DUMMY(pkey_free);
+/* Linux 4.18: */
+DUMMY(io_pgetevents);
+/* Linux 5.1: */
+DUMMY(pidfd_send_signal);
+DUMMY(io_uring_setup);
+DUMMY(io_uring_enter);
+DUMMY(io_uring_register);
+/* Linux 5.2: */
 DUMMY(open_tree);
 DUMMY(move_mount);
 DUMMY(fsopen);
 DUMMY(fsconfig);
 DUMMY(fsmount);
 DUMMY(fspick);
+/* Linux 5.3: */
 DUMMY(pidfd_open);
+/* Linux 5.6: */
 DUMMY(openat2);
 DUMMY(pidfd_getfd);
+/* Linux 5.10: */
 DUMMY(process_madvise);
+/* Linux 5.12: */
 DUMMY(mount_setattr);
-/* Linux 4.18: */
-DUMMY(io_pgetevents);
-/* Linux 5.0: */
-DUMMY(pidfd_send_signal);
-DUMMY(io_uring_setup);
-DUMMY(io_uring_enter);
-DUMMY(io_uring_register);
-
-#define DUMMY_XATTR(s)						\
-int								\
-linux_ ## s ## xattr(						\
-    struct thread *td, struct linux_ ## s ## xattr_args *arg)	\
-{								\
-								\
-	return (EOPNOTSUPP);					\
-}
-DUMMY_XATTR(set);
-DUMMY_XATTR(lset);
-DUMMY_XATTR(fset);
-DUMMY_XATTR(get);
-DUMMY_XATTR(lget);
-DUMMY_XATTR(fget);
-DUMMY_XATTR(list);
-DUMMY_XATTR(llist);
-DUMMY_XATTR(flist);
-DUMMY_XATTR(remove);
-DUMMY_XATTR(lremove);
-DUMMY_XATTR(fremove);
+/* Linux 5.13: */
+DUMMY(landlock_create_ruleset);
+DUMMY(landlock_add_rule);
+DUMMY(landlock_restrict_self);
+/* Linux 5.14: */
+DUMMY(memfd_secret);
+DUMMY(quotactl_fd);
+/* Linux 5.15: */
+DUMMY(process_mrelease);
+/* Linux 5.16: */
+DUMMY(futex_waitv);
+DUMMY(set_mempolicy_home_node);
+/* Linux 6.5: */
+DUMMY(cachestat);
+/* Linux 6.6: */
+DUMMY(fchmodat2);

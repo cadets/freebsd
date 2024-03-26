@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 
 #include <sys/param.h>
@@ -9305,6 +9303,7 @@ const struct chip_params *t4_get_chip_params(int chipid)
 			.sge_fl_db = F_DBPRIO,
 			.mps_tcam_size = NUM_MPS_CLS_SRAM_L_INSTANCES,
 			.rss_nentries = RSS_NENTRIES,
+			.cim_la_size = CIMLA_SIZE,
 		},
 		{
 			/* T5 */
@@ -9319,6 +9318,7 @@ const struct chip_params *t4_get_chip_params(int chipid)
 			.sge_fl_db = F_DBPRIO | F_DBTYPE,
 			.mps_tcam_size = NUM_MPS_T5_CLS_SRAM_L_INSTANCES,
 			.rss_nentries = RSS_NENTRIES,
+			.cim_la_size = CIMLA_SIZE,
 		},
 		{
 			/* T6 */
@@ -9333,6 +9333,7 @@ const struct chip_params *t4_get_chip_params(int chipid)
 			.sge_fl_db = 0,
 			.mps_tcam_size = NUM_MPS_T5_CLS_SRAM_L_INSTANCES,
 			.rss_nentries = T6_RSS_NENTRIES,
+			.cim_la_size = CIMLA_SIZE_T6,
 		},
 	};
 
@@ -9388,11 +9389,11 @@ int t4_prep_adapter(struct adapter *adapter, u32 *buf)
 	/* Cards with real ASICs have the chipid in the PCIe device id */
 	t4_os_pci_read_cfg2(adapter, PCI_DEVICE_ID, &device_id);
 	if (device_id >> 12 == chip_id(adapter))
-		adapter->params.cim_la_size = CIMLA_SIZE;
+		adapter->params.cim_la_size = adapter->chip_params->cim_la_size;
 	else {
 		/* FPGA */
 		adapter->params.fpga = 1;
-		adapter->params.cim_la_size = 2 * CIMLA_SIZE;
+		adapter->params.cim_la_size = 2 * adapter->chip_params->cim_la_size;
 	}
 
 	ret = get_vpd_params(adapter, &adapter->params.vpd, device_id, buf);

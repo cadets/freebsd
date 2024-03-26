@@ -20,14 +20,9 @@
 # CDDL HEADER END
 #
 
-# $FreeBSD$
-
 #
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
-#
-# ident	"@(#)hotspare_create_001_neg.ksh	1.5	09/06/22 SMI"
-#
 . $STF_SUITE/tests/hotspare/hotspare.kshlib
 
 ################################################################################

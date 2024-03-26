@@ -23,8 +23,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /*
@@ -258,7 +256,7 @@ reloc_non_plt(Obj_Entry *obj, Obj_Entry *obj_rtld, int flags,
 			 * dynamically loaded modules. If we run out
 			 * of space, we generate an error.
 			 */
-			if (!defobj->tls_done) {
+			if (!defobj->tls_static) {
 				if (!allocate_tls_offset(
 				    __DECONST(Obj_Entry *, defobj))) {
 					_rtld_error("%s: No space available "
@@ -279,7 +277,7 @@ reloc_non_plt(Obj_Entry *obj, Obj_Entry *obj_rtld, int flags,
 			 * dynamically loaded modules. If we run out
 			 * of space, we generate an error.
 			 */
-			if (!defobj->tls_done) {
+			if (!defobj->tls_static) {
 				if (!allocate_tls_offset(
 				    __DECONST(Obj_Entry *, defobj))) {
 					_rtld_error("%s: No space available "
@@ -529,7 +527,7 @@ allocate_initial_tls(Obj_Entry *objs)
 	 * offset allocated so far and adding a bit for dynamic
 	 * modules to use.
 	 */
-	tls_static_space = tls_last_offset + RTLD_STATIC_TLS_EXTRA;
+	tls_static_space = tls_last_offset + ld_static_tls_extra;
 
 	addr = allocate_tls(objs, 0, TLS_TCB_SIZE, TLS_TCB_ALIGN);
 

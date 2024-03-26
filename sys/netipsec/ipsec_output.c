@@ -25,8 +25,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /*
@@ -937,7 +935,7 @@ ipsec_process_done(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav,
 	}
 
 	key_freesp(&sp), sp = NULL;	/* Release reference to SP */
-#ifdef INET
+#if defined(INET) || defined(INET6)
 	/*
 	 * Do UDP encapsulation if SA requires it.
 	 */
@@ -946,7 +944,7 @@ ipsec_process_done(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav,
 		if (error != 0)
 			goto bad;
 	}
-#endif /* INET */
+#endif /* INET || INET6 */
 	/*
 	 * We're done with IPsec processing, transmit the packet using the
 	 * appropriate network protocol (IP or IPv6).

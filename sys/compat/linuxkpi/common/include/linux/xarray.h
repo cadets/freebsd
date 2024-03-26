@@ -22,8 +22,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 #ifndef	_LINUXKPI_LINUX_XARRAY_H_
 #define	_LINUXKPI_LINUX_XARRAY_H_
@@ -96,6 +94,9 @@ void *__xa_next(struct xarray *, unsigned long *, bool);
 
 #define	xa_erase_irq(xa, index) \
 	xa_erase((xa), (index))
+
+#define	xa_lock_irq(xa)		xa_lock(xa)
+#define	xa_unlock_irq(xa)	xa_unlock(xa)
 
 #define	xa_lock_irqsave(xa, flags) \
 	do { \

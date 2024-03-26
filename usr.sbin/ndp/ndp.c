@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 /*	$KAME: ndp.c,v 1.104 2003/06/27 07:48:39 itojun Exp $	*/
 
 /*-
@@ -65,10 +64,7 @@
 
 /*
  * Based on:
- * "@(#) Copyright (c) 1984, 1993\n\
  *	The Regents of the University of California.  All rights reserved.\n";
- *
- * "@(#)arp.c	8.2 (Berkeley) 1/2/94";
  */
 
 /*
@@ -98,6 +94,7 @@
 
 #include <arpa/inet.h>
 
+#include <assert.h>
 #include <ctype.h>
 #include <netdb.h>
 #include <errno.h>
@@ -107,11 +104,12 @@
 #include <string.h>
 #include <paths.h>
 #include <err.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <libxo/xo.h>
-#include "gmt2local.h"
+#include <time.h>
 
 #include "ndp.h"
 
@@ -136,7 +134,7 @@ static int delete(char *);
 static int dump(struct sockaddr_in6 *, int);
 static struct in6_nbrinfo *getnbrinfo(struct in6_addr *, int, int);
 static int ndp_ether_aton(char *, u_char *);
-static void usage(void);
+static void usage(void) __dead2;
 static void ifinfo(char *, int, char **);
 static void rtrlist(void);
 static void plist(void);
@@ -181,14 +179,29 @@ valid_type(int if_type)
 	return (false);
 }
 
+static int32_t
+utc_offset(void)
+{
+	time_t t;
+	struct tm *tm;
+
+	t = time(NULL);
+	tm = localtime(&t);
+
+	assert(tm->tm_gmtoff > INT32_MIN && tm->tm_gmtoff < INT32_MAX);
+
+	return (tm->tm_gmtoff);
+}
+
 int
 main(int argc, char **argv)
 {
 	int ch, mode = 0;
 	char *arg = NULL;
+	int ret = 0;
 
 	pid = getpid();
-	thiszone = gmt2local(0);
+	thiszone = utc_offset();
 
 	argc = xo_parse_args(argc, argv);
 	if (argc < 0)
@@ -265,7 +278,7 @@ main(int argc, char **argv)
 			/*NOTREACHED*/
 		}
 		xo_open_list("neighbor-cache");
-		delete(arg);
+		ret = delete(arg);
 		xo_close_list("neighbor-cache");
 		break;
 	case 'I':
@@ -338,7 +351,8 @@ main(int argc, char **argv)
 	}
 	xo_close_container("ndp");
 	xo_finish();
-	exit(0);
+
+	return (ret);
 }
 
 /*
@@ -638,6 +652,12 @@ again:;
 	if (sysctl(mib, 6, NULL, &needed, NULL, 0) < 0)
 		xo_err(1, "sysctl(PF_ROUTE estimate)");
 	if (needed > 0) {
+		/*
+		 * Add ~2% additional space in case some records
+		 * will appear between sysctl() calls.
+		 * Round it up so it can fit 4 additional messages at least.
+		 */
+		needed += ((needed >> 6) | (sizeof(m_rtmsg) * 4));
 		if ((buf = malloc(needed)) == NULL)
 			xo_err(1, "malloc");
 		if (sysctl(mib, 6, buf, &needed, NULL, 0) < 0)
@@ -826,7 +846,7 @@ static int
 delete(char *host)
 {
 #ifndef WITHOUT_NETLINK
-	return (delete_nl(0, host));
+	return (delete_nl(0, host, true)); /* do warn */
 #else
 	return (delete_rtsock(host));
 #endif
@@ -1529,7 +1549,7 @@ ts_print(const struct timeval *tvp)
 
 	/* Default */
 	sec = (tvp->tv_sec + thiszone) % 86400;
-	xo_emit("{:tv_sec/%lld}{:tv_usec/%lld}%02d:%02d:%02d.%06u ",
+	xo_emit("{e:tv_sec/%lld}{e:tv_usec/%lld}{d:/%02d:%02d:%02d.%06u} ",
 	    tvp->tv_sec, tvp->tv_usec,
 	    sec / 3600, (sec % 3600) / 60, sec % 60, (u_int32_t)tvp->tv_usec);
 }

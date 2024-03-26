@@ -25,8 +25,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 #ifndef	_LINUXKPI_LINUX_WORKQUEUE_H_
 #define	_LINUXKPI_LINUX_WORKQUEUE_H_
@@ -190,6 +188,9 @@ do {									\
 #define	delayed_work_pending(dwork) \
 	linux_work_pending(&(dwork)->work)
 
+#define	cancel_work(work) \
+	linux_cancel_work(work)
+
 #define	cancel_delayed_work(dwork) \
 	linux_cancel_delayed_work(dwork)
 
@@ -245,6 +246,7 @@ extern void linux_destroy_workqueue(struct workqueue_struct *);
 extern bool linux_queue_work_on(int cpu, struct workqueue_struct *, struct work_struct *);
 extern bool linux_queue_delayed_work_on(int cpu, struct workqueue_struct *,
     struct delayed_work *, unsigned delay);
+extern bool linux_cancel_work(struct work_struct *);
 extern bool linux_cancel_delayed_work(struct delayed_work *);
 extern bool linux_cancel_work_sync(struct work_struct *);
 extern bool linux_cancel_delayed_work_sync(struct delayed_work *);

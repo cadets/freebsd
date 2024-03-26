@@ -30,9 +30,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "namespace.h"
 #include <errno.h>
 #include <stdlib.h>
@@ -60,7 +57,8 @@ _pthread_spin_init(pthread_spinlock_t *lock, int pshared)
 	if (lock == NULL)
 		return (EINVAL);
 	if (pshared == PTHREAD_PROCESS_PRIVATE) {
-		lck = malloc(sizeof(struct pthread_spinlock));
+		lck = aligned_alloc(CACHE_LINE_SIZE,
+		    roundup(sizeof(struct pthread_spinlock), CACHE_LINE_SIZE));
 		if (lck == NULL)
 			return (ENOMEM);
 		*lock = lck;

@@ -24,8 +24,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #define L2CAP_SOCKET_CHECKED
 
 #include <sys/types.h>
@@ -36,6 +34,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/linker.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
+#include <sys/poll.h>
 #include <sys/procctl.h>
 #include <sys/ptrace.h>
 #include <sys/reboot.h>
@@ -567,6 +566,13 @@ sysdecode_pipe2_flags(FILE *fp, int flags, int *rem)
 	return (print_mask_0(fp, pipe2flags, flags, rem));
 }
 
+bool
+sysdecode_pollfd_events(FILE *fp, int flags, int *rem)
+{
+
+	return (print_mask_int(fp, pollfdevents, flags, rem));
+}
+
 const char *
 sysdecode_prio_which(int which)
 {
@@ -913,20 +919,11 @@ sysdecode_mmap_flags(FILE *fp, int flags, int *rem)
 
 	/*
 	 * MAP_ALIGNED can't be handled directly by print_mask_int().
-	 * MAP_32BIT is also problematic since it isn't defined for
-	 * all platforms.
 	 */
 	printed = false;
 	align = flags & MAP_ALIGNMENT_MASK;
 	val = (unsigned)flags & ~MAP_ALIGNMENT_MASK;
 	print_mask_part(fp, mmapflags, &val, &printed);
-#ifdef MAP_32BIT
-	if (val & MAP_32BIT) {
-		fprintf(fp, "%sMAP_32BIT", printed ? "|" : "");
-		printed = true;
-		val &= ~MAP_32BIT;
-	}
-#endif
 	if (align != 0) {
 		if (printed)
 			fputc('|', fp);

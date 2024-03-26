@@ -1,6 +1,5 @@
 #!/bin/sh
 #
-# $FreeBSD$
 #
 #
 # Common functions for virtual machine image build scripts.
@@ -57,14 +56,11 @@ vm_install_base() {
 		installworld installkernel distribution || \
 		err "\n\nCannot install the base system to ${DESTDIR}."
 
-	# Bootstrap etcupdate(8) and mergemaster(8) databases.
+	# Bootstrap etcupdate(8) database.
 	mkdir -p ${DESTDIR}/var/db/etcupdate
 	etcupdate extract -B \
 		-M "TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH}" \
 		-s ${WORLDDIR} -d ${DESTDIR}/var/db/etcupdate
-	sh ${WORLDDIR}/release/scripts/mm-mtree.sh -m ${WORLDDIR} \
-		-F "TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH}" \
-		-D ${DESTDIR}
 
 	echo '# Custom /etc/fstab for FreeBSD VM images' \
 		> ${DESTDIR}/etc/fstab
@@ -201,6 +197,7 @@ buildfs() {
 			-o fs=zroot/usr/obj \
 			-o fs=zroot/var\;mountpoint=/var\;canmount=off \
 			-o fs=zroot/var/audit\;setuid=off\;exec=off \
+			-o fs=zroot/var/crash\;setuid=off\;exec=off \
 			-o fs=zroot/var/log\;setuid=off\;exec=off \
 			-o fs=zroot/var/mail\;atime=on \
 			-o fs=zroot/var/tmp\;setuid=off \
@@ -242,6 +239,10 @@ vm_create_disk() {
 		BOOTPARTSOFFSET=":${VM_BOOTPARTSOFFSET}"
 	fi
 
+	if [ -n "${CONFIG_DRIVE}" ]; then
+		CONFIG_DRIVE="-p freebsd/config-drive::${CONFIG_DRIVE_SIZE}"
+	fi
+
 	case "${VMFS}" in
 	ufs)
 		FSPARTTYPE=freebsd-ufs
@@ -274,7 +275,7 @@ vm_create_disk() {
 			ROOTFSPART="-p ${FSPARTTYPE}/rootfs:=${VMBASE}"
 			MAKEFSARGS="$MAKEFSARGS -B little"
 			;;
-		arm64:aarch64 | riscv:riscv64*)
+		arm:armv7 | arm64:aarch64 | riscv:riscv64*)
 			ESP=yes
 			BOOTPARTS=
 			ROOTFSPART="-p ${FSPARTTYPE}/rootfs:=${VMBASE}"
@@ -315,6 +316,7 @@ vm_create_disk() {
 	mkimg -s ${PARTSCHEME} -f ${VMFORMAT} \
 		${BOOTPARTS} \
 		${SWAPOPT} \
+		${CONFIG_DRIVE} \
 		${ROOTFSPART} \
 		-o ${VMIMAGE}
 

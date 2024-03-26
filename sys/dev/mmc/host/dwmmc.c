@@ -33,9 +33,6 @@
  * Chapter 14, Altera Cyclone V Device Handbook (CV-5V2 2014.07.22)
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/conf.h>
@@ -63,7 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpu.h>
 #include <machine/intr.h>
 
-#include <dev/extres/clk/clk.h>
+#include <dev/clk/clk.h>
 
 #include <dev/mmc/host/dwmmc_reg.h>
 #include <dev/mmc/host/dwmmc_var.h>
@@ -881,7 +878,7 @@ dwmmc_update_ios(device_t brdev, device_t reqdev)
 	sc = device_get_softc(brdev);
 	ios = &sc->host.ios;
 
-	dprintf("Setting up clk %u bus_width %d, timming: %d\n",
+	dprintf("Setting up clk %u bus_width %d, timing: %d\n",
 		ios->clock, ios->bus_width, ios->timing);
 
 	switch (ios->power_mode) {

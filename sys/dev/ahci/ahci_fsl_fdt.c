@@ -29,8 +29,6 @@
 /* AHCI controller driver for NXP QorIQ Layerscape SoCs. */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/stdint.h>
 #include <sys/stddef.h>
 #include <sys/param.h>
@@ -50,7 +48,7 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/ahci/ahci.h>
 
-#include <dev/extres/clk/clk.h>
+#include <dev/clk/clk.h>
 
 #define	AHCI_FSL_REG_PHY1	0xa8
 #define	AHCI_FSL_REG_PHY2	0xac

@@ -27,15 +27,10 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)protosw.h	8.1 (Berkeley) 6/2/93
- * $FreeBSD$
  */
 
 #ifndef _SYS_PROTOSW_H_
 #define _SYS_PROTOSW_H_
-
-#include <sys/queue.h>
 
 /* Forward declare these structures referenced from prototypes below. */
 struct kaiocb;
@@ -44,6 +39,7 @@ struct thread;
 struct sockaddr;
 struct socket;
 struct sockopt;
+enum shutdown_how;
 
 /*#ifdef _KERNEL*/
 /*
@@ -64,7 +60,7 @@ struct uio;
 typedef int	pr_ctloutput_t(struct socket *, struct sockopt *);
 typedef int	pr_setsbopt_t(struct socket *, struct sockopt *);
 typedef void	pr_abort_t(struct socket *);
-typedef int	pr_accept_t(struct socket *, struct sockaddr **);
+typedef int	pr_accept_t(struct socket *, struct sockaddr *);
 typedef int	pr_attach_t(struct socket *, int, struct thread *);
 typedef int	pr_bind_t(struct socket *, struct sockaddr *, struct thread *);
 typedef int	pr_connect_t(struct socket *, struct sockaddr *,
@@ -75,7 +71,7 @@ typedef int	pr_control_t(struct socket *, unsigned long, void *,
 typedef void	pr_detach_t(struct socket *);
 typedef int	pr_disconnect_t(struct socket *);
 typedef int	pr_listen_t(struct socket *, int, struct thread *);
-typedef int	pr_peeraddr_t(struct socket *, struct sockaddr **);
+typedef int	pr_peeraddr_t(struct socket *, struct sockaddr *);
 typedef int	pr_rcvd_t(struct socket *, int);
 typedef int	pr_rcvoob_t(struct socket *, struct mbuf *, int);
 typedef enum {
@@ -89,9 +85,8 @@ typedef int	pr_send_t(struct socket *, int, struct mbuf *,
 		    struct sockaddr *, struct mbuf *, struct thread *);
 typedef int	pr_ready_t(struct socket *, struct mbuf *, int);
 typedef int	pr_sense_t(struct socket *, struct stat *);
-typedef int	pr_shutdown_t(struct socket *);
-typedef int	pr_flush_t(struct socket *, int);
-typedef int	pr_sockaddr_t(struct socket *, struct sockaddr **);
+typedef int	pr_shutdown_t(struct socket *, enum shutdown_how);
+typedef int	pr_sockaddr_t(struct socket *, struct sockaddr *);
 typedef int	pr_sosend_t(struct socket *, struct sockaddr *, struct uio *,
 		    struct mbuf *, struct mbuf *, int, struct thread *);
 typedef int	pr_soreceive_t(struct socket *, struct sockaddr **,
@@ -142,7 +137,6 @@ struct protosw {
 	pr_peeraddr_t	*pr_peeraddr;	/* getpeername(2) */
 	pr_sockaddr_t	*pr_sockaddr;	/* getsockname(2) */
 	pr_sense_t	*pr_sense;	/* stat(2) */
-	pr_flush_t	*pr_flush;	/* XXXGL: merge with pr_shutdown_t! */
 	pr_sosetlabel_t	*pr_sosetlabel;	/* MAC, XXXGL: remove */
 	pr_setsbopt_t	*pr_setsbopt;	/* Socket buffer ioctls */
 };
@@ -163,7 +157,7 @@ struct protosw {
 #define	PR_ADDR		0x02		/* addresses given with messages */
 #define	PR_CONNREQUIRED	0x04		/* connection required by protocol */
 #define	PR_WANTRCVD	0x08		/* want PRU_RCVD calls */
-#define	PR_RIGHTS	0x10		/* passes capabilities */
+/* was	PR_RIGHTS	0x10		   passes capabilities */
 #define PR_IMPLOPCL	0x20		/* implied open/close */
 /* was	PR_LASTHDR	0x40		   enforce ipsec policy; last header */
 #define	PR_CAPATTACH	0x80		/* socket can attach in cap mode */

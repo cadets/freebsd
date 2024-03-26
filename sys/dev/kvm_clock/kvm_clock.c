@@ -36,9 +36,6 @@
  *     - [2] https://www.kernel.org/doc/html/latest/virt/kvm/msr.html
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/domainset.h>

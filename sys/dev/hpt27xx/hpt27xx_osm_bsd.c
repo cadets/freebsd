@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <dev/hpt27xx/hpt27xx_config.h>
@@ -77,6 +75,11 @@ static int hpt_attach(device_t dev)
 	PVBUS vbus;
 	PVBUS_EXT vbus_ext;
 	
+	if (pci_get_domain(dev) != 0) {
+		device_printf(dev, "does not support PCI domains\n");
+		return (ENXIO);
+	}
+
 	KdPrint(("hpt_attach(%d/%d/%d)", pci_get_bus(dev), pci_get_slot(dev), pci_get_function(dev)));
 
 	him = hpt_match(dev, 1);

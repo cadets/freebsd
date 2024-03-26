@@ -31,8 +31,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * USB Enhanced Host Controller Driver, a.k.a. USB 2.0 controller.
  *
@@ -169,6 +167,10 @@ ehci_pci_match(device_t self)
 		return "Intel 82801JI (ICH10) USB 2.0 controller USB-A";
 	case 0x3a3c8086:
 		return "Intel 82801JI (ICH10) USB 2.0 controller USB-B";
+	case 0x3a6c8086:
+		return "Intel 82801JD (ICH10) USB 2.0 controller USB-A";
+	case 0x3a6a8086:
+		return "Intel 82801JD (ICH10) USB 2.0 controller USB-B";
 	case 0x3b348086:
 		return ("Intel PCH USB 2.0 controller USB-A");
 	case 0x3b3c8086:

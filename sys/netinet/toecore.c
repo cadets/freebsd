@@ -28,8 +28,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_inet.h"
 #include "opt_inet6.h"
 
@@ -185,7 +183,7 @@ toedev_ctloutput(struct toedev *tod __unused, struct tcpcb *tp __unused,
 }
 
 static void
-toedev_tcp_info(struct toedev *tod __unused, struct tcpcb *tp __unused,
+toedev_tcp_info(struct toedev *tod __unused, const struct tcpcb *tp __unused,
     struct tcp_info *ti __unused)
 {
 

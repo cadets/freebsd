@@ -30,8 +30,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Intel EtherExpress Pro/100B PCI Fast Ethernet driver
  */
@@ -1379,7 +1377,7 @@ fxp_start_body(if_t ifp)
 		/*
 		 * Pass packet to bpf if there is a listener.
 		 */
-		if_bpfmtap(ifp, mb_head);
+		bpf_mtap_if(ifp, mb_head);
 	}
 
 	/*

@@ -17,14 +17,12 @@
  * information: Portions Copyright [yyyy] [name of copyright owner]
  *
  * CDDL HEADER END
- * $FreeBSD$
  */
 
 /*
  * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
-#pragma ident	"@(#)file_trunc.c	1.2	07/05/25 SMI"
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -27,13 +27,9 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)uipc_syscalls.c	8.4 (Berkeley) 2/21/94
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_capsicum.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -281,63 +277,58 @@ static int
 accept1(struct thread *td, int s, struct sockaddr *uname, socklen_t *anamelen,
     int flags)
 {
-	struct sockaddr *name;
-	socklen_t namelen;
+	struct sockaddr_storage ss = { .ss_len = sizeof(ss) };
+	socklen_t addrlen;
 	struct file *fp;
 	int error;
 
-	if (uname == NULL)
-		return (kern_accept4(td, s, NULL, NULL, flags, NULL));
-
-	error = copyin(anamelen, &namelen, sizeof (namelen));
-	if (error != 0)
-		return (error);
-
-	error = kern_accept4(td, s, &name, &namelen, flags, &fp);
-
-	if (error != 0)
-		return (error);
-
-	if (error == 0 && uname != NULL) {
-#ifdef COMPAT_OLDSOCK
-		if (SV_PROC_FLAG(td->td_proc, SV_AOUT) &&
-		    (flags & ACCEPT4_COMPAT) != 0)
-			((struct osockaddr *)name)->sa_family =
-			    name->sa_family;
-#endif
-		error = copyout(name, uname, namelen);
+	if (uname != NULL) {
+		error = copyin(anamelen, &addrlen, sizeof(addrlen));
+		if (error != 0)
+			return (error);
 	}
-	if (error == 0)
-		error = copyout(&namelen, anamelen,
-		    sizeof(namelen));
+
+	error = kern_accept4(td, s, (struct sockaddr *)&ss, flags, &fp);
+
+	if (error != 0)
+		return (error);
+
+#ifdef COMPAT_OLDSOCK
+	if (SV_PROC_FLAG(td->td_proc, SV_AOUT) &&
+	    (flags & ACCEPT4_COMPAT) != 0)
+		((struct osockaddr *)&ss)->sa_family = ss.ss_family;
+#endif
+	if (uname != NULL) {
+		addrlen = min(ss.ss_len, addrlen);
+		error = copyout(&ss, uname, addrlen);
+		if (error == 0) {
+			addrlen = ss.ss_len;
+			error = copyout(&addrlen, anamelen, sizeof(addrlen));
+		}
+	}
 	if (error != 0)
 		fdclose(td, fp, td->td_retval[0]);
 	fdrop(fp, td);
-	free(name, M_SONAME);
+
 	return (error);
 }
 
 int
-kern_accept(struct thread *td, int s, struct sockaddr **name,
-    socklen_t *namelen, struct file **fp)
+kern_accept(struct thread *td, int s, struct sockaddr *sa, struct file **fp)
 {
-	return (kern_accept4(td, s, name, namelen, ACCEPT4_INHERIT, fp));
+	return (kern_accept4(td, s, sa, ACCEPT4_INHERIT, fp));
 }
 
 int
-kern_accept4(struct thread *td, int s, struct sockaddr **name,
-    socklen_t *namelen, int flags, struct file **fp)
+kern_accept4(struct thread *td, int s, struct sockaddr *sa, int flags,
+    struct file **fp)
 {
 	struct file *headfp, *nfp = NULL;
-	struct sockaddr *sa = NULL;
 	struct socket *head, *so;
 	struct filecaps fcaps;
 	u_int fflag;
 	pid_t pgid;
 	int error, fd, tmp;
-
-	if (name != NULL)
-		*name = NULL;
 
 	AUDIT_ARG_FD(s);
 	error = getsock_cap(td, s, &cap_accept_rights,
@@ -392,29 +383,15 @@ kern_accept4(struct thread *td, int s, struct sockaddr **name,
 	(void) fo_ioctl(nfp, FIONBIO, &tmp, td->td_ucred, td);
 	tmp = fflag & FASYNC;
 	(void) fo_ioctl(nfp, FIOASYNC, &tmp, td->td_ucred, td);
-	error = soaccept(so, &sa);
-	if (error != 0)
-		goto noconnection;
-	if (sa == NULL) {
-		if (name)
-			*namelen = 0;
-		goto done;
-	}
-	AUDIT_ARG_SOCKADDR(td, AT_FDCWD, sa);
-	if (name) {
-		/* check sa_len before it is destroyed */
-		if (*namelen > sa->sa_len)
-			*namelen = sa->sa_len;
+
+	if ((error = soaccept(so, sa)) == 0) {
+		AUDIT_ARG_SOCKADDR(td, AT_FDCWD, sa);
 #ifdef KTRACE
 		if (KTRPOINT(td, KTR_STRUCT))
 			ktrsockaddr(sa);
 #endif
-		*name = sa;
-		sa = NULL;
 	}
 noconnection:
-	free(sa, M_SONAME);
-
 	/*
 	 * close the new descriptor, assuming someone hasn't ripped it
 	 * out from under us.
@@ -795,7 +772,8 @@ kern_sendit(struct thread *td, int s, struct msghdr *mp, int flags,
 		td->td_retval[0] = len - auio.uio_resid;
 #ifdef KTRACE
 	if (ktruio != NULL) {
-		ktruio->uio_resid = td->td_retval[0];
+		if (error == 0)
+			ktruio->uio_resid = td->td_retval[0];
 		ktrgenio(s, UIO_WRITE, ktruio, error);
 	}
 #endif
@@ -952,7 +930,8 @@ kern_recvit(struct thread *td, int s, struct msghdr *mp, enum uio_seg fromseg,
 		AUDIT_ARG_SOCKADDR(td, AT_FDCWD, fromsa);
 #ifdef KTRACE
 	if (ktruio != NULL) {
-		ktruio->uio_resid = len - auio.uio_resid;
+		/* MSG_TRUNC can trigger underflow of uio_resid. */
+		ktruio->uio_resid = MIN(len - auio.uio_resid, len);
 		ktrgenio(s, UIO_READ, ktruio, error);
 	}
 #endif
@@ -1194,6 +1173,9 @@ kern_shutdown(struct thread *td, int s, int how)
 	struct file *fp;
 	int error;
 
+	if (__predict_false(how < SHUT_RD || how > SHUT_RDWR))
+		return (EINVAL);
+
 	AUDIT_ARG_FD(s);
 	error = getsock(td, s, &cap_shutdown_rights, &fp);
 	if (error == 0) {
@@ -1330,7 +1312,7 @@ static int
 user_getsockname(struct thread *td, int fdes, struct sockaddr *asa,
     socklen_t *alen, bool compat)
 {
-	struct sockaddr *sa;
+	struct sockaddr_storage ss = { .ss_len = sizeof(ss) };
 	socklen_t len;
 	int error;
 
@@ -1338,30 +1320,28 @@ user_getsockname(struct thread *td, int fdes, struct sockaddr *asa,
 	if (error != 0)
 		return (error);
 
-	error = kern_getsockname(td, fdes, &sa, &len);
+	error = kern_getsockname(td, fdes, (struct sockaddr *)&ss);
 	if (error != 0)
 		return (error);
 
-	if (len != 0) {
 #ifdef COMPAT_OLDSOCK
-		if (compat && SV_PROC_FLAG(td->td_proc, SV_AOUT))
-			((struct osockaddr *)sa)->sa_family = sa->sa_family;
+	if (compat && SV_PROC_FLAG(td->td_proc, SV_AOUT))
+		((struct osockaddr *)&ss)->sa_family = ss.ss_family;
 #endif
-		error = copyout(sa, asa, len);
-	}
-	free(sa, M_SONAME);
-	if (error == 0)
+	len = min(ss.ss_len, len);
+	error = copyout(&ss, asa, len);
+	if (error == 0) {
+		len = ss.ss_len;
 		error = copyout(&len, alen, sizeof(len));
+	}
 	return (error);
 }
 
 int
-kern_getsockname(struct thread *td, int fd, struct sockaddr **sa,
-    socklen_t *alen)
+kern_getsockname(struct thread *td, int fd, struct sockaddr *sa)
 {
 	struct socket *so;
 	struct file *fp;
-	socklen_t len;
 	int error;
 
 	AUDIT_ARG_FD(fd);
@@ -1369,27 +1349,12 @@ kern_getsockname(struct thread *td, int fd, struct sockaddr **sa,
 	if (error != 0)
 		return (error);
 	so = fp->f_data;
-	*sa = NULL;
-	CURVNET_SET(so->so_vnet);
-	error = so->so_proto->pr_sockaddr(so, sa);
-	CURVNET_RESTORE();
-	if (error != 0)
-		goto bad;
-	if (*sa == NULL)
-		len = 0;
-	else
-		len = MIN(*alen, (*sa)->sa_len);
-	*alen = len;
+	error = sosockaddr(so, sa);
 #ifdef KTRACE
-	if (KTRPOINT(td, KTR_STRUCT))
-		ktrsockaddr(*sa);
+	if (error == 0 && KTRPOINT(td, KTR_STRUCT))
+		ktrsockaddr(sa);
 #endif
-bad:
 	fdrop(fp, td);
-	if (error != 0 && *sa != NULL) {
-		free(*sa, M_SONAME);
-		*sa = NULL;
-	}
 	return (error);
 }
 
@@ -1411,7 +1376,7 @@ static int
 user_getpeername(struct thread *td, int fdes, struct sockaddr *asa,
     socklen_t *alen, bool compat)
 {
-	struct sockaddr *sa;
+	struct sockaddr_storage ss = { .ss_len = sizeof(ss) };
 	socklen_t len;
 	int error;
 
@@ -1419,30 +1384,28 @@ user_getpeername(struct thread *td, int fdes, struct sockaddr *asa,
 	if (error != 0)
 		return (error);
 
-	error = kern_getpeername(td, fdes, &sa, &len);
+	error = kern_getpeername(td, fdes, (struct sockaddr *)&ss);
 	if (error != 0)
 		return (error);
 
-	if (len != 0) {
 #ifdef COMPAT_OLDSOCK
-		if (compat && SV_PROC_FLAG(td->td_proc, SV_AOUT))
-			((struct osockaddr *)sa)->sa_family = sa->sa_family;
+	if (compat && SV_PROC_FLAG(td->td_proc, SV_AOUT))
+		((struct osockaddr *)&ss)->sa_family = ss.ss_family;
 #endif
-		error = copyout(sa, asa, len);
-	}
-	free(sa, M_SONAME);
-	if (error == 0)
+	len = min(ss.ss_len, len);
+	error = copyout(&ss, asa, len);
+	if (error == 0) {
+		len = ss.ss_len;
 		error = copyout(&len, alen, sizeof(len));
+	}
 	return (error);
 }
 
 int
-kern_getpeername(struct thread *td, int fd, struct sockaddr **sa,
-    socklen_t *alen)
+kern_getpeername(struct thread *td, int fd, struct sockaddr *sa)
 {
 	struct socket *so;
 	struct file *fp;
-	socklen_t len;
 	int error;
 
 	AUDIT_ARG_FD(fd);
@@ -1450,30 +1413,15 @@ kern_getpeername(struct thread *td, int fd, struct sockaddr **sa,
 	if (error != 0)
 		return (error);
 	so = fp->f_data;
-	if ((so->so_state & (SS_ISCONNECTED|SS_ISCONFIRMING)) == 0) {
+	if ((so->so_state & SS_ISCONNECTED) == 0) {
 		error = ENOTCONN;
 		goto done;
 	}
-	*sa = NULL;
-	CURVNET_SET(so->so_vnet);
-	error = so->so_proto->pr_peeraddr(so, sa);
-	CURVNET_RESTORE();
-	if (error != 0)
-		goto bad;
-	if (*sa == NULL)
-		len = 0;
-	else
-		len = MIN(*alen, (*sa)->sa_len);
-	*alen = len;
+	error = sopeeraddr(so, sa);
 #ifdef KTRACE
-	if (KTRPOINT(td, KTR_STRUCT))
-		ktrsockaddr(*sa);
+	if (error == 0 && KTRPOINT(td, KTR_STRUCT))
+		ktrsockaddr(sa);
 #endif
-bad:
-	if (error != 0 && *sa != NULL) {
-		free(*sa, M_SONAME);
-		*sa = NULL;
-	}
 done:
 	fdrop(fp, td);
 	return (error);

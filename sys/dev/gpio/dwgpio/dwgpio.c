@@ -35,9 +35,6 @@
  * Chapter 22, Cyclone V Device Handbook (CV-5V2 2014.07.22)
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>

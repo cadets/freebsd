@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #ifdef VFP
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -37,6 +35,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/pcpu.h>
 #include <sys/proc.h>
+
+#include <vm/uma.h>
 
 #include <machine/armreg.h>
 #include <machine/md_var.h>
@@ -56,6 +56,9 @@ struct fpu_kern_ctx {
 	uint32_t	 flags;
 	struct vfpstate	 state;
 };
+
+static uma_zone_t fpu_save_area_zone;
+static struct vfpstate *fpu_initialstate;
 
 void
 vfp_enable(void)
@@ -163,24 +166,10 @@ vfp_restore(struct vfpstate *state)
 	    : : "r"(fpcr), "r"(fpsr), "r"(vfp_state));
 }
 
-void
-vfp_save_state(struct thread *td, struct pcb *pcb)
+static void
+vfp_save_state_common(struct thread *td, struct pcb *pcb)
 {
 	uint32_t cpacr;
-
-	KASSERT(pcb != NULL, ("NULL vfp pcb"));
-	KASSERT(td == NULL || td->td_pcb == pcb, ("Invalid vfp pcb"));
-
-	/* 
-	 * savectx() will be called on panic with dumppcb as an argument,
-	 * dumppcb doesn't have pcb_fpusaved set, so set it to save
-	 * the VFP registers.
-	 */
-	if (pcb->pcb_fpusaved == NULL)
-		pcb->pcb_fpusaved = &pcb->pcb_fpustate;
-
-	if (td == NULL)
-		td = curthread;
 
 	critical_enter();
 	/*
@@ -197,6 +186,30 @@ vfp_save_state(struct thread *td, struct pcb *pcb)
 		vfp_disable();
 	}
 	critical_exit();
+}
+
+void
+vfp_save_state(struct thread *td, struct pcb *pcb)
+{
+	KASSERT(td != NULL, ("NULL vfp thread"));
+	KASSERT(pcb != NULL, ("NULL vfp pcb"));
+	KASSERT(td->td_pcb == pcb, ("Invalid vfp pcb"));
+
+	vfp_save_state_common(td, pcb);
+}
+
+void
+vfp_save_state_savectx(struct pcb *pcb)
+{
+	/*
+	 * savectx() will be called on panic with dumppcb as an argument,
+	 * dumppcb doesn't have pcb_fpusaved set, so set it to save
+	 * the VFP registers.
+	 */
+	MPASS(pcb->pcb_fpusaved == NULL);
+	pcb->pcb_fpusaved = &pcb->pcb_fpustate;
+
+	vfp_save_state_common(curthread, pcb);
 }
 
 /*
@@ -280,7 +293,7 @@ vfp_restore_state(void)
 }
 
 void
-vfp_init(void)
+vfp_init_secondary(void)
 {
 	uint64_t pfr;
 
@@ -291,9 +304,34 @@ vfp_init(void)
 
 	/* Disable to be enabled when it's used */
 	vfp_disable();
+}
 
-	if (PCPU_GET(cpuid) == 0)
-		thread0.td_pcb->pcb_fpusaved->vfp_fpcr = VFPCR_INIT;
+static void
+vfp_init(const void *dummy __unused)
+{
+	uint64_t pfr;
+
+	/* Check if there is a vfp unit present */
+	pfr = READ_SPECIALREG(id_aa64pfr0_el1);
+	if ((pfr & ID_AA64PFR0_FP_MASK) == ID_AA64PFR0_FP_NONE)
+		return;
+
+	fpu_save_area_zone = uma_zcreate("VFP_save_area",
+	    sizeof(struct vfpstate), NULL, NULL, NULL, NULL,
+	    _Alignof(struct vfpstate) - 1, 0);
+	fpu_initialstate = uma_zalloc(fpu_save_area_zone, M_WAITOK | M_ZERO);
+
+	/* Ensure the VFP is enabled before accessing it in vfp_store */
+	vfp_enable();
+	vfp_store(fpu_initialstate);
+
+	/* Disable to be enabled when it's used */
+	vfp_disable();
+
+	/* Zero the VFP registers but keep fpcr and fpsr */
+	bzero(fpu_initialstate->vfp_regs, sizeof(fpu_initialstate->vfp_regs));
+
+	thread0.td_pcb->pcb_fpusaved->vfp_fpcr = VFPCR_INIT;
 }
 
 SYSINIT(vfp, SI_SUB_CPU, SI_ORDER_ANY, vfp_init, NULL);
@@ -432,5 +470,26 @@ is_fpu_kern_thread(u_int flags __unused)
 		return (0);
 	curpcb = curthread->td_pcb;
 	return ((curpcb->pcb_fpflags & PCB_FP_KERN) != 0);
+}
+
+/*
+ * FPU save area alloc/free/init utility routines
+ */
+struct vfpstate *
+fpu_save_area_alloc(void)
+{
+	return (uma_zalloc(fpu_save_area_zone, M_WAITOK));
+}
+
+void
+fpu_save_area_free(struct vfpstate *fsa)
+{
+	uma_zfree(fpu_save_area_zone, fsa);
+}
+
+void
+fpu_save_area_reset(struct vfpstate *fsa)
+{
+	memcpy(fsa, fpu_initialstate, sizeof(*fsa));
 }
 #endif

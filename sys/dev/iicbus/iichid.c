@@ -29,8 +29,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_hid.h"
 
 #include <sys/param.h>
@@ -108,9 +106,9 @@ enum {
  * sampling_rate_fast value too high as it may result in periodical lags of
  * cursor motion.
  */
-#define	IICHID_SAMPLING_RATE_FAST	60
+#define	IICHID_SAMPLING_RATE_FAST	80
 #define	IICHID_SAMPLING_RATE_SLOW	10
-#define	IICHID_SAMPLING_HYSTERESIS	1
+#define	IICHID_SAMPLING_HYSTERESIS	16	/* ~ 2x fast / slow */
 
 /* 5.1.1 - HID Descriptor Format */
 struct i2c_hid_desc {
@@ -179,10 +177,12 @@ struct iichid_softc {
 	int			sampling_rate_fast;
 	int			sampling_hysteresis;
 	int			missing_samples;	/* iicbus lock */
-	struct timeout_task	periodic_task;		/* iicbus lock */
+	int			dup_samples;		/* iicbus lock */
+	iichid_size_t		dup_size;		/* iicbus lock */
 	bool			callout_setup;		/* iicbus lock */
+	uint8_t			*dup_buf;
 	struct taskqueue	*taskqueue;
-	struct task		event_task;
+	struct timeout_task	sampling_task;		/* iicbus lock */
 #endif
 
 	struct task		suspend_task;
@@ -519,13 +519,13 @@ iichid_cmd_set_report(struct iichid_softc* sc, const void *buf,
 
 #ifdef IICHID_SAMPLING
 static void
-iichid_event_task(void *context, int pending)
+iichid_sampling_task(void *context, int pending)
 {
 	struct iichid_softc *sc;
 	device_t parent;
 	iichid_size_t actual;
 	bool bus_requested;
-	int error;
+	int error, rate;
 
 	sc = context;
 	parent = device_get_parent(sc->dev);
@@ -543,18 +543,30 @@ iichid_event_task(void *context, int pending)
 		if (actual > 0) {
 			sc->intr_handler(sc->intr_ctx, sc->intr_buf, actual);
 			sc->missing_samples = 0;
-		} else
-			++sc->missing_samples;
+			if (sc->dup_size != actual ||
+			    memcmp(sc->dup_buf, sc->intr_buf, actual) != 0) {
+				sc->dup_size = actual;
+				memcpy(sc->dup_buf, sc->intr_buf, actual);
+				sc->dup_samples = 0;
+			} else
+				++sc->dup_samples;
+		} else {
+			if (++sc->missing_samples == 1)
+				sc->intr_handler(sc->intr_ctx, sc->intr_buf, 0);
+			sc->dup_samples = 0;
+		}
 	} else
 		DPRINTF(sc, "read error occurred: %d\n", error);
 
 rearm:
 	if (sc->callout_setup && sc->sampling_rate_slow > 0) {
-		if (sc->missing_samples == sc->sampling_hysteresis)
-			sc->intr_handler(sc->intr_ctx, sc->intr_buf, 0);
-		taskqueue_enqueue_timeout(sc->taskqueue, &sc->periodic_task,
-		    hz / MAX(sc->missing_samples >= sc->sampling_hysteresis ?
-		      sc->sampling_rate_slow : sc->sampling_rate_fast, 1));
+		if (sc->missing_samples >= sc->sampling_hysteresis ||
+		    sc->dup_samples >= sc->sampling_hysteresis)
+			rate = sc->sampling_rate_slow;
+		else
+			rate = sc->sampling_rate_fast;
+		taskqueue_enqueue_timeout_sbt(sc->taskqueue, &sc->sampling_task,
+		    SBT_1S / MAX(rate, 1), 0, C_PREL(2));
 	}
 out:
 	if (bus_requested)
@@ -727,7 +739,9 @@ iichid_reset_callout(struct iichid_softc *sc)
 
 	/* Start with slow sampling. */
 	sc->missing_samples = sc->sampling_hysteresis;
-	taskqueue_enqueue(sc->taskqueue, &sc->event_task);
+	sc->dup_samples = 0;
+	sc->dup_size = 0;
+	taskqueue_enqueue_timeout(sc->taskqueue, &sc->sampling_task, 0);
 
 	return (0);
 }
@@ -737,7 +751,7 @@ iichid_teardown_callout(struct iichid_softc *sc)
 {
 
 	sc->callout_setup = false;
-	taskqueue_cancel_timeout(sc->taskqueue, &sc->periodic_task, NULL);
+	taskqueue_cancel_timeout(sc->taskqueue, &sc->sampling_task, NULL);
 	DPRINTF(sc, "tore callout down\n");
 }
 
@@ -791,8 +805,8 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 #endif /* IICHID_SAMPLING */
 
 static void
-iichid_intr_setup(device_t dev, hid_intr_t intr, void *context,
-    struct hid_rdesc_info *rdesc)
+iichid_intr_setup(device_t dev, device_t child __unused, hid_intr_t intr,
+    void *context, struct hid_rdesc_info *rdesc)
 {
 	struct iichid_softc *sc;
 
@@ -814,25 +828,27 @@ iichid_intr_setup(device_t dev, hid_intr_t intr, void *context,
 	sc->intr_buf = malloc(rdesc->rdsize, M_DEVBUF, M_WAITOK | M_ZERO);
 	sc->intr_bufsize = rdesc->rdsize;
 #ifdef IICHID_SAMPLING
+	sc->dup_buf = malloc(rdesc->rdsize, M_DEVBUF, M_WAITOK | M_ZERO);
 	taskqueue_start_threads(&sc->taskqueue, 1, PI_TTY,
 	    "%s taskq", device_get_nameunit(sc->dev));
 #endif
 }
 
 static void
-iichid_intr_unsetup(device_t dev)
+iichid_intr_unsetup(device_t dev, device_t child __unused)
 {
 	struct iichid_softc *sc;
 
 	sc = device_get_softc(dev);
 #ifdef IICHID_SAMPLING
 	taskqueue_drain_all(sc->taskqueue);
+	free(sc->dup_buf, M_DEVBUF);
 #endif
 	free(sc->intr_buf, M_DEVBUF);
 }
 
 static int
-iichid_intr_start(device_t dev)
+iichid_intr_start(device_t dev, device_t child __unused)
 {
 	struct iichid_softc *sc;
 
@@ -844,7 +860,7 @@ iichid_intr_start(device_t dev)
 }
 
 static int
-iichid_intr_stop(device_t dev)
+iichid_intr_stop(device_t dev, device_t child __unused)
 {
 	struct iichid_softc *sc;
 
@@ -862,7 +878,7 @@ iichid_intr_stop(device_t dev)
 }
 
 static void
-iichid_intr_poll(device_t dev)
+iichid_intr_poll(device_t dev, device_t child __unused)
 {
 	struct iichid_softc *sc;
 	iichid_size_t actual;
@@ -878,7 +894,8 @@ iichid_intr_poll(device_t dev)
  * HID interface
  */
 static int
-iichid_get_rdesc(device_t dev, void *buf, hid_size_t len)
+iichid_get_rdesc(device_t dev, device_t child __unused, void *buf,
+    hid_size_t len)
 {
 	struct iichid_softc *sc;
 	int error;
@@ -892,7 +909,8 @@ iichid_get_rdesc(device_t dev, void *buf, hid_size_t len)
 }
 
 static int
-iichid_read(device_t dev, void *buf, hid_size_t maxlen, hid_size_t *actlen)
+iichid_read(device_t dev, device_t child __unused, void *buf,
+    hid_size_t maxlen, hid_size_t *actlen)
 {
 	struct iichid_softc *sc;
 	device_t parent;
@@ -911,7 +929,8 @@ iichid_read(device_t dev, void *buf, hid_size_t maxlen, hid_size_t *actlen)
 }
 
 static int
-iichid_write(device_t dev, const void *buf, hid_size_t len)
+iichid_write(device_t dev, device_t child __unused, const void *buf,
+    hid_size_t len)
 {
 	struct iichid_softc *sc;
 
@@ -922,8 +941,8 @@ iichid_write(device_t dev, const void *buf, hid_size_t len)
 }
 
 static int
-iichid_get_report(device_t dev, void *buf, hid_size_t maxlen,
-    hid_size_t *actlen, uint8_t type, uint8_t id)
+iichid_get_report(device_t dev, device_t child __unused, void *buf,
+    hid_size_t maxlen, hid_size_t *actlen, uint8_t type, uint8_t id)
 {
 	struct iichid_softc *sc;
 
@@ -935,8 +954,8 @@ iichid_get_report(device_t dev, void *buf, hid_size_t maxlen,
 }
 
 static int
-iichid_set_report(device_t dev, const void *buf, hid_size_t len, uint8_t type,
-    uint8_t id)
+iichid_set_report(device_t dev, device_t child __unused, const void *buf,
+    hid_size_t len, uint8_t type, uint8_t id)
 {
 	struct iichid_softc *sc;
 
@@ -947,19 +966,21 @@ iichid_set_report(device_t dev, const void *buf, hid_size_t len, uint8_t type,
 }
 
 static int
-iichid_set_idle(device_t dev, uint16_t duration, uint8_t id)
+iichid_set_idle(device_t dev, device_t child __unused,
+    uint16_t duration, uint8_t id)
 {
 	return (ENOTSUP);
 }
 
 static int
-iichid_set_protocol(device_t dev, uint16_t protocol)
+iichid_set_protocol(device_t dev, device_t child __unused, uint16_t protocol)
 {
 	return (ENOTSUP);
 }
 
 static int
-iichid_ioctl(device_t dev, unsigned long cmd, uintptr_t data)
+iichid_ioctl(device_t dev, device_t child __unused, unsigned long cmd,
+    uintptr_t data)
 {
 	int error;
 
@@ -1113,12 +1134,10 @@ iichid_attach(device_t dev)
 
 	TASK_INIT(&sc->suspend_task, 0, iichid_suspend_task, sc);
 #ifdef IICHID_SAMPLING
-	TASK_INIT(&sc->event_task, 0, iichid_event_task, sc);
-	/* taskqueue_create can't fail with M_WAITOK mflag passed. */
-	sc->taskqueue = taskqueue_create("iichid_tq", M_WAITOK | M_ZERO,
+	sc->taskqueue = taskqueue_create_fast("iichid_tq", M_WAITOK | M_ZERO,
 	    taskqueue_thread_enqueue, &sc->taskqueue);
-	TIMEOUT_TASK_INIT(sc->taskqueue, &sc->periodic_task, 0,
-	    iichid_event_task, sc);
+	TIMEOUT_TASK_INIT(sc->taskqueue, &sc->sampling_task, 0,
+	    iichid_sampling_task, sc);
 
 	sc->sampling_rate_slow = -1;
 	sc->sampling_rate_fast = IICHID_SAMPLING_RATE_FAST;

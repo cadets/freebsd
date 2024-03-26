@@ -28,8 +28,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _AMD64_LINUX_H_
@@ -47,6 +45,10 @@
 #define	LINUX32_MAXDSIZ		(512 * 1024 * 1024)	/* 512MB */
 #define	LINUX32_MAXSSIZ		(64 * 1024 * 1024)	/* 64MB */
 #define	LINUX32_MAXVMEM		0			/* Unlimited */
+
+#define	LINUX_ARCHWANT_MMAP2PGOFF	1	/* 32-bit off_t want offset
+						 * represented in multiples
+						 * of page size. */
 
 /*
  * Provide a separate set of types for the Linux types.
@@ -390,18 +392,6 @@ struct l_user_desc {
 	(((desc)->b >> LINUX_ENTRY_B_USEABLE) & 1)
 
 #ifdef _KERNEL
-struct iovec;
-struct uio;
-
-struct l_iovec32 {
-	uint32_t	iov_base;
-	l_size_t	iov_len;
-};
-
-int linux32_copyiniov(struct l_iovec32 *iovp32, l_ulong iovcnt,
-			    struct iovec **iovp, int error);
-int linux32_copyinuio(struct l_iovec32 *iovp, l_ulong iovcnt,
-			    struct uio **uiop);
 int linux_copyout_rusage(struct rusage *ru, void *uaddr);
 #endif /* _KERNEL */
 

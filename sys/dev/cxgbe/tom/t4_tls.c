@@ -31,8 +31,6 @@
 #include "opt_kern_tls.h"
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #ifdef KERN_TLS
 #include <sys/param.h>
 #include <sys/ktr.h>
@@ -317,7 +315,7 @@ tls_alloc_ktls(struct toepcb *toep, struct ktls_session *tls, int direction)
 		    tls->params.max_frame_len;
 		toep->tls.tx_key_info_size = t4_tls_key_info_size(tls);
 	} else {
-		toep->flags |= TPF_TLS_STARTING | TPF_TLS_RX_QUIESCED;
+		toep->flags |= TPF_TLS_STARTING | TPF_TLS_RX_QUIESCING;
 		toep->tls.rx_version = tls->params.tls_vmajor << 8 |
 		    tls->params.tls_vminor;
 
@@ -796,7 +794,7 @@ do_rx_tls_cmp(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 	struct mbuf *tls_data;
 	struct tls_get_record *tgr;
 	struct mbuf *control;
-	int pdu_length, rx_credits, trailer_len;
+	int pdu_length, trailer_len;
 #if defined(KTR) || defined(INVARIANTS)
 	int len;
 #endif
@@ -977,16 +975,7 @@ do_rx_tls_cmp(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 		sbappendcontrol_locked(sb, m, control, 0);
 	else
 		sbappendstream_locked(sb, m, 0);
-	rx_credits = sbspace(sb) > tp->rcv_wnd ? sbspace(sb) - tp->rcv_wnd : 0;
-#ifdef VERBOSE_TRACES
-	CTR4(KTR_CXGBE, "%s: tid %u rx_credits %u rcv_wnd %u",
-	    __func__, tid, rx_credits, tp->rcv_wnd);
-#endif
-	if (rx_credits > 0 && sbused(sb) + tp->rcv_wnd < sb->sb_lowat) {
-		rx_credits = send_rx_credits(sc, toep, rx_credits);
-		tp->rcv_wnd += rx_credits;
-		tp->rcv_adv += rx_credits;
-	}
+	t4_rcvd_locked(&toep->td->tod, tp);
 
 	sorwakeup_locked(so);
 	SOCKBUF_UNLOCK_ASSERT(sb);
@@ -1006,7 +995,7 @@ do_rx_data_tls(const struct cpl_rx_data *cpl, struct toepcb *toep,
 	struct tcpcb *tp;
 	struct socket *so;
 	struct sockbuf *sb;
-	int len, rx_credits;
+	int len;
 
 	len = m->m_pkthdr.len;
 
@@ -1077,22 +1066,6 @@ do_rx_data_tls(const struct cpl_rx_data *cpl, struct toepcb *toep,
 	so->so_error = EBADMSG;
 
 out:
-	/*
-	 * This connection is going to die anyway, so probably don't
-	 * need to bother with returning credits.
-	 */
-	rx_credits = sbspace(sb) > tp->rcv_wnd ? sbspace(sb) - tp->rcv_wnd : 0;
-#ifdef VERBOSE_TRACES
-	CTR4(KTR_CXGBE, "%s: tid %u rx_credits %u rcv_wnd %u",
-	    __func__, toep->tid, rx_credits, tp->rcv_wnd);
-#endif
-	if (rx_credits > 0 && sbused(sb) + tp->rcv_wnd < sb->sb_lowat) {
-		rx_credits = send_rx_credits(toep->vi->adapter, toep,
-		    rx_credits);
-		tp->rcv_wnd += rx_credits;
-		tp->rcv_adv += rx_credits;
-	}
-
 	sorwakeup_locked(so);
 	SOCKBUF_UNLOCK_ASSERT(sb);
 
@@ -1270,6 +1243,10 @@ tls_received_starting_data(struct adapter *sc, struct toepcb *toep,
 {
 	MPASS(toep->flags & TPF_TLS_STARTING);
 
+	/* Data was received before quiescing took effect. */
+	if ((toep->flags & TPF_TLS_RX_QUIESCING) != 0)
+		return;
+
 	/*
 	 * A previous call to tls_check_rx_sockbuf needed more data.
 	 * Now that more data has arrived, quiesce receive again and
@@ -1277,7 +1254,7 @@ tls_received_starting_data(struct adapter *sc, struct toepcb *toep,
 	 */
 	if ((toep->flags & TPF_TLS_RX_QUIESCED) == 0) {
 		CTR(KTR_CXGBE, "%s: tid %d quiescing", __func__, toep->tid);
-		toep->flags |= TPF_TLS_RX_QUIESCED;
+		toep->flags |= TPF_TLS_RX_QUIESCING;
 		t4_set_rx_quiesce(toep);
 		return;
 	}
@@ -1314,6 +1291,10 @@ do_tls_tcb_rpl(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 		if ((toep->flags & TPF_TLS_STARTING) == 0)
 			panic("%s: connection is not starting TLS RX\n",
 			    __func__);
+		MPASS((toep->flags & TPF_TLS_RX_QUIESCING) != 0);
+
+		toep->flags &= ~TPF_TLS_RX_QUIESCING;
+		toep->flags |= TPF_TLS_RX_QUIESCED;
 
 		so = inp->inp_socket;
 		sb = &so->so_rcv;

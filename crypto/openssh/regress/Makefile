@@ -1,4 +1,4 @@
-#	$OpenBSD: Makefile,v 1.124 2023/03/01 09:29:32 dtucker Exp $
+#	$OpenBSD: Makefile,v 1.133 2024/01/11 04:50:28 djm Exp $
 
 tests:		prep file-tests t-exec unit
 
@@ -10,12 +10,15 @@ file-tests: $(REGRESS_TARGETS)
 # Interop tests are not run by default
 interop interop-tests: t-exec-interop
 
+extra extra-tests: t-extra
+
 prep:
 	test "x${USE_VALGRIND}" = "x" || mkdir -p $(OBJ)/valgrind-out
 
 clean:
 	for F in $(CLEANFILES); do rm -f $(OBJ)$$F; done
 	rm -rf $(OBJ).putty
+	rm -rf $(OBJ).dropbear
 
 distclean:	clean
 
@@ -103,9 +106,13 @@ LTESTS= 	connect \
 		agent-restrict \
 		hostbased \
 		channel-timeout \
-		connection-timeout
+		connection-timeout \
+		match-subsystem \
+		agent-pkcs11-restrict \
+		agent-pkcs11-cert
 
 INTEROP_TESTS=	putty-transfer putty-ciphers putty-kex conch-ciphers
+INTEROP_TESTS+=	dropbear-ciphers dropbear-kex
 #INTEROP_TESTS+=ssh-com ssh-com-client ssh-com-keygen ssh-com-sftp
 
 EXTRA_TESTS=	agent-pkcs11
@@ -149,48 +156,67 @@ TEST_SSH_SSHKEYGEN?=ssh-keygen
 CPPFLAGS=-I..
 
 t1:
-	${TEST_SSH_SSHKEYGEN} -if ${.CURDIR}/rsa_ssh2.prv | diff - ${.CURDIR}/rsa_openssh.prv
-	tr '\n' '\r' <${.CURDIR}/rsa_ssh2.prv > ${.OBJDIR}/rsa_ssh2_cr.prv
-	${TEST_SSH_SSHKEYGEN} -if ${.OBJDIR}/rsa_ssh2_cr.prv | diff - ${.CURDIR}/rsa_openssh.prv
-	awk '{print $$0 "\r"}' ${.CURDIR}/rsa_ssh2.prv > ${.OBJDIR}/rsa_ssh2_crnl.prv
-	${TEST_SSH_SSHKEYGEN} -if ${.OBJDIR}/rsa_ssh2_crnl.prv | diff - ${.CURDIR}/rsa_openssh.prv
+	set -xe ; if ${TEST_SSH_SSH} -Q key | grep -q "^ssh-rsa" ; then \
+		${TEST_SSH_SSHKEYGEN} -if ${.CURDIR}/rsa_ssh2.prv | diff - ${.CURDIR}/rsa_openssh.prv ; \
+		tr '\n' '\r' <${.CURDIR}/rsa_ssh2.prv > ${.OBJDIR}/rsa_ssh2_cr.prv ; \
+		${TEST_SSH_SSHKEYGEN} -if ${.OBJDIR}/rsa_ssh2_cr.prv | diff - ${.CURDIR}/rsa_openssh.prv ; \
+		awk '{print $$0 "\r"}' ${.CURDIR}/rsa_ssh2.prv > ${.OBJDIR}/rsa_ssh2_crnl.prv ; \
+		${TEST_SSH_SSHKEYGEN} -if ${.OBJDIR}/rsa_ssh2_crnl.prv | diff - ${.CURDIR}/rsa_openssh.prv ; \
+	fi
 
 t2:
-	cat ${.CURDIR}/rsa_openssh.prv > $(OBJ)/t2.out
-	chmod 600 $(OBJ)/t2.out
-	${TEST_SSH_SSHKEYGEN} -yf $(OBJ)/t2.out | diff - ${.CURDIR}/rsa_openssh.pub
+	set -xe ; if ${TEST_SSH_SSH} -Q key | grep -q "^ssh-rsa" ; then \
+		cat ${.CURDIR}/rsa_openssh.prv > $(OBJ)/t2.out ; \
+		chmod 600 $(OBJ)/t2.out ; \
+		${TEST_SSH_SSHKEYGEN} -yf $(OBJ)/t2.out | diff - ${.CURDIR}/rsa_openssh.pub ; \
+	fi
 
 t3:
-	${TEST_SSH_SSHKEYGEN} -ef ${.CURDIR}/rsa_openssh.pub >$(OBJ)/t3.out
-	${TEST_SSH_SSHKEYGEN} -if $(OBJ)/t3.out | diff - ${.CURDIR}/rsa_openssh.pub
+	set -xe ; if ${TEST_SSH_SSH} -Q key | grep -q "^ssh-rsa" ; then \
+		${TEST_SSH_SSHKEYGEN} -ef ${.CURDIR}/rsa_openssh.pub >$(OBJ)/t3.out ; \
+		${TEST_SSH_SSHKEYGEN} -if $(OBJ)/t3.out | diff - ${.CURDIR}/rsa_openssh.pub ; \
+	fi
 
 t4:
-	${TEST_SSH_SSHKEYGEN} -E md5 -lf ${.CURDIR}/rsa_openssh.pub |\
-		awk '{print $$2}' | diff - ${.CURDIR}/t4.ok
+	set -xe ; if ${TEST_SSH_SSH} -Q key | grep -q "^ssh-rsa" ; then \
+		${TEST_SSH_SSHKEYGEN} -E md5 -lf ${.CURDIR}/rsa_openssh.pub |\
+			awk '{print $$2}' | diff - ${.CURDIR}/t4.ok ; \
+	fi
 
 t5:
-	${TEST_SSH_SSHKEYGEN} -Bf ${.CURDIR}/rsa_openssh.pub |\
-		awk '{print $$2}' | diff - ${.CURDIR}/t5.ok
-
+	set -xe ; if ${TEST_SSH_SSH} -Q key | grep -q "^ssh-rsa" ; then \
+		${TEST_SSH_SSHKEYGEN} -Bf ${.CURDIR}/rsa_openssh.pub |\
+			awk '{print $$2}' | diff - ${.CURDIR}/t5.ok ; \
+	fi
 t6:
-	${TEST_SSH_SSHKEYGEN} -if ${.CURDIR}/dsa_ssh2.prv > $(OBJ)/t6.out1
-	${TEST_SSH_SSHKEYGEN} -if ${.CURDIR}/dsa_ssh2.pub > $(OBJ)/t6.out2
-	chmod 600 $(OBJ)/t6.out1
-	${TEST_SSH_SSHKEYGEN} -yf $(OBJ)/t6.out1 | diff - $(OBJ)/t6.out2
+	set -xe ; if ${TEST_SSH_SSH} -Q key | grep -q "^ssh-dss" ; then \
+		${TEST_SSH_SSHKEYGEN} -if ${.CURDIR}/dsa_ssh2.prv > $(OBJ)/t6.out1 ; \
+		${TEST_SSH_SSHKEYGEN} -if ${.CURDIR}/dsa_ssh2.pub > $(OBJ)/t6.out2 ; \
+		chmod 600 $(OBJ)/t6.out1 ; \
+		${TEST_SSH_SSHKEYGEN} -yf $(OBJ)/t6.out1 | diff - $(OBJ)/t6.out2 ; \
+	fi
 
 $(OBJ)/t7.out:
-	${TEST_SSH_SSHKEYGEN} -q -t rsa -N '' -f $@
+	set -xe ; if ${TEST_SSH_SSH} -Q key | grep -q "^ssh-dss" ; then \
+		${TEST_SSH_SSHKEYGEN} -q -t rsa -N '' -f $@ ; \
+	fi
 
 t7: $(OBJ)/t7.out
-	${TEST_SSH_SSHKEYGEN} -lf $(OBJ)/t7.out > /dev/null
-	${TEST_SSH_SSHKEYGEN} -Bf $(OBJ)/t7.out > /dev/null
+	set -xe ; if ${TEST_SSH_SSH} -Q key | grep -q "^ssh-dss" ; then \
+		${TEST_SSH_SSHKEYGEN} -lf $(OBJ)/t7.out > /dev/null ; \
+		${TEST_SSH_SSHKEYGEN} -Bf $(OBJ)/t7.out > /dev/null ; \
+	fi
 
 $(OBJ)/t8.out:
-	${TEST_SSH_SSHKEYGEN} -q -t dsa -N '' -f $@
+	set -xe ; if ssh -Q key | grep -q "^ssh-dss" ; then \
+		${TEST_SSH_SSHKEYGEN} -q -t dsa -N '' -f $@ ; \
+	fi
 
 t8: $(OBJ)/t8.out
-	${TEST_SSH_SSHKEYGEN} -lf $(OBJ)/t8.out > /dev/null
-	${TEST_SSH_SSHKEYGEN} -Bf $(OBJ)/t8.out > /dev/null
+	set -xe ; if ssh -Q key | grep -q "^ssh-dss" ; then \
+		${TEST_SSH_SSHKEYGEN} -lf $(OBJ)/t8.out > /dev/null ; \
+		${TEST_SSH_SSHKEYGEN} -Bf $(OBJ)/t8.out > /dev/null ; \
+	fi
 
 $(OBJ)/t9.out:
 	! ${TEST_SSH_SSH} -Q key-plain | grep ecdsa >/dev/null || \
@@ -211,8 +237,10 @@ t10: $(OBJ)/t10.out
 	${TEST_SSH_SSHKEYGEN} -Bf $(OBJ)/t10.out > /dev/null
 
 t11:
-	${TEST_SSH_SSHKEYGEN} -E sha256 -lf ${.CURDIR}/rsa_openssh.pub |\
-		awk '{print $$2}' | diff - ${.CURDIR}/t11.ok
+	set -xe ; if ${TEST_SSH_SSH} -Q key | grep -q "^ssh-dss" ; then \
+		${TEST_SSH_SSHKEYGEN} -E sha256 -lf ${.CURDIR}/rsa_openssh.pub |\
+			awk '{print $$2}' | diff - ${.CURDIR}/t11.ok ; \
+	fi
 
 $(OBJ)/t12.out:
 	${TEST_SSH_SSHKEYGEN} -q -t ed25519 -N '' -C 'test-comment-1234' -f $@
@@ -222,7 +250,15 @@ t12: $(OBJ)/t12.out
 
 t-exec:	${LTESTS:=.sh}
 	@if [ "x$?" = "x" ]; then exit 0; fi; \
+	_started=""; test -z "${LTESTS_FROM}" && _started=1 ;\
 	for TEST in ""$?; do \
+		if [ -z "$$_started" ] ; then \
+			if [ "x$$TEST" = "x${LTESTS_FROM}.sh" ]; then \
+				_started=1; \
+			else \
+				continue; \
+			fi ; \
+		fi ; \
 		skip=no; \
 		for t in ""$${SKIP_LTESTS}; do \
 			if [ "x$${t}.sh" = "x$${TEST}" ]; then skip=yes; fi; \

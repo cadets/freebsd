@@ -1,4 +1,3 @@
-# $FreeBSD$
 #
 # Common code used run regression tests for usr.bin/make.
 
@@ -57,7 +56,7 @@ ensure_run()
 }
 
 #
-# Output usage messsage.
+# Output usage message.
 #
 print_usage()
 {

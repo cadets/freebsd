@@ -25,10 +25,7 @@
  * SUCH DAMAGE.
  */
 
-#include "opt_netlink.h"
-
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include <sys/types.h>
@@ -39,6 +36,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/syslog.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
+#include <net/if_private.h>
 #include <net/if_llatbl.h>
 #include <netlink/netlink.h>
 #include <netlink/netlink_ctl.h>
@@ -62,7 +61,7 @@ struct netlink_walkargs {
 	struct nl_writer *nw;
 	struct nlmsghdr hdr;
 	struct nlpcb *so;
-	struct ifnet *ifp;
+	if_t ifp;
 	int family;
 	int error;
 	int count;
@@ -156,7 +155,7 @@ dump_lle_locked(struct llentry *lle, void *arg)
 
 	ndm = nlmsg_reserve_object(nw, struct ndmsg);
 	ndm->ndm_family = wa->family;
-	ndm->ndm_ifindex = wa->ifp->if_index;
+	ndm->ndm_ifindex = if_getindex(wa->ifp);
 	ndm->ndm_state = lle_state_to_nl_state(wa->family, lle);
 	ndm->ndm_flags = lle_flags_to_nl_flags(lle);
 
@@ -178,7 +177,7 @@ dump_lle_locked(struct llentry *lle, void *arg)
 
 	if (lle->r_flags & RLLE_VALID) {
 		/* Has L2 */
-		int addrlen = wa->ifp->if_addrlen;
+		int addrlen = if_getaddrlen(wa->ifp);
 		nlattr_add(nw, NDA_LLADDR, addrlen, lle->ll_addr);
 	}
 
@@ -226,7 +225,7 @@ dump_llt(struct lltable *llt, struct netlink_walkargs *wa)
 }
 
 static int
-dump_llts_iface(struct netlink_walkargs *wa, struct ifnet *ifp, int family)
+dump_llts_iface(struct netlink_walkargs *wa, if_t ifp, int family)
 {
 	int error = 0;
 
@@ -248,21 +247,24 @@ dump_llts_iface(struct netlink_walkargs *wa, struct ifnet *ifp, int family)
 }
 
 static int
-dump_llts(struct netlink_walkargs *wa, struct ifnet *ifp, int family)
+dump_llts(struct netlink_walkargs *wa, if_t ifp, int family)
 {
-	NL_LOG(LOG_DEBUG, "Start dump ifp=%s family=%d", ifp ? if_name(ifp) : "NULL", family);
+	NL_LOG(LOG_DEBUG2, "Start dump ifp=%s family=%d", ifp ? if_name(ifp) : "NULL", family);
 
 	wa->hdr.nlmsg_flags |= NLM_F_MULTI;
 
 	if (ifp != NULL) {
 		dump_llts_iface(wa, ifp, family);
 	} else {
-		CK_STAILQ_FOREACH(ifp, &V_ifnet, if_link) {
+		struct if_iter it;
+
+		for (ifp = if_iter_start(&it); ifp != NULL; ifp = if_iter_next(&it)) {
 			dump_llts_iface(wa, ifp, family);
 		}
+		if_iter_finish(&it);
 	}
 
-	NL_LOG(LOG_DEBUG, "End dump, iterated %d dumped %d", wa->count, wa->dumped);
+	NL_LOG(LOG_DEBUG2, "End dump, iterated %d dumped %d", wa->count, wa->dumped);
 
 	if (!nlmsg_end_dump(wa->nw, wa->error, &wa->hdr)) {
                 NL_LOG(LOG_DEBUG, "Unable to add new message");
@@ -273,7 +275,7 @@ dump_llts(struct netlink_walkargs *wa, struct ifnet *ifp, int family)
 }
 
 static int
-get_lle(struct netlink_walkargs *wa, struct ifnet *ifp, int family, struct sockaddr *dst)
+get_lle(struct netlink_walkargs *wa, if_t ifp, int family, struct sockaddr *dst)
 {
 	struct lltable *llt = lltable_get(ifp, family);
 	if (llt == NULL)
@@ -290,7 +292,7 @@ get_lle(struct netlink_walkargs *wa, struct ifnet *ifp, int family, struct socka
 }
 
 static void
-set_scope6(struct sockaddr *sa, struct ifnet *ifp)
+set_scope6(struct sockaddr *sa, if_t ifp)
 {
 #ifdef INET6
 	if (sa != NULL && sa->sa_family == AF_INET6 && ifp != NULL) {
@@ -382,7 +384,7 @@ rtnl_handle_newneigh(struct nlmsghdr *hdr, struct nlpcb *nlp, struct nl_pstate *
 		return (EINVAL);
 	}
 
-	int addrlen = attrs.nda_ifp->if_addrlen;
+	int addrlen = if_getaddrlen(attrs.nda_ifp);
 	if (attrs.nda_lladdr->nla_len != sizeof(struct nlattr) + addrlen) {
 		NLMSG_REPORT_ERR_MSG(npt,
 		    "NDA_LLADDR address length (%d) is different from expected (%d)",
@@ -434,17 +436,18 @@ rtnl_handle_newneigh(struct nlmsghdr *hdr, struct nlpcb *nlp, struct nl_pstate *
 	struct llentry *lle_tmp = lla_lookup(llt, LLE_EXCLUSIVE, attrs.nda_dst);
 	if (lle_tmp != NULL) {
 		error = EEXIST;
-		if (hdr->nlmsg_flags & NLM_F_EXCL) {
-			LLE_WUNLOCK(lle_tmp);
-			lle_tmp = NULL;
-		} else if (hdr->nlmsg_flags & NLM_F_REPLACE) {
+		if (hdr->nlmsg_flags & NLM_F_REPLACE) {
+			error = EPERM;
 			if ((lle_tmp->la_flags & LLE_IFADDR) == 0) {
+				error = 0; /* success */
 				lltable_unlink_entry(llt, lle_tmp);
+				llentry_free(lle_tmp);
+				lle_tmp = NULL;
 				lltable_link_entry(llt, lle);
-				error = 0;
-			} else
-				error = EPERM;
+			}
 		}
+		if (lle_tmp)
+			LLE_WUNLOCK(lle_tmp);
 	} else {
 		if (hdr->nlmsg_flags & NLM_F_CREATE)
 			lltable_link_entry(llt, lle);
@@ -454,13 +457,10 @@ rtnl_handle_newneigh(struct nlmsghdr *hdr, struct nlpcb *nlp, struct nl_pstate *
 	IF_AFDATA_WUNLOCK(attrs.nda_ifp);
 
 	if (error != 0) {
-		if (lle != NULL)
-			llentry_free(lle);
+		/* throw away the newly allocated llentry */
+		llentry_free(lle);
 		return (error);
 	}
-
-	if (lle_tmp != NULL)
-		llentry_free(lle_tmp);
 
 	/* XXX: We're inside epoch */
 	EVENTHANDLER_INVOKE(lle_event, lle, LLENTRY_RESOLVED);
@@ -552,7 +552,7 @@ static const struct rtnl_cmd_handler cmd_handlers[] = {
 static void
 rtnl_lle_event(void *arg __unused, struct llentry *lle, int evt)
 {
-	struct ifnet *ifp;
+	if_t ifp;
 	int family;
 
 	LLE_WLOCK_ASSERT(lle);

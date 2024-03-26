@@ -20,14 +20,9 @@
 # CDDL HEADER END
 #
 
-# $FreeBSD$
-
 #
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
-#
-# ident	"@(#)slog_013_pos.ksh	1.2	09/05/19 SMI"
-#
 
 . $STF_SUITE/tests/slog/slog.kshlib
 

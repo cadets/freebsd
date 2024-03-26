@@ -26,8 +26,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_acpi.h"
 
 #if defined(__amd64__)
@@ -171,7 +169,8 @@ hpet_vdso_timehands32(struct vdso_timehands32 *vdso_th32,
 	vdso_th32->th_algo = VDSO_TH_ALGO_X86_HPET;
 	vdso_th32->th_x86_shift = 0;
 	vdso_th32->th_x86_hpet_idx = device_get_unit(sc->dev);
-	vdso_th32->th_x86_pvc_last_systime = 0;
+	vdso_th32->th_x86_pvc_last_systime[0] = 0;
+	vdso_th32->th_x86_pvc_last_systime[1] = 0;
 	vdso_th32->th_x86_pvc_stable_mask = 0;
 	bzero(vdso_th32->th_res, sizeof(vdso_th32->th_res));
 	return (sc->mmap_allow != 0);
@@ -644,7 +643,7 @@ hpet_attach(device_t dev)
 	 * The only way to use HPET there is to specify IRQs manually
 	 * and/or use legacy_route. Legacy_route mode works on both.
 	 */
-	if (vm_guest)
+	if (vm_guest != VM_GUEST_NO)
 		sc->allowed_irqs = 0x00000000;
 	/* Let user override. */
 	resource_int_value(device_get_name(dev), device_get_unit(dev),

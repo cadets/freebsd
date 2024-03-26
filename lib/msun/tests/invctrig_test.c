@@ -28,9 +28,6 @@
  * Tests for casin[h](), cacos[h](), and catan[h]().
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <complex.h>
 #include <fenv.h>

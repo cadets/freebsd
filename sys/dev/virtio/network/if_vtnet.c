@@ -28,9 +28,6 @@
 
 /* Driver for VirtIO network devices. */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/eventhandler.h>
 #include <sys/systm.h>
@@ -97,6 +94,12 @@ SDT_PROVIDER_DEFINE(vtnet);
 SDT_PROBE_DEFINE1(vtnet, if_vtnet, rxq, enqueue, "struct mbufid_t *");
 SDT_PROBE_DEFINE1(vtnet, if_vtnet, , receive, "struct mbufid_t *");
 SDT_PROBE_DEFINE1(vtnet, if_vtnet, txq, enqueue, "struct mbufid_t *");
+
+#ifdef __NO_STRICT_ALIGNMENT
+#define VTNET_ETHER_ALIGN 0
+#else /* Strict alignment */
+#define VTNET_ETHER_ALIGN ETHER_ALIGN
+#endif
 
 static int	vtnet_modevent(module_t, int, void *);
 
@@ -1047,10 +1050,9 @@ vtnet_alloc_virtqueues(struct vtnet_softc *sc)
 	struct vq_alloc_info *info;
 	struct vtnet_rxq *rxq;
 	struct vtnet_txq *txq;
-	int i, idx, flags, nvqs, error;
+	int i, idx, nvqs, error;
 
 	dev = sc->vtnet_dev;
-	flags = 0;
 
 	nvqs = sc->vtnet_max_vq_pairs * 2;
 	if (sc->vtnet_flags & VTNET_FLAG_CTRL_VQ)
@@ -1088,14 +1090,7 @@ vtnet_alloc_virtqueues(struct vtnet_softc *sc)
 		    &sc->vtnet_ctrl_vq, "%s ctrl", device_get_nameunit(dev));
 	}
 
-	/*
-	 * TODO: Enable interrupt binding if this is multiqueue. This will
-	 * only matter when per-virtqueue MSIX is available.
-	 */
-	if (sc->vtnet_flags & VTNET_FLAG_MQ)
-		flags |= 0;
-
-	error = virtio_alloc_virtqueues(dev, flags, nvqs, info);
+	error = virtio_alloc_virtqueues(dev, nvqs, info);
 	free(info, M_TEMP);
 
 	return (error);
@@ -1261,6 +1256,13 @@ vtnet_rx_cluster_size(struct vtnet_softc *sc, int mtu)
 	} else
 		framesz = sizeof(struct vtnet_rx_header);
 	framesz += sizeof(struct ether_vlan_header) + mtu;
+	/*
+	 * Account for the offsetting we'll do elsewhere so we allocate the
+	 * right size for the mtu.
+	 */
+	if (VTNET_ETHER_ALIGN != 0 && sc->vtnet_hdr_size % 4 == 0) {
+		framesz += VTNET_ETHER_ALIGN;
+	}
 
 	if (framesz <= MCLBYTES)
 		return (MCLBYTES);
@@ -1326,8 +1328,11 @@ vtnet_ioctl_ifflags(struct vtnet_softc *sc)
 		if (sc->vtnet_flags & VTNET_FLAG_CTRL_RX)
 			vtnet_rx_filter(sc);
 		else {
-			if ((if_getflags(ifp) ^ sc->vtnet_if_flags) & IFF_ALLMULTI)
-				return (ENOTSUP);
+			/*
+			 * We don't support filtering out multicast, so
+			 * ALLMULTI is always set.
+			 */
+			if_setflagbits(ifp, IFF_ALLMULTI, 0);
 			if_setflagbits(ifp, IFF_PROMISC, 0);
 		}
 	}
@@ -1569,6 +1574,13 @@ vtnet_rx_alloc_buf(struct vtnet_softc *sc, int nbufs, struct mbuf **m_tailp)
 		}
 
 		m->m_len = size;
+		/*
+		 * Need to offset the mbuf if the header we're going to add
+		 * will misalign.
+		 */
+		if (VTNET_ETHER_ALIGN != 0 && sc->vtnet_hdr_size % 4 == 0) {
+			m_adj(m, VTNET_ETHER_ALIGN);
+		}
 		if (m_head != NULL) {
 			m_tail->m_next = m;
 			m_tail = m;
@@ -1595,6 +1607,12 @@ vtnet_rxq_replace_lro_nomrg_buf(struct vtnet_rxq *rxq, struct mbuf *m0,
 
 	sc = rxq->vtnrx_sc;
 	clustersz = sc->vtnet_rx_clustersz;
+	/*
+	 * Need to offset the mbuf if the header we're going to add will
+	 * misalign, account for that here.
+	 */
+	if (VTNET_ETHER_ALIGN != 0 && sc->vtnet_hdr_size % 4 == 0)
+		clustersz -= VTNET_ETHER_ALIGN;
 
 	m_prev = NULL;
 	m_tail = NULL;
@@ -1720,9 +1738,13 @@ vtnet_rxq_enqueue_buf(struct vtnet_rxq *rxq, struct mbuf *m)
 	    (sc->vtnet_flags & VTNET_FLAG_MRG_RXBUFS) != 0; /* TODO: ANY_LAYOUT */
 
 	/*
-	 * We should have the M_PKTHDR flag set correctly here even though we
-	 * are in the RX queue, because the buffer allocator sets the M_PKTHDR
-	 * flag for the very first mbuf that we enqueue in the chain.
+	 * Note: The mbuf has been already adjusted when we allocate it if we
+	 * have to do strict alignment.
+	 *
+	 * Packet tagging: We should have the M_PKTHDR flag set correctly here
+	 * even though we are in the RX queue, because the buffer allocator sets
+	 * the M_PKTHDR flag for the very first mbuf that we enqueue in the
+	 * chain.
 	 */
 	if (header_inlined)
 		if (vtnet_tagging_enabled(sc) && m->m_flags & M_PKTHDR) {

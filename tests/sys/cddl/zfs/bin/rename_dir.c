@@ -17,7 +17,6 @@
  * information: Portions Copyright [yyyy] [name of copyright owner]
  *
  * CDDL HEADER END
- * $FreeBSD$
  */
 
 /*
@@ -25,7 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)rename_dir.c	1.1	07/05/25 SMI"
 
 /*
  * Assertion:

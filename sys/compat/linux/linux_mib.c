@@ -26,9 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
@@ -90,10 +87,6 @@ bool linux_map_sched_prio = true;
 SYSCTL_BOOL(_compat_linux, OID_AUTO, map_sched_prio, CTLFLAG_RDTUN,
     &linux_map_sched_prio, 0, "Map scheduler priorities to Linux priorities "
     "(not POSIX compliant)");
-
-int linux_use_emul_path = 1;
-SYSCTL_INT(_compat_linux, OID_AUTO, use_emul_path, CTLFLAG_RWTUN,
-    &linux_use_emul_path, 0, "Use linux.compat.emul_path");
 
 static bool linux_setid_allowed = true;
 SYSCTL_BOOL(_compat_linux, OID_AUTO, setid_allowed, CTLFLAG_RWTUN,

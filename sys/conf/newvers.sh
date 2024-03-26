@@ -28,9 +28,6 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
-#
-#	@(#)newvers.sh	8.1 (Berkeley) 4/20/94
-# $FreeBSD$
 
 # Command line options:
 #
@@ -53,17 +50,29 @@
 #
 
 TYPE="FreeBSD"
-REVISION="14.0"
+REVISION="15.0"
 BRANCH="CURRENT"
 if [ -n "${BRANCH_OVERRIDE}" ]; then
 	BRANCH=${BRANCH_OVERRIDE}
 fi
-RELEASE="${REVISION}-${BRANCH}"
-VERSION="${TYPE} ${RELEASE}"
+unset RELEASE
+unset VERSION
 
 if [ -z "${SYSDIR}" ]; then
-    SYSDIR=$(dirname $0)/..
+	SYSDIR=$(dirname $0)/..
 fi
+
+# allow random overrides
+while :
+do
+	case "$1" in
+	*=*) eval "$1"; shift;;
+	*) break;;
+	esac
+done
+
+RELEASE="${RELEASE:-${REVISION}-${BRANCH}}"
+VERSION="${VERSION:-${TYPE} ${RELEASE}}"
 
 RELDATE=$(awk '/^#define[[:space:]]*__FreeBSD_version/ {print $3}' ${PARAMFILE:-${SYSDIR}/sys/param.h})
 
@@ -207,15 +216,6 @@ for dir in /usr/bin /usr/local/bin; do
 	fi
 done
 
-if [ -z "${svnversion}" ] && [ -x /usr/bin/svnliteversion ] ; then
-	/usr/bin/svnliteversion $(realpath ${0}) >/dev/null 2>&1
-	if [ $? -eq 0 ]; then
-		svnversion=/usr/bin/svnliteversion
-	else
-		svnversion=
-	fi
-fi
-
 if findvcs .git; then
 	for dir in /usr/bin /usr/local/bin; do
 		if [ -x "${dir}/git" ] ; then
@@ -300,6 +300,14 @@ fi
 
 vers_content_new=$(cat << EOF
 $COPYRIGHT
+/*
+ * The SCCS stuff is a marker that by convention identifies the kernel.  While
+ * the convention originated with SCCS, the current use is more generic and is
+ * used by different organizations to identify the kernel, the crash dump,
+ * etc. The what(1) utility prints these markers. Better methods exist, so this
+ * method is deprecated and will be removed in a future version of FreeBSD. Orgs
+ * that use it are encouraged to migrate before then.
+ */
 #define SCCSSTR "@(#)${VERINFO}"
 #define VERSTR "${VERSTR}"
 #define RELSTR "${RELEASE}"

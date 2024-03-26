@@ -28,9 +28,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/linker_set.h>
 #include <sys/types.h>
@@ -708,6 +705,15 @@ pci_vtscsi_init(struct pci_devinst *pi, nvlist_t *nvl)
 	value = get_config_value_node(nvl, "iid");
 	if (value != NULL)
 		sc->vss_iid = strtoul(value, NULL, 10);
+
+	value = get_config_value_node(nvl, "bootindex");
+	if (value != NULL) {
+		if (pci_emul_add_boot_device(pi, atoi(value))) {
+			EPRINTLN("Invalid bootindex %d", atoi(value));
+			free(sc);
+			return (-1);
+		}
+	}
 
 	devname = get_config_value_node(nvl, "dev");
 	if (devname == NULL)

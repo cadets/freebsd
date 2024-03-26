@@ -22,10 +22,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\"	From: @(#)style	1.14 (Berkeley) 4/28/95
-.\" $FreeBSD$
-.\"
-.Dd July 28, 2022
+.Dd January 29, 2024
 .Dt STYLE 9
 .Os
 .Sh NAME
@@ -47,8 +44,6 @@ is silent on an issue.
 .Bd -literal
 /*
  * Style guide for FreeBSD.  Based on the CSRG's KNF (Kernel Normal Form).
- *
- *	@(#)style	1.14 (Berkeley) 4/28/95
  */
 
 /*
@@ -112,12 +107,6 @@ lines should only be added when making substantial changes to the file,
 not for trivial changes.
 .Pp
 After any copyright and license comment, there is a blank line.
-Include
-.Li $\&FreeBSD$
-or
-.Li __FBSDID("$\&FreeBSD$");
-only if you are certain the new code will be merged to stable/12.
-The tag will be removed from legacy code in the future.
 Non-C/C++ source files follow the example above, while C/C++ source files
 follow the one below.
 Version control system ID tags should only exist once in a file
@@ -141,7 +130,6 @@ and FreeBSD git hash with full path name if the file was derived
 from another FreeBSD file and include relevant copyright info
 from the original file.
 .Bd -literal
-/* From: @(#)style	1.14 (Berkeley) 4/28/95 */
 .Ed
 .Pp
 Leave one blank line before the header files.
@@ -935,11 +923,11 @@ indentation rules.
 .Xr style.mdoc 5 ,
 .Xr style.lua 9
 .Sh HISTORY
-This manual page is largely based on the
+This manual page was originally based on the
 .Pa src/admin/style/style
 file from the
 .Bx 4.4 Lite2
-release, with occasional updates to reflect the current practice and
+release, with frequent updates to reflect the current practice and
 desire of the
 .Fx
 project.

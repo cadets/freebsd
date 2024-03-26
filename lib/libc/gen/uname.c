@@ -29,10 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__SCCSID("@(#)uname.c	8.1 (Berkeley) 1/4/94");
-__FBSDID("$FreeBSD$");
-
 #define uname wrapped_uname
 #include <sys/param.h>
 #include <sys/sysctl.h>

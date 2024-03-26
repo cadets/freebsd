@@ -28,23 +28,23 @@
  */
 
 #include <machine/asm.h>
-__FBSDID("$FreeBSD$");
+#include <sys/elf_common.h>
 
 ENTRY(.rtld_start)
+	.cfi_undefined	x30
 	mov	x19, x0		/* Put ps_strings in a callee-saved register */
-	mov	x20, sp		/* And the stack pointer */
 
 	sub	sp, sp, #16	/* Make room for obj_main & exit proc */
+	.cfi_adjust_cfa_offset	16
 
 	mov	x1, sp		/* exit_proc */
 	add	x2, x1, #8	/* obj_main */
 	bl	_rtld		/* Call the loader */
 	mov	x8, x0		/* Backup the entry point */
+	ldp	x2, x1, [sp], #16 /* Load cleanup, obj_main */
+	.cfi_adjust_cfa_offset	0
 
-	ldr	x2, [sp]	/* Load cleanup */
-	ldr	x1, [sp, #8]	/* Load obj_main */
 	mov	x0, x19		/* Restore ps_strings */
-	mov	sp, x20		/* Restore the stack pointer */
 	br	x8		/* Jump to the entry point */
 END(.rtld_start)
 
@@ -251,3 +251,5 @@ ENTRY(_rtld_tlsdesc_dynamic)
 	.cfi_adjust_cfa_offset	-2 * 16
 	ret
 END(_rtld_tlsdesc_dynamic)
+
+GNU_PROPERTY_AARCH64_FEATURE_1_NOTE(GNU_PROPERTY_AARCH64_FEATURE_1_VAL)

@@ -26,8 +26,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef	_MACHINE_DB_MACHDEP_H_
@@ -38,6 +36,7 @@
 #include <machine/trap.h>
 
 #define	T_BREAKPOINT	(EXCP_BRK)
+#define	T_HW_BREAKPOINT	(EXCP_BRKPT_EL1)
 #define	T_SINGLESTEP	(EXCP_SOFTSTP_EL1)
 #define	T_WATCHPOINT	(EXCP_WATCHPT_EL1)
 
@@ -58,7 +57,8 @@ typedef long		db_expr_t;
 #define	db_clear_single_step	kdb_cpu_clear_singlestep
 #define	db_set_single_step	kdb_cpu_set_singlestep
 
-#define	IS_BREAKPOINT_TRAP(type, code)	(type == T_BREAKPOINT)
+#define	IS_BREAKPOINT_TRAP(type, code)	\
+    (type == T_BREAKPOINT || type == T_HW_BREAKPOINT)
 #define	IS_SSTEP_TRAP(type, code)	(type == T_SINGLESTEP)
 #define	IS_WATCHPOINT_TRAP(type, code)	(type == T_WATCHPOINT)
 

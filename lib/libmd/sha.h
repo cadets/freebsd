@@ -53,14 +53,11 @@
  * derivative of this code cannot be changed.  i.e. this code cannot simply be
  * copied and put under another distribution licence
  * [including the GNU Public Licence.]
- *
- * $FreeBSD$
  */
 
 #ifndef _SHA_H_
 #define _SHA_H_		1
 
-#include <sys/cdefs.h>
 #include <sys/types.h>		/* XXX switch to machine/ansi.h and __ types */
 
 #define	SHA_CBLOCK	64

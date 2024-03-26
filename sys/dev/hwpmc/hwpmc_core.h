@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _DEV_HWPMC_CORE_H_
@@ -200,11 +198,9 @@ int	pmc_core_initialize(struct pmc_mdep *_md, int _maxcpu,
 void	pmc_core_finalize(struct pmc_mdep *_md);
 
 int	pmc_iaf_initialize(struct pmc_mdep *_md, int _maxcpu, int _npmc, int _width);
-void	pmc_iaf_finalize(struct pmc_mdep *_md);
 
 int	pmc_iap_initialize(struct pmc_mdep *_md, int _maxcpu, int _npmc, int _width,
 	    int _flags);
-void	pmc_iap_finalize(struct pmc_mdep *_md);
 
 #endif	/* _KERNEL */
 #endif	/* _DEV_HWPMC_CORE_H */

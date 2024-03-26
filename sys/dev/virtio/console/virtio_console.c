@@ -26,9 +26,6 @@
 
 /* Driver for VirtIO console devices. */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/ctype.h>
 #include <sys/systm.h>
@@ -545,7 +542,7 @@ vtcon_alloc_virtqueues(struct vtcon_softc *sc)
 		portidx++;
 	}
 
-	error = virtio_alloc_virtqueues(dev, 0, nvqs, info);
+	error = virtio_alloc_virtqueues(dev, nvqs, info);
 	free(info, M_TEMP);
 
 	return (error);

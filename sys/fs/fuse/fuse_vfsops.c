@@ -60,9 +60,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/buf.h>
 #include <sys/module.h>
@@ -543,7 +540,7 @@ fuse_vfsop_vget(struct mount *mp, ino_t ino, int flags, struct vnode **vpp)
 	struct fuse_vnode_data *fvdat;
 	struct timespec now;
 	const char dot[] = ".";
-	enum vtype vtyp;
+	__enum_uint8(vtype) vtyp;
 	int error;
 
 	if (!(data->dataflags & FSESS_EXPORT_SUPPORT)) {

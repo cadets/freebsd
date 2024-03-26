@@ -22,8 +22,6 @@
  * Portions Copyright 2013 Justin Hibbits jhibbits@freebsd.org
  * Portions Copyright 2013 Howard Su howardsu@freebsd.org
  * Portions Copyright 2015 Ruslan Bukin <br@bsdpad.com>
- *
- * $FreeBSD$
  */
 
 /*
@@ -31,17 +29,13 @@
  * Use is subject to license terms.
  */
 
-#include <sys/cdefs.h>
 #include <sys/param.h>
 
 #include <sys/dtrace.h>
 
 #include "fbt.h"
 
-#define	AARCH64_BRK		0xd4200000
-#define	AARCH64_BRK_IMM16_SHIFT	5
-#define	AARCH64_BRK_IMM16_VAL	(0x40d << AARCH64_BRK_IMM16_SHIFT)
-#define	FBT_PATCHVAL		(AARCH64_BRK | AARCH64_BRK_IMM16_VAL)
+#define	FBT_PATCHVAL	DTRACE_PATCHVAL
 #define	FBT_AFRAMES	4
 
 int
@@ -77,13 +71,13 @@ fbt_invop(uintptr_t addr, struct trapframe *frame, uintptr_t rval)
 void
 fbt_patch_tracepoint(fbt_probe_t *fbt, fbt_patchval_t val)
 {
-	vm_offset_t addr;
+	void *addr;
 
-	if (!arm64_get_writable_addr((vm_offset_t)fbt->fbtp_patchpoint, &addr))
+	if (!arm64_get_writable_addr(fbt->fbtp_patchpoint, &addr))
 		panic("%s: Unable to write new instruction", __func__);
 
 	*(fbt_patchval_t *)addr = val;
-	cpu_icache_sync_range((vm_offset_t)fbt->fbtp_patchpoint, 4);
+	cpu_icache_sync_range(fbt->fbtp_patchpoint, 4);
 }
 
 int
@@ -95,7 +89,6 @@ fbt_provide_module_function(linker_file_t lf, int symindx,
 	uint32_t *instr, *limit;
 	const char *name;
 	char *modname;
-	bool found;
 	int offs;
 
 	modname = opaque;
@@ -124,47 +117,37 @@ fbt_provide_module_function(linker_file_t lf, int symindx,
 	if ((*instr & BTI_MASK) == BTI_INSTR)
 		instr++;
 
-	/* Look for stp (pre-indexed) operation */
-	found = false;
 	/*
 	 * If the first instruction is a nop it's a specially marked
 	 * asm function. We only support a nop first as it's not a normal
 	 * part of the function prologue.
 	 */
 	if (*instr == NOP_INSTR)
-		found = true;
-	if (!found) {
-		for (; instr < limit; instr++) {
-			/*
-			 * Some functions start with
-			 * "stp xt1, xt2, [xn, <const>]!"
-			 */
-			if ((*instr & LDP_STP_MASK) == STP_64) {
-				/*
-				 * Assume any other store of this type means we
-				 * are past the function prolog.
-				 */
-				if (((*instr >> ADDR_SHIFT) & ADDR_MASK) == 31)
-					found = true;
-				break;
-			}
+		goto found;
 
+	/* Look for stp (pre-indexed) or sub operation */
+	for (; instr < limit; instr++) {
+		/*
+		 * Functions start with "stp xt1, xt2, [xn, <const>]!" or
+		 * "sub sp, sp, <const>".
+		 *
+		 * Sometimes the compiler will have a sub instruction that is
+		 * not of the above type so don't stop if we see one.
+		 */
+		if ((*instr & LDP_STP_MASK) == STP_64) {
 			/*
-			 * Some functions start with a "sub sp, sp, <const>"
-			 * Sometimes the compiler will have a sub instruction
-			 * that is not of the above type so don't stop if we
-			 * see one.
+			 * Assume any other store of this type means we are
+			 * past the function prologue.
 			 */
-			if ((*instr & SUB_MASK) == SUB_INSTR &&
-			    ((*instr >> SUB_RD_SHIFT) & SUB_R_MASK) == 31 &&
-			    ((*instr >> SUB_RN_SHIFT) & SUB_R_MASK) == 31) {
-				found = true;
+			if (((*instr >> ADDR_SHIFT) & ADDR_MASK) == 31)
 				break;
-			}
-		}
+		} else if ((*instr & SUB_MASK) == SUB_INSTR &&
+		    ((*instr >> SUB_RD_SHIFT) & SUB_R_MASK) == 31 &&
+		    ((*instr >> SUB_RN_SHIFT) & SUB_R_MASK) == 31)
+			break;
 	}
-
-	if (!found)
+found:
+	if (instr >= limit)
 		return (0);
 
 	fbt = malloc(sizeof (fbt_probe_t), M_FBT, M_WAITOK | M_ZERO);

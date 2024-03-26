@@ -27,8 +27,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/param.h>
@@ -252,7 +250,7 @@ reloc_nonplt_object(Obj_Entry *obj_rtld __unused, Obj_Entry *obj,
 		 * modules. If we run out of space, we generate an
 		 * error.
 		 */
-		if (!defobj->tls_done) {
+		if (!defobj->tls_static) {
 			if (!allocate_tls_offset(
 				    __DECONST(Obj_Entry *, defobj))) {
 				_rtld_error("%s: No space available for static "
@@ -819,7 +817,8 @@ allocate_initial_tls(Obj_Entry *list)
 	* use.
 	*/
 
-	tls_static_space = tls_last_offset + tls_last_size + RTLD_STATIC_TLS_EXTRA;
+	tls_static_space = tls_last_offset + tls_last_size +
+	    ld_static_tls_extra;
 
 	_tcb_set(allocate_tls(list, NULL, TLS_TCB_SIZE, TLS_TCB_ALIGN));
 }

@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 .include <src.opts.mk>
 
@@ -94,6 +93,7 @@ MLINKS+=sysdecode_mask.3 sysdecode_accessmode.3 \
 	sysdecode_mask.3 sysdecode_msync_flags.3 \
 	sysdecode_mask.3 sysdecode_open_flags.3 \
 	sysdecode_mask.3 sysdecode_pipe2_flags.3 \
+	sysdecode_mask.3 sysdecode_pollfd_events.3 \
 	sysdecode_mask.3 sysdecode_reboot_howto.3 \
 	sysdecode_mask.3 sysdecode_rfork_flags.3 \
 	sysdecode_mask.3 sysdecode_semget_flags.3 \
@@ -112,7 +112,8 @@ MLINKS+=sysdecode_mask.3 sysdecode_accessmode.3 \
 
 CLEANFILES= ioctl.c ioctl.c.tmp tables.h tables_linux.h
 
-.if defined(COMPAT_32BIT)
+# XXX: The flags should come from bsd.compat.mk / Makefile.libcompat
+.if ${COMPAT_LIBCOMPAT:U} == "32"
 CPP+=	-m32
 .endif
 
@@ -126,8 +127,13 @@ CFLAGS.gcc.ioctl.c+= -Wno-redundant-decls
 CFLAGS.gcc+=	${CFLAGS.gcc.${.IMPSRC}}
 
 DEPENDOBJS+=	tables.h tables_linux.h
+.if ${MK_DIRDEPS_BUILD} == "yes"
+MKTABLES_INCLUDEDIR= ${STAGE_INCLUDEDIR}
+.else
+MKTABLES_INCLUDEDIR= ${SYSROOT:U${DESTDIR}}${INCLUDEDIR}
+.endif
 tables.h: mktables
-	sh ${.CURDIR}/mktables ${SYSROOT:U${DESTDIR}}${INCLUDEDIR} ${.TARGET}
+	sh ${.CURDIR}/mktables ${MKTABLES_INCLUDEDIR} ${.TARGET}
 tables_linux.h: mklinuxtables
 	sh ${.CURDIR}/mklinuxtables ${SRCTOP}/sys ${.TARGET}
 

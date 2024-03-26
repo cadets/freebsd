@@ -31,9 +31,6 @@
 
 #include "opt_printf.h"
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/bio.h>
 #include <sys/bus.h>
@@ -73,8 +70,6 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/stdarg.h>	/* for xpt_print below */
 
-#include "opt_cam.h"
-
 /* Wild guess based on not wanting to grow the stack too much */
 #define XPT_PRINT_MAXLEN	512
 #ifdef PRINTF_BUFR_SIZE
@@ -110,7 +105,6 @@ struct xpt_softc {
 	TAILQ_HEAD(, ccb_hdr) ccb_scanq;
 	int buses_to_config;
 	int buses_config_done;
-	int announce_nosbuf;
 
 	/*
 	 * Registered buses
@@ -168,8 +162,6 @@ SYSCTL_INT(_kern_cam, OID_AUTO, boot_delay, CTLFLAG_RDTUN,
            &xsoftc.boot_delay, 0, "Bus registration wait time");
 SYSCTL_UINT(_kern_cam, OID_AUTO, xpt_generation, CTLFLAG_RD,
 	    &xsoftc.xpt_generation, 0, "CAM peripheral generation count");
-SYSCTL_INT(_kern_cam, OID_AUTO, announce_nosbuf, CTLFLAG_RWTUN,
-	    &xsoftc.announce_nosbuf, 0, "Don't use sbuf for announcements");
 
 struct cam_doneq {
 	struct mtx_padalign	cam_doneq_mtx;
@@ -214,10 +206,10 @@ static struct cdevsw xpt_cdevsw = {
 
 /* Storage for debugging datastructures */
 struct cam_path *cam_dpath;
-u_int32_t __read_mostly cam_dflags = CAM_DEBUG_FLAGS;
+uint32_t __read_mostly cam_dflags = CAM_DEBUG_FLAGS;
 SYSCTL_UINT(_kern_cam, OID_AUTO, dflags, CTLFLAG_RWTUN,
 	&cam_dflags, 0, "Enabled debug flags");
-u_int32_t cam_debug_delay = CAM_DEBUG_DELAY;
+uint32_t cam_debug_delay = CAM_DEBUG_DELAY;
 SYSCTL_UINT(_kern_cam, OID_AUTO, debug_delay, CTLFLAG_RWTUN,
 	&cam_debug_delay, 0, "Delay in us after each debug message");
 
@@ -236,7 +228,7 @@ DECLARE_MODULE(cam, cam_moduledata, SI_SUB_CONFIGURE, SI_ORDER_SECOND);
 MODULE_VERSION(cam, 1);
 
 static void		xpt_async_bcast(struct async_list *async_head,
-					u_int32_t async_code,
+					uint32_t async_code,
 					struct cam_path *path,
 					void *async_arg);
 static path_id_t xptnextfreepathid(void);
@@ -265,7 +257,7 @@ static struct cam_ed*
 static void	 xpt_config(void *arg);
 static void	 xpt_hold_boot_locked(void);
 static int	 xpt_schedule_dev(struct camq *queue, cam_pinfo *dev_pinfo,
-				 u_int32_t new_priority);
+				 uint32_t new_priority);
 static xpt_devicefunc_t xptpassannouncefunc;
 static void	 xptaction(struct cam_sim *sim, union ccb *work_ccb);
 static void	 xptpoll(struct cam_sim *sim);
@@ -311,7 +303,7 @@ static xpt_targetfunc_t	xptdeftargetfunc;
 static xpt_devicefunc_t	xptdefdevicefunc;
 static xpt_periphfunc_t	xptdefperiphfunc;
 static void		xpt_finishconfig_task(void *context, int pending);
-static void		xpt_dev_async_default(u_int32_t async_code,
+static void		xpt_dev_async_default(uint32_t async_code,
 					      struct cam_eb *bus,
 					      struct cam_et *target,
 					      struct cam_ed *device,
@@ -571,11 +563,9 @@ xptdoioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag, struct thread *
 			/*
 			 * Map the buffers back into user space.
 			 */
-			cam_periph_unmapmem(inccb, &mapinfo);
+			error = cam_periph_unmapmem(inccb, &mapinfo);
 
 			inccb->ccb_h.path = old_path;
-
-			error = 0;
 			break;
 		}
 		default:
@@ -918,6 +908,8 @@ xpt_init(void *dummy)
 	 * perform other XPT functions.
 	 */
 	devq = cam_simq_alloc(16);
+	if (devq == NULL)
+		return (ENOMEM);
 	xpt_sim = cam_sim_alloc(xptaction,
 				xptpoll,
 				"xpt",
@@ -1048,45 +1040,13 @@ xpt_remove_periph(struct cam_periph *periph)
 void
 xpt_announce_periph(struct cam_periph *periph, char *announce_string)
 {
-	struct	cam_path *path = periph->path;
-	struct  xpt_proto *proto;
+	char buf[128];
+	struct sbuf sb;
 
-	cam_periph_assert(periph, MA_OWNED);
-	periph->flags |= CAM_PERIPH_ANNOUNCED;
-
-	printf("%s%d at %s%d bus %d scbus%d target %d lun %jx\n",
-	       periph->periph_name, periph->unit_number,
-	       path->bus->sim->sim_name,
-	       path->bus->sim->unit_number,
-	       path->bus->sim->bus_id,
-	       path->bus->path_id,
-	       path->target->target_id,
-	       (uintmax_t)path->device->lun_id);
-	printf("%s%d: ", periph->periph_name, periph->unit_number);
-	proto = xpt_proto_find(path->device->protocol);
-	if (proto)
-		proto->ops->announce(path->device);
-	else
-		printf("%s%d: Unknown protocol device %d\n",
-		    periph->periph_name, periph->unit_number,
-		    path->device->protocol);
-	if (path->device->serial_num_len > 0) {
-		/* Don't wrap the screen  - print only the first 60 chars */
-		printf("%s%d: Serial Number %.60s\n", periph->periph_name,
-		       periph->unit_number, path->device->serial_num);
-	}
-	/* Announce transport details. */
-	path->bus->xport->ops->announce(periph);
-	/* Announce command queueing. */
-	if (path->device->inq_flags & SID_CmdQue
-	 || path->device->flags & CAM_DEV_TAG_AFTER_COUNT) {
-		printf("%s%d: Command Queueing enabled\n",
-		       periph->periph_name, periph->unit_number);
-	}
-	/* Announce caller's details if they've passed in. */
-	if (announce_string != NULL)
-		printf("%s%d: %s\n", periph->periph_name,
-		       periph->unit_number, announce_string);
+	(void)sbuf_new(&sb, buf, sizeof(buf), SBUF_FIXEDLEN | SBUF_INCLUDENUL);
+	sbuf_set_drain(&sb, sbuf_printf_drain, NULL);
+	xpt_announce_periph_sbuf(periph, &sb, announce_string);
+	(void)sbuf_finish(&sb);
 }
 
 void
@@ -1099,18 +1059,6 @@ xpt_announce_periph_sbuf(struct cam_periph *periph, struct sbuf *sb,
 	cam_periph_assert(periph, MA_OWNED);
 	periph->flags |= CAM_PERIPH_ANNOUNCED;
 
-	/* Fall back to the non-sbuf method if necessary */
-	if (xsoftc.announce_nosbuf != 0) {
-		xpt_announce_periph(periph, announce_string);
-		return;
-	}
-	proto = xpt_proto_find(path->device->protocol);
-	if (((proto != NULL) && (proto->ops->announce_sbuf == NULL)) ||
-	    (path->bus->xport->ops->announce_sbuf == NULL)) {
-		xpt_announce_periph(periph, announce_string);
-		return;
-	}
-
 	sbuf_printf(sb, "%s%d at %s%d bus %d scbus%d target %d lun %jx\n",
 	    periph->periph_name, periph->unit_number,
 	    path->bus->sim->sim_name,
@@ -1120,12 +1068,11 @@ xpt_announce_periph_sbuf(struct cam_periph *periph, struct sbuf *sb,
 	    path->target->target_id,
 	    (uintmax_t)path->device->lun_id);
 	sbuf_printf(sb, "%s%d: ", periph->periph_name, periph->unit_number);
-
+	proto = xpt_proto_find(path->device->protocol);
 	if (proto)
 		proto->ops->announce_sbuf(path->device, sb);
 	else
-		sbuf_printf(sb, "%s%d: Unknown protocol device %d\n",
-		    periph->periph_name, periph->unit_number,
+		sbuf_printf(sb, "Unknown protocol device %d\n",
 		    path->device->protocol);
 	if (path->device->serial_num_len > 0) {
 		/* Don't wrap the screen  - print only the first 60 chars */
@@ -1160,11 +1107,6 @@ void
 xpt_announce_quirks_sbuf(struct cam_periph *periph, struct sbuf *sb,
 			 int quirks, char *bit_string)
 {
-	if (xsoftc.announce_nosbuf != 0) {
-		xpt_announce_quirks(periph, quirks, bit_string);
-		return;
-	}
-
 	if (quirks != 0) {
 		sbuf_printf(sb, "%s%d: quirks=0x%b\n", periph->periph_name,
 		    periph->unit_number, quirks, bit_string);
@@ -1174,29 +1116,13 @@ xpt_announce_quirks_sbuf(struct cam_periph *periph, struct sbuf *sb,
 void
 xpt_denounce_periph(struct cam_periph *periph)
 {
-	struct	cam_path *path = periph->path;
-	struct  xpt_proto *proto;
+	char buf[128];
+	struct sbuf sb;
 
-	cam_periph_assert(periph, MA_OWNED);
-	printf("%s%d at %s%d bus %d scbus%d target %d lun %jx\n",
-	       periph->periph_name, periph->unit_number,
-	       path->bus->sim->sim_name,
-	       path->bus->sim->unit_number,
-	       path->bus->sim->bus_id,
-	       path->bus->path_id,
-	       path->target->target_id,
-	       (uintmax_t)path->device->lun_id);
-	printf("%s%d: ", periph->periph_name, periph->unit_number);
-	proto = xpt_proto_find(path->device->protocol);
-	if (proto)
-		proto->ops->denounce(path->device);
-	else
-		printf("%s%d: Unknown protocol device %d\n",
-		    periph->periph_name, periph->unit_number,
-		    path->device->protocol);
-	if (path->device->serial_num_len > 0)
-		printf(" s/n %.60s", path->device->serial_num);
-	printf(" detached\n");
+	(void)sbuf_new(&sb, buf, sizeof(buf), SBUF_FIXEDLEN | SBUF_INCLUDENUL);
+	sbuf_set_drain(&sb, sbuf_printf_drain, NULL);
+	xpt_denounce_periph_sbuf(periph, &sb);
+	(void)sbuf_finish(&sb);
 }
 
 void
@@ -1207,17 +1133,6 @@ xpt_denounce_periph_sbuf(struct cam_periph *periph, struct sbuf *sb)
 
 	cam_periph_assert(periph, MA_OWNED);
 
-	/* Fall back to the non-sbuf method if necessary */
-	if (xsoftc.announce_nosbuf != 0) {
-		xpt_denounce_periph(periph);
-		return;
-	}
-	proto = xpt_proto_find(path->device->protocol);
-	if ((proto != NULL) && (proto->ops->denounce_sbuf == NULL)) {
-		xpt_denounce_periph(periph);
-		return;
-	}
-
 	sbuf_printf(sb, "%s%d at %s%d bus %d scbus%d target %d lun %jx\n",
 	    periph->periph_name, periph->unit_number,
 	    path->bus->sim->sim_name,
@@ -1227,16 +1142,15 @@ xpt_denounce_periph_sbuf(struct cam_periph *periph, struct sbuf *sb)
 	    path->target->target_id,
 	    (uintmax_t)path->device->lun_id);
 	sbuf_printf(sb, "%s%d: ", periph->periph_name, periph->unit_number);
-
+	proto = xpt_proto_find(path->device->protocol);
 	if (proto)
 		proto->ops->denounce_sbuf(path->device, sb);
 	else
-		sbuf_printf(sb, "%s%d: Unknown protocol device %d\n",
-		    periph->periph_name, periph->unit_number,
+		sbuf_printf(sb, "Unknown protocol device %d",
 		    path->device->protocol);
 	if (path->device->serial_num_len > 0)
 		sbuf_printf(sb, " s/n %.60s", path->device->serial_num);
-	sbuf_printf(sb, " detached\n");
+	sbuf_cat(sb, " detached\n");
 }
 
 int
@@ -2953,7 +2867,7 @@ call_sim:
 		struct ccb_setasync *csa;
 		struct async_node *cur_entry;
 		struct async_list *async_head;
-		u_int32_t added;
+		uint32_t added;
 
 		csa = &start_ccb->csa;
 		added = csa->event_enable;
@@ -3179,7 +3093,7 @@ xpt_sim_poll(struct cam_sim *sim)
 uint32_t
 xpt_poll_setup(union ccb *start_ccb)
 {
-	u_int32_t timeout;
+	uint32_t timeout;
 	struct	  cam_sim *sim;
 	struct	  cam_devq *devq;
 	struct	  cam_ed *dev;
@@ -3240,7 +3154,7 @@ xpt_pollwait(union ccb *start_ccb, uint32_t timeout)
  * target device has space for more transactions.
  */
 void
-xpt_schedule(struct cam_periph *periph, u_int32_t new_priority)
+xpt_schedule(struct cam_periph *periph, uint32_t new_priority)
 {
 
 	CAM_DEBUG(periph->path, CAM_DEBUG_TRACE, ("xpt_schedule\n"));
@@ -3261,10 +3175,10 @@ xpt_schedule(struct cam_periph *periph, u_int32_t new_priority)
  */
 static int
 xpt_schedule_dev(struct camq *queue, cam_pinfo *pinfo,
-		 u_int32_t new_priority)
+		 uint32_t new_priority)
 {
 	int retval;
-	u_int32_t old_priority;
+	uint32_t old_priority;
 
 	CAM_DEBUG_PRINT(CAM_DEBUG_XPT, ("xpt_schedule_dev\n"));
 
@@ -3494,7 +3408,7 @@ xpt_merge_ccb(union ccb *dst_ccb, union ccb *src_ccb)
 
 void
 xpt_setup_ccb_flags(struct ccb_hdr *ccb_h, struct cam_path *path,
-		    u_int32_t priority, u_int32_t flags)
+		    uint32_t priority, uint32_t flags)
 {
 
 	CAM_DEBUG(path, CAM_DEBUG_TRACE, ("xpt_setup_ccb\n"));
@@ -3517,7 +3431,7 @@ xpt_setup_ccb_flags(struct ccb_hdr *ccb_h, struct cam_path *path,
 }
 
 void
-xpt_setup_ccb(struct ccb_hdr *ccb_h, struct cam_path *path, u_int32_t priority)
+xpt_setup_ccb(struct ccb_hdr *ccb_h, struct cam_path *path, uint32_t priority)
 {
 	xpt_setup_ccb_flags(ccb_h, path, priority, /*flags*/ 0);
 }
@@ -3795,18 +3709,18 @@ xpt_print_path(struct cam_path *path)
 	sbuf_delete(&sb);
 }
 
-void
-xpt_print_device(struct cam_ed *device)
+static void
+xpt_device_sbuf(struct cam_ed *device, struct sbuf *sb)
 {
-
 	if (device == NULL)
-		printf("(nopath): ");
+		sbuf_cat(sb, "(nopath): ");
 	else {
-		printf("(noperiph:%s%d:%d:%d:%jx): ", device->sim->sim_name,
-		       device->sim->unit_number,
-		       device->sim->bus_id,
-		       device->target->target_id,
-		       (uintmax_t)device->lun_id);
+		sbuf_printf(sb, "(noperiph:%s%d:%d:%d:%jx): ",
+		    device->sim->sim_name,
+		    device->sim->unit_number,
+		    device->sim->bus_id,
+		    device->target->target_id,
+		    (uintmax_t)device->lun_id);
 	}
 }
 
@@ -3829,51 +3743,48 @@ xpt_print(struct cam_path *path, const char *fmt, ...)
 	sbuf_delete(&sb);
 }
 
-int
+char *
 xpt_path_string(struct cam_path *path, char *str, size_t str_len)
 {
 	struct sbuf sb;
-	int len;
 
 	sbuf_new(&sb, str, str_len, 0);
-	len = xpt_path_sbuf(path, &sb);
+	xpt_path_sbuf(path, &sb);
 	sbuf_finish(&sb);
-	return (len);
+	return (str);
 }
 
-int
+void
 xpt_path_sbuf(struct cam_path *path, struct sbuf *sb)
 {
 
 	if (path == NULL)
-		sbuf_printf(sb, "(nopath): ");
+		sbuf_cat(sb, "(nopath): ");
 	else {
 		if (path->periph != NULL)
 			sbuf_printf(sb, "(%s%d:", path->periph->periph_name,
 				    path->periph->unit_number);
 		else
-			sbuf_printf(sb, "(noperiph:");
+			sbuf_cat(sb, "(noperiph:");
 
 		if (path->bus != NULL)
 			sbuf_printf(sb, "%s%d:%d:", path->bus->sim->sim_name,
 				    path->bus->sim->unit_number,
 				    path->bus->sim->bus_id);
 		else
-			sbuf_printf(sb, "nobus:");
+			sbuf_cat(sb, "nobus:");
 
 		if (path->target != NULL)
 			sbuf_printf(sb, "%d:", path->target->target_id);
 		else
-			sbuf_printf(sb, "X:");
+			sbuf_cat(sb, "X:");
 
 		if (path->device != NULL)
 			sbuf_printf(sb, "%jx): ",
 			    (uintmax_t)path->device->lun_id);
 		else
-			sbuf_printf(sb, "X): ");
+			sbuf_cat(sb, "X): ");
 	}
-
-	return(sbuf_len(sb));
 }
 
 path_id_t
@@ -4018,7 +3929,14 @@ xpt_bus_register(struct cam_sim *sim, device_t parent, uint32_t bus)
 
 	xpt_path_inq(&cpi, path);
 
-	if (cam_ccb_success((union ccb *)&cpi)) {
+	/*
+	 * Use the results of PATH_INQ to pick a transport.  Note that
+	 * the xpt bus (which uses XPORT_UNSPECIFIED) always uses
+	 * xport_default instead of a transport from
+	 * cam_xpt_port_set.
+	 */
+	if (cam_ccb_success((union ccb *)&cpi) &&
+	    cpi.transport != XPORT_UNSPECIFIED) {
 		struct xpt_xport **xpt;
 
 		SET_FOREACH(xpt, cam_xpt_xport_set) {
@@ -4027,11 +3945,11 @@ xpt_bus_register(struct cam_sim *sim, device_t parent, uint32_t bus)
 				break;
 			}
 		}
-		if (new_bus->xport == NULL) {
+		if (new_bus->xport == &xport_default) {
 			xpt_print(path,
 			    "No transport found for %d\n", cpi.transport);
 			xpt_release_bus(new_bus);
-			free(path, M_CAMXPT);
+			xpt_free_path(path);
 			return (EINVAL);
 		}
 	}
@@ -4158,7 +4076,7 @@ xptpathid(const char *sim_name, int sim_unit, int sim_bus)
 }
 
 static const char *
-xpt_async_string(u_int32_t async_code)
+xpt_async_string(uint32_t async_code)
 {
 
 	switch (async_code) {
@@ -4181,7 +4099,7 @@ xpt_async_string(u_int32_t async_code)
 }
 
 static int
-xpt_async_size(u_int32_t async_code)
+xpt_async_size(uint32_t async_code)
 {
 
 	switch (async_code) {
@@ -4209,7 +4127,7 @@ xpt_async_process_dev(struct cam_ed *device, void *arg)
 	union ccb *ccb = arg;
 	struct cam_path *path = ccb->ccb_h.path;
 	void *async_arg = ccb->casync.async_arg_ptr;
-	u_int32_t async_code = ccb->casync.async_code;
+	uint32_t async_code = ccb->casync.async_code;
 	bool relock;
 
 	if (path->device != device
@@ -4278,7 +4196,7 @@ xpt_async_process(struct cam_periph *periph, union ccb *ccb)
 	struct cam_eb *bus;
 	struct cam_path *path;
 	void *async_arg;
-	u_int32_t async_code;
+	uint32_t async_code;
 
 	path = ccb->ccb_h.path;
 	async_code = ccb->casync.async_code;
@@ -4316,7 +4234,7 @@ xpt_async_process(struct cam_periph *periph, union ccb *ccb)
 
 static void
 xpt_async_bcast(struct async_list *async_head,
-		u_int32_t async_code,
+		uint32_t async_code,
 		struct cam_path *path, void *async_arg)
 {
 	struct async_node *cur_entry;
@@ -4347,7 +4265,7 @@ xpt_async_bcast(struct async_list *async_head,
 }
 
 void
-xpt_async(u_int32_t async_code, struct cam_path *path, void *async_arg)
+xpt_async(uint32_t async_code, struct cam_path *path, void *async_arg)
 {
 	union ccb *ccb;
 	int size;
@@ -4401,7 +4319,7 @@ xpt_async(u_int32_t async_code, struct cam_path *path, void *async_arg)
 }
 
 static void
-xpt_dev_async_default(u_int32_t async_code, struct cam_eb *bus,
+xpt_dev_async_default(uint32_t async_code, struct cam_eb *bus,
 		      struct cam_et *target, struct cam_ed *device,
 		      void *async_arg)
 {
@@ -4434,7 +4352,7 @@ xpt_freeze_devq_device(struct cam_ed *dev, u_int count)
 	return (freeze);
 }
 
-u_int32_t
+uint32_t
 xpt_freeze_devq(struct cam_path *path, u_int count)
 {
 	struct cam_ed	*dev = path->device;
@@ -4449,7 +4367,7 @@ xpt_freeze_devq(struct cam_path *path, u_int count)
 	return (freeze);
 }
 
-u_int32_t
+uint32_t
 xpt_freeze_simq(struct cam_sim *sim, u_int count)
 {
 	struct cam_devq	*devq;
@@ -4692,7 +4610,7 @@ xpt_get_ccb(struct cam_periph *periph)
 }
 
 union ccb *
-cam_periph_getccb(struct cam_periph *periph, u_int32_t priority)
+cam_periph_getccb(struct cam_periph *periph, uint32_t priority)
 {
 	struct ccb_hdr *ccb_h;
 
@@ -4954,7 +4872,7 @@ xpt_release_device(struct cam_ed *device)
 	taskqueue_enqueue(xsoftc.xpt_taskq, &device->device_destroy_task);
 }
 
-u_int32_t
+uint32_t
 xpt_dev_ccbq_resize(struct cam_path *path, int newopenings)
 {
 	int	result;
@@ -5618,4 +5536,61 @@ xpt_action_name(uint32_t action)
 
 	snprintf(buffer, sizeof(buffer), "%#x", action);
 	return (buffer);
+}
+
+void
+xpt_cam_path_debug(struct cam_path *path, const char *fmt, ...)
+{
+	struct sbuf sbuf;
+	char buf[XPT_PRINT_LEN]; /* balance to not eat too much stack */
+	struct sbuf *sb = sbuf_new(&sbuf, buf, sizeof(buf), SBUF_FIXEDLEN);
+	va_list ap;
+
+	sbuf_set_drain(sb, sbuf_printf_drain, NULL);
+	xpt_path_sbuf(path, sb);
+	va_start(ap, fmt);
+	sbuf_vprintf(sb, fmt, ap);
+	va_end(ap);
+	sbuf_finish(sb);
+	sbuf_delete(sb);
+	if (cam_debug_delay != 0)
+		DELAY(cam_debug_delay);
+}
+
+void
+xpt_cam_dev_debug(struct cam_ed *dev, const char *fmt, ...)
+{
+	struct sbuf sbuf;
+	char buf[XPT_PRINT_LEN]; /* balance to not eat too much stack */
+	struct sbuf *sb = sbuf_new(&sbuf, buf, sizeof(buf), SBUF_FIXEDLEN);
+	va_list ap;
+
+	sbuf_set_drain(sb, sbuf_printf_drain, NULL);
+	xpt_device_sbuf(dev, sb);
+	va_start(ap, fmt);
+	sbuf_vprintf(sb, fmt, ap);
+	va_end(ap);
+	sbuf_finish(sb);
+	sbuf_delete(sb);
+	if (cam_debug_delay != 0)
+		DELAY(cam_debug_delay);
+}
+
+void
+xpt_cam_debug(const char *fmt, ...)
+{
+	struct sbuf sbuf;
+	char buf[XPT_PRINT_LEN]; /* balance to not eat too much stack */
+	struct sbuf *sb = sbuf_new(&sbuf, buf, sizeof(buf), SBUF_FIXEDLEN);
+	va_list ap;
+
+	sbuf_set_drain(sb, sbuf_printf_drain, NULL);
+	sbuf_cat(sb, "cam_debug: ");
+	va_start(ap, fmt);
+	sbuf_vprintf(sb, fmt, ap);
+	va_end(ap);
+	sbuf_finish(sb);
+	sbuf_delete(sb);
+	if (cam_debug_delay != 0)
+		DELAY(cam_debug_delay);
 }

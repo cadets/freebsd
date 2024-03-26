@@ -25,9 +25,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/proc.h>
@@ -69,3 +66,5 @@ DUMMY(readahead);
 DUMMY(restart_syscall);
 /* Linux 3.15: */
 DUMMY(kexec_file_load);
+/* Linux 6.6: */
+DUMMY(map_shadow_stack);

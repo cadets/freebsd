@@ -29,9 +29,6 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <time.h>
 #include "libc_private.h"
@@ -42,7 +39,6 @@ __weak_reference(__sys_nanosleep, __nanosleep);
 int
 nanosleep(const struct timespec *rqtp, struct timespec *rmtp)
 {
-
 	return (((int (*)(const struct timespec *, struct timespec *))
-	    __libc_interposing[INTERPOS_nanosleep])(rqtp, rmtp));
+	    *(__libc_interposing_slot(INTERPOS_nanosleep)))(rqtp, rmtp));
 }

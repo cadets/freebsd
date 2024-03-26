@@ -16,8 +16,6 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
- *
- * $FreeBSD$
  */
 
 #ifndef	__XEN_HVM_H__
@@ -104,6 +102,5 @@ void xen_hvm_suspend(void);
 void xen_hvm_resume(bool suspend_cancelled);
 
 extern uint32_t hvm_start_flags;
-extern bool xen_evtchn_needs_ack;
 
 #endif	/* __XEN_HVM_H__ */

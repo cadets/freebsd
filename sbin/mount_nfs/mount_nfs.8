@@ -25,10 +25,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\"	@(#)mount_nfs.8	8.3 (Berkeley) 3/29/95
-.\" $FreeBSD$
-.\"
-.Dd April 3, 2023
+.Dd October 8, 2023
 .Dt MOUNT_NFS 8
 .Os
 .Sh NAME
@@ -231,6 +228,9 @@ This option will result in more IP port#s being used.
 This option requires the
 .Cm nfsv4
 option.
+Note that for NFS servers such as AmazonEFS, where each new TCP
+connection can connect to a different cluster that maintains lock
+state separately, this option cannot be used.
 .It Cm nfsv2
 Use the NFS Version 2 protocol (the default is to try version 3 first
 then version 2).
@@ -633,6 +633,7 @@ Same as
 .It Fl t
 Same as
 .Fl o Cm retransmit Ns = Ns Aq Ar value
+(deprecated)
 .It Fl w
 Same as
 .Fl o Cm wsize Ns = Ns Aq Ar value

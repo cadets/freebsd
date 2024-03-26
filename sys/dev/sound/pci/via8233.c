@@ -50,8 +50,6 @@
 
 #include <dev/sound/pci/via8233.h>
 
-SND_DECLARE_FILE("$FreeBSD$");
-
 #define VIA8233_PCI_ID 0x30591106
 
 #define VIA8233_REV_ID_8233PRE	0x10
@@ -1349,9 +1347,9 @@ via_attach(device_t dev)
 		ac97_setextmode(via->codec, ext);
 	}
 
-	snprintf(status, SND_STATUSLEN, "at io 0x%jx irq %jd %s",
+	snprintf(status, SND_STATUSLEN, "port 0x%jx irq %jd on %s",
 	    rman_get_start(via->reg), rman_get_start(via->irq),
-	    PCM_KLDSTRING(snd_via8233));
+	    device_get_nameunit(device_get_parent(dev)));
 
 	/* Register */
 	if (pcm_register(dev, via, via_dxs_chnum + via_sgd_chnum, NWRCHANS))

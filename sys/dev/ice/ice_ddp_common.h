@@ -28,7 +28,6 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-/*$FreeBSD$*/
 
 #ifndef _ICE_DDP_COMMON_H_
 #define _ICE_DDP_COMMON_H_
@@ -127,6 +126,7 @@ struct ice_pkg_hdr {
 #define SEGMENT_SIGN_TYPE_RSA2K		0x00000001
 #define SEGMENT_SIGN_TYPE_RSA3K		0x00000002
 #define SEGMENT_SIGN_TYPE_RSA3K_SBB	0x00000003 /* Secure Boot Block */
+#define SEGMENT_SIGN_TYPE_RSA3K_E825	0x00000005
 
 /* generic segment */
 struct ice_generic_seg_hdr {

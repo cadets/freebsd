@@ -1,6 +1,3 @@
- $FreeBSD$
-;	from: @(#)syscalls.master	8.2 (Berkeley) 1/13/94
-;
 ; System call name/number master file.
 ; Processed to created init_sysent.c, syscalls.c and syscall.h.
 
@@ -35,6 +32,7 @@
 ;	COMPAT11 included on COMPAT_FREEBSD11 #ifdef (FreeBSD 11 compat)
 ;	COMPAT12 included on COMPAT_FREEBSD12 #ifdef (FreeBSD 12 compat)
 ;	COMPAT13 included on COMPAT_FREEBSD13 #ifdef (FreeBSD 13 compat)
+;	COMPAT14 included on COMPAT_FREEBSD14 #ifdef (FreeBSD 14 compat)
 ;	OBSOL	obsolete, not included in system, only specifies name
 ;	RESERVED reserved for local or vendor use (not for FreeBSD)
 ;	UNIMPL	not implemented, placeholder only
@@ -504,16 +502,8 @@
 	}
 67	AUE_NULL	OBSOL	vread
 68	AUE_NULL	OBSOL	vwrite
-69	AUE_SBRK	STD|CAPENABLED {
-		int sbrk(
-		    int incr
-		);
-	}
-70	AUE_SSTK	STD|CAPENABLED {
-		int sstk(
-		    int incr
-		);
-	}
+69	AUE_NULL	OBSOL	sbrk
+70	AUE_NULL	OBSOL	sstk
 71	AUE_MMAP	COMPAT|CAPENABLED {
 		void *mmap(
 		    _In_ void *addr,
@@ -626,7 +616,7 @@
 		int fcntl(
 		    int fd,
 		    int cmd,
-		    long arg
+		    intptr_t arg
 		);
 	}
 ; XXX should be { int fcntl(int fd, int cmd, ...); }
@@ -794,14 +784,14 @@
 120	AUE_READV	STD|CAPENABLED {
 		int readv(
 		    int fd,
-		    _Inout_updates_(iovcnt) _Contains_long_ptr_ struct iovec *iovp,
+		    _In_reads_(iovcnt) _Contains_long_ptr_ const struct iovec *iovp,
 		    u_int iovcnt
 		);
 	}
 121	AUE_WRITEV	STD|CAPENABLED {
 		int writev(
 		    int fd,
-		    _In_reads_opt_(iovcnt) _Contains_long_ptr_ struct iovec *iovp,
+		    _In_reads_(iovcnt) _Contains_long_ptr_ const struct iovec *iovp,
 		    u_int iovcnt
 		);
 	}
@@ -1000,7 +990,7 @@
 		    int fd,
 		    _Out_writes_bytes_(count) char *buf,
 		    u_int count,
-		    _Out_ long *basep
+		    _Out_opt_ long *basep
 		);
 	}
 157	AUE_STATFS	COMPAT4 {
@@ -1186,7 +1176,7 @@
 		    int fd,
 		    _Out_writes_bytes_(count) char *buf,
 		    u_int count,
-		    _Out_ long *basep
+		    _Out_opt_ long *basep
 		);
 	}
 197	AUE_MMAP	COMPAT6|CAPENABLED {
@@ -1287,7 +1277,6 @@
 217	AUE_NULL	NODEF|NOTSTATIC	lkmnosys lkmnosys nosys_args int
 218	AUE_NULL	NODEF|NOTSTATIC	lkmnosys lkmnosys nosys_args int
 219	AUE_NULL	NODEF|NOTSTATIC	lkmnosys lkmnosys nosys_args int
-
 220	AUE_SEMCTL	COMPAT7|NOSTD {
 		int __semctl(
 		    int semid,
@@ -1656,7 +1645,7 @@
 	}
 315	AUE_AIO_SUSPEND	STD|CAPENABLED {
 		int aio_suspend(
-		    _Inout_updates_(nent) _Contains_long_ptr_ struct aiocb * const * aiocbp,
+		    _Inout_updates_(nent) _Contains_long_ptr_ const struct aiocb * const * aiocbp,
 		    int nent,
 		    _In_opt_ _Contains_long_timet_ const struct timespec *timeout
 		);
@@ -1822,67 +1811,67 @@
 345	AUE_SIGWAIT	STD|CAPENABLED {
 		int sigtimedwait(
 		    _In_ const sigset_t *set,
-		    _Out_opt_ _Contains_long_ptr_ struct siginfo *info,
+		    _Out_opt_ _Contains_long_ptr_ struct __siginfo *info,
 		    _In_opt_ _Contains_long_timet_ const struct timespec *timeout
 		);
 	}
 346	AUE_NULL	STD|CAPENABLED {
 		int sigwaitinfo(
 		    _In_ const sigset_t *set,
-		    _Out_opt_ _Contains_long_ptr_ struct siginfo *info
+		    _Out_opt_ _Contains_long_ptr_ struct __siginfo *info
 		);
 	}
 347	AUE_ACL_GET_FILE	STD {
 		int __acl_get_file(
 		    _In_z_ const char *path,
-		    acl_type_t type,
+		    __acl_type_t type,
 		    _Out_ struct acl *aclp
 		);
 	}
 348	AUE_ACL_SET_FILE	STD {
 		int __acl_set_file(
 		    _In_z_ const char *path,
-		    acl_type_t type,
+		    __acl_type_t type,
 		    _In_ struct acl *aclp
 		);
 	}
 349	AUE_ACL_GET_FD	STD|CAPENABLED {
 		int __acl_get_fd(
 		    int filedes,
-		    acl_type_t type,
+		    __acl_type_t type,
 		    _Out_ struct acl *aclp
 		);
 	}
 350	AUE_ACL_SET_FD	STD|CAPENABLED {
 		int __acl_set_fd(
 		    int filedes,
-		    acl_type_t type,
+		    __acl_type_t type,
 		    _In_ struct acl *aclp
 		);
 	}
 351	AUE_ACL_DELETE_FILE	STD {
 		int __acl_delete_file(
 		    _In_z_ const char *path,
-		    acl_type_t type
+		    __acl_type_t type
 		);
 	}
 352	AUE_ACL_DELETE_FD	STD|CAPENABLED {
 		int __acl_delete_fd(
 		    int filedes,
-		    acl_type_t type
+		    __acl_type_t type
 		);
 	}
 353	AUE_ACL_CHECK_FILE	STD {
 		int __acl_aclcheck_file(
 		    _In_z_ const char *path,
-		    acl_type_t type,
+		    __acl_type_t type,
 		    _In_ struct acl *aclp
 		);
 	}
 354	AUE_ACL_CHECK_FD	STD|CAPENABLED {
 		int __acl_aclcheck_fd(
 		    int filedes,
-		    acl_type_t type,
+		    __acl_type_t type,
 		    _In_ struct acl *aclp
 		);
 	}
@@ -2257,27 +2246,27 @@
 425	AUE_ACL_GET_LINK	STD {
 		int __acl_get_link(
 		    _In_z_ const char *path,
-		    acl_type_t type,
+		    __acl_type_t type,
 		    _Out_ struct acl *aclp
 		);
 	}
 426	AUE_ACL_SET_LINK	STD {
 		int __acl_set_link(
 		    _In_z_ const char *path,
-		    acl_type_t type,
+		    __acl_type_t type,
 		    _In_ struct acl *aclp
 		);
 	}
 427	AUE_ACL_DELETE_LINK	STD {
 		int __acl_delete_link(
 		    _In_z_ const char *path,
-		    acl_type_t type
+		    __acl_type_t type
 		);
 	}
 428	AUE_ACL_CHECK_LINK	STD {
 		int __acl_aclcheck_link(
 		    _In_z_ const char *path,
-		    acl_type_t type,
+		    __acl_type_t type,
 		    _In_ struct acl *aclp
 		);
 	}
@@ -2310,19 +2299,16 @@
 		    int sig
 		);
 	}
-
 434	AUE_NULL	COMPAT10 {
 		int _umtx_lock(
 		    _Inout_ struct umtx *umtx
 		);
 	}
-
 435	AUE_NULL	COMPAT10 {
 		int _umtx_unlock(
 		    _Inout_ struct umtx *umtx
 		);
 	}
-
 436	AUE_JAIL_ATTACH	STD {
 		int jail_attach(
 		    int jid
@@ -2447,7 +2433,6 @@
 		    _In_ void *value
 		);
 	}
-
 457	AUE_MQ_OPEN	NOSTD {
 		int kmq_open(
 		    _In_z_ const char *path,
@@ -2958,7 +2943,7 @@
 		    _Out_opt_ int *status,
 		    int options,
 		    _Out_opt_ _Contains_long_ struct __wrusage *wrusage,
-		    _Out_opt_ _Contains_long_ptr_ struct siginfo *info
+		    _Out_opt_ _Contains_long_ptr_ struct __siginfo *info
 		);
 	}
 533	AUE_CAP_RIGHTS_LIMIT	STD|CAPENABLED {
@@ -3098,7 +3083,7 @@
 		    int fd,
 		    _Out_writes_bytes_(count) char *buf,
 		    size_t count,
-		    _Out_ off_t *basep
+		    _Out_opt_ off_t *basep
 		);
 	}
 555	AUE_STATFS	STD {
@@ -3246,7 +3231,7 @@
 573	AUE_NULL	STD|CAPENABLED {
 		int sigfastblock(
 		    int cmd,
-		    _Inout_opt_ uint32_t *ptr
+		    _Inout_updates_bytes_opt_(4) void *ptr
 		);
 	}
 574	AUE_REALPATHAT	STD {
@@ -3301,7 +3286,6 @@
 581	AUE_NULL	STD|CAPENABLED {
 		int sched_getcpu(void);
 	}
-
 582	AUE_SWAPOFF	STD {
 		int swapoff(
 		    _In_z_ const char *name,
@@ -3311,6 +3295,42 @@
 583	AUE_KQUEUE	STD|CAPENABLED {
 		int kqueuex(
 		    u_int flags
+		);
+	}
+584	AUE_NULL	STD|CAPENABLED {
+		int membarrier(
+		    int cmd,
+		    unsigned flags,
+		    int cpu_id
+		);
+	}
+585	AUE_TIMERFD	STD|CAPENABLED {
+		int timerfd_create(
+		    int clockid,
+		    int flags
+		);
+	}
+586	AUE_TIMERFD	STD|CAPENABLED {
+		int timerfd_gettime(
+		    int fd,
+		    _Out_ _Contains_long_timet_ struct itimerspec *curr_value
+		);
+	}
+587	AUE_TIMERFD	STD|CAPENABLED {
+		int timerfd_settime(
+		    int fd,
+		    int flags,
+		    _In_ _Contains_long_timet_ const struct itimerspec *new_value,
+		    _Out_opt_ _Contains_long_timet_ struct itimerspec *old_value
+		);
+	}
+588	AUE_NULL	STD {
+		int kcmp(
+		    pid_t pid1,
+		    pid_t pid2,
+		    int type,
+		    uintptr_t idx1,
+		    uintptr_t idx2
 		);
 	}
 

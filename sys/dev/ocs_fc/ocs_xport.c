@@ -27,8 +27,6 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /**
@@ -526,9 +524,11 @@ ocs_xport_initialize(ocs_xport_t *xport)
 		}
 	}
 
-	if (ocs->target_io_timer_sec) {
-		ocs_log_debug(ocs, "setting target io timer=%d\n", ocs->target_io_timer_sec);
-		ocs_hw_set(&ocs->hw, OCS_HW_EMULATE_TARGET_WQE_TIMEOUT, TRUE);
+	if (ocs->target_io_timer_sec || ocs->enable_ini) {
+		if (ocs->target_io_timer_sec)
+			ocs_log_debug(ocs, "setting target io timer=%d\n", ocs->target_io_timer_sec);
+
+		ocs_hw_set(&ocs->hw, OCS_HW_EMULATE_WQE_TIMEOUT, TRUE);
 	}
 
 	ocs_hw_callback(&ocs->hw, OCS_HW_CB_DOMAIN, ocs_domain_cb, ocs);

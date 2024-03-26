@@ -1,4 +1,3 @@
-# $FreeBSD$
 
 TESTSRC=	${SRCTOP}/contrib/netbsd-tests/lib/libc/tls/${.CURDIR:T}
 
@@ -7,6 +6,7 @@ SHLIB_NAME=	h_tls_dlopen.so
 SRCS=		h_tls_dlopen.c
 
 MAN=
+PACKAGE=	tests
 
 LIBDIR=		${TESTSBASE}/lib/libc/tls
 SHLIB_MAJOR=	1

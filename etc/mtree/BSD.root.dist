@@ -1,4 +1,3 @@
-# $FreeBSD$
 #
 # Please see the file src/etc/mtree/README before making changes to this file.
 #
@@ -11,22 +10,26 @@
         defaults
         ..
         dtb
-            allwinner             tags=package=runtime
+            allwinner       tags=package=runtime
             ..
-            overlays              tags=package=runtime
+            overlays        tags=package=runtime
             ..
-            rockchip              tags=package=runtime
+            rockchip        tags=package=runtime
             ..
         ..
         efi
         ..
         firmware
         ..
-        loader.conf.d             tags=package=bootloader
+        fonts
         ..
-        lua
+        images
         ..
         kernel
+        ..
+        loader.conf.d   tags=package=bootloader
+        ..
+        lua
         ..
         modules
         ..
@@ -58,7 +61,7 @@
         ..
         jail.conf.d
         ..
-        kyua             tags=package=tests
+        kyua            tags=package=tests
         ..
         mail
         ..
@@ -95,6 +98,12 @@
         ssh
         ..
         ssl
+            certs
+            ..
+            untrusted
+            ..
+        ..
+        sysctl.kld.d
         ..
         syslog.d
         ..

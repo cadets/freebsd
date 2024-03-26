@@ -29,9 +29,6 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <signal.h>
 #include "libc_private.h"
@@ -43,7 +40,6 @@ __weak_reference(sigaction, __libc_sigaction);
 int
 sigaction(int sig, const struct sigaction *act, struct sigaction *oact)
 {
-
 	return (((int (*)(int, const struct sigaction *, struct sigaction *))
-	    __libc_interposing[INTERPOS_sigaction])(sig, act, oact));
+	    *(__libc_interposing_slot(INTERPOS_sigaction)))(sig, act, oact));
 }

@@ -23,8 +23,6 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\" $FreeBSD$
-.\"
 .Dd September 1, 2020
 .Dt SYSCTL 9
 .Os
@@ -577,6 +575,10 @@ Current formats:
 node
 .It Cm A
 .Li "char *"
+.It Cm C
+.Li "int8_t"
+.It Cm CU
+.Li "uint8_t"
 .It Cm I
 .Li "int"
 .It Cm IK Ns Op Ar n
@@ -593,6 +595,10 @@ gives milliKelvin
 .Li "quad_t"
 .It Cm QU
 .Li "u_quad_t"
+.It Cm S
+.Li "int16_t"
+.It Cm SU
+.Li "uint16_t"
 .It Cm "S,TYPE"
 .Li "struct TYPE"
 structures
@@ -620,7 +626,7 @@ For example,
 .Fn SYSCTL_INT
 reports the raw value of an associated variable of type
 .Vt int .
-However, nodes may also export a value that is a translatation of an internal
+However, nodes may also export a value that is a translation of an internal
 representation.
 .Pp
 The
@@ -698,7 +704,7 @@ macro or the
 function.
 If the
 .Fa len
-argument in zero, the string length is computed at every access to the OID using
+argument is zero, the string length is computed at every access to the OID using
 .Xr strlen 3 .
 Use the
 .Fn SYSCTL_CONST_STRING

@@ -35,8 +35,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <dev/drm2/drmP.h>
 
 static int drm_open_helper(struct cdev *kdev, int flags, int fmt,
@@ -538,7 +536,7 @@ void
 drm_event_wakeup(struct drm_pending_event *e)
 {
 	struct drm_file *file_priv;
-	struct drm_device *dev;
+	struct drm_device *dev __diagused;
 
 	file_priv = e->file_priv;
 	dev = file_priv->minor->dev;

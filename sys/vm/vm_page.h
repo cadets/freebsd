@@ -31,8 +31,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- *	from: @(#)vm_page.h	8.2 (Berkeley) 12/13/93
- *
  *
  * Copyright (c) 1987, 1990 Carnegie-Mellon University.
  * All rights reserved.
@@ -58,8 +56,6 @@
  *
  * any improvements or extensions that they make and grant Carnegie the
  * rights to redistribute these changes.
- *
- * $FreeBSD$
  */
 
 /*
@@ -664,11 +660,11 @@ vm_page_t vm_page_prev(vm_page_t m);
 bool vm_page_ps_test(vm_page_t m, int flags, vm_page_t skip_m);
 void vm_page_putfake(vm_page_t m);
 void vm_page_readahead_finish(vm_page_t m);
-bool vm_page_reclaim_contig(int req, u_long npages, vm_paddr_t low,
+int vm_page_reclaim_contig(int req, u_long npages, vm_paddr_t low,
     vm_paddr_t high, u_long alignment, vm_paddr_t boundary);
-bool vm_page_reclaim_contig_domain(int domain, int req, u_long npages,
+int vm_page_reclaim_contig_domain(int domain, int req, u_long npages,
     vm_paddr_t low, vm_paddr_t high, u_long alignment, vm_paddr_t boundary);
-bool vm_page_reclaim_contig_domain_ext(int domain, int req, u_long npages,
+int vm_page_reclaim_contig_domain_ext(int domain, int req, u_long npages,
     vm_paddr_t low, vm_paddr_t high, u_long alignment, vm_paddr_t boundary,
     int desired_runs);
 void vm_page_reference(vm_page_t m);
@@ -683,8 +679,6 @@ int vm_page_rename(vm_page_t, vm_object_t, vm_pindex_t);
 void vm_page_replace(vm_page_t mnew, vm_object_t object,
     vm_pindex_t pindex, vm_page_t mold);
 int vm_page_sbusied(vm_page_t m);
-vm_page_t vm_page_scan_contig(u_long npages, vm_page_t m_start,
-    vm_page_t m_end, u_long alignment, vm_paddr_t boundary, int options);
 vm_page_bits_t vm_page_set_dirty(vm_page_t m);
 void vm_page_set_valid_range(vm_page_t m, int base, int size);
 vm_offset_t vm_page_startup(vm_offset_t vaddr);
@@ -736,9 +730,9 @@ void vm_page_lock_assert_KBI(vm_page_t m, int a, const char *file, int line);
 #define	vm_page_assert_unbusied(m)					\
 	KASSERT((vm_page_busy_fetch(m) & ~VPB_BIT_WAITERS) !=		\
 	    VPB_CURTHREAD_EXCLUSIVE,					\
-	    ("vm_page_assert_xbusied: page %p busy_lock %#x owned"	\
-            " by me @ %s:%d",						\
-	    (m), (m)->busy_lock, __FILE__, __LINE__));			\
+	    ("vm_page_assert_unbusied: page %p busy_lock %#x owned"	\
+	     " by me (%p) @ %s:%d",					\
+	    (m), (m)->busy_lock, curthread, __FILE__, __LINE__));	\
 
 #define	vm_page_assert_xbusied_unchecked(m) do {			\
 	KASSERT(vm_page_xbusied(m),					\
@@ -750,8 +744,8 @@ void vm_page_lock_assert_KBI(vm_page_t m, int a, const char *file, int line);
 	KASSERT((vm_page_busy_fetch(m) & ~VPB_BIT_WAITERS) ==		\
 	    VPB_CURTHREAD_EXCLUSIVE,					\
 	    ("vm_page_assert_xbusied: page %p busy_lock %#x not owned"	\
-            " by me @ %s:%d",						\
-	    (m), (m)->busy_lock, __FILE__, __LINE__));			\
+	     " by me (%p) @ %s:%d",					\
+	    (m), (m)->busy_lock, curthread, __FILE__, __LINE__));	\
 } while (0)
 
 #define	vm_page_busied(m)						\

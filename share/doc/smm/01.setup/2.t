@@ -25,9 +25,6 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\"	@(#)2.t	8.1 (Berkeley) 7/27/93
-.\" $FreeBSD$
-.\"
 .ds lq ``
 .ds rq ''
 .ds LH "Installing/Operating \*(4B

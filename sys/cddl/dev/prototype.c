@@ -2,11 +2,8 @@
  * This file is freeware. You are free to use it and add your own
  * license.
  *
- * $FreeBSD$
- *
  */
 
-#include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/conf.h>

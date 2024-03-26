@@ -59,7 +59,7 @@
 #       Simon J. Gerraty <sjg@crufty.net>
 
 # RCSid:
-#	$Id: install-mk,v 1.234 2023/05/13 15:52:24 sjg Exp $
+#	$Id: install-mk,v 1.250 2024/03/10 02:57:17 sjg Exp $
 #
 #	@(#) Copyright (c) 1994-2023 Simon J. Gerraty
 #
@@ -74,7 +74,7 @@
 #	sjg@crufty.net
 #
 
-MK_VERSION=20230510
+MK_VERSION=20240309
 OWNER=
 GROUP=
 MODE=444
@@ -174,7 +174,7 @@ if [ $mksrc = $dest ]; then
 else
 	# we do not install the examples
 	mk_files=`grep '^[a-z].*\.mk' FILES | $egrep -v '(examples/|^sys\.mk|sys/)'`
-	mk_scripts=`$egrep '^[a-z].*\.(sh|py)' FILES | $egrep -v '/'`
+	mk_scripts=`$egrep '^[a-z].*[.-](sh|py)' FILES | $egrep -v '/'`
 	sys_mk_files=`grep 'sys/.*\.mk' FILES`
 	SKIP_MKFILES=
 	[ -z "$SKIP_SYS_MK" ] && mk_files="sys.mk $mk_files"

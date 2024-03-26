@@ -32,9 +32,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <fcntl.h>
 #include <stdarg.h>
 #include <sys/types.h>
@@ -53,5 +50,5 @@ fcntl(int fd, int cmd, ...)
 	va_end(args);
 
 	return (((int (*)(int, int, ...))
-	    __libc_interposing[INTERPOS_fcntl])(fd, cmd, arg));
+	    *(__libc_interposing_slot(INTERPOS_fcntl)))(fd, cmd, arg));
 }

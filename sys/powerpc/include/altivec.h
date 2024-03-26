@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef	_MACHINE_ALTIVEC_H_
@@ -37,5 +35,7 @@
 void    enable_vec(struct thread *);
 void    save_vec(struct thread *);
 void    save_vec_nodrop(struct thread *);
+void    enable_vec_kern(void);
+void    disable_vec(struct thread *td);
 
 #endif	/* _MACHINE_ALTIVEC_H_ */

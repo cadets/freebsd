@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _LINUX_IPC64_H_
@@ -103,9 +101,13 @@ struct l_msqid64_ds {
 struct l_semid64_ds {
 	struct l_ipc64_perm sem_perm;	/* permissions */
 	l_time_t	sem_otime;	/* last semop time */
+#if defined(__amd64__) || defined(__i386__)
 	l_ulong		__unused1;
+#endif
 	l_time_t	sem_ctime;	/* last change time */
+#if defined(__amd64__) || defined(__i386__)
 	l_ulong		__unused2;
+#endif
 	l_ulong		sem_nsems;	/* no. of semaphores in array */
 	l_ulong		__unused3;
 	l_ulong		__unused4;

@@ -37,9 +37,6 @@
  * be picked up and redistributed in Linux with a dual GPL/BSD license.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
@@ -328,7 +325,7 @@ ntb_transmit_locked(struct ntb_net_queue *q)
 	CTR0(KTR_NTB, "TX: ntb_transmit_locked");
 	while ((m = drbr_peek(ifp, q->br)) != NULL) {
 		CTR1(KTR_NTB, "TX: start mbuf %p", m);
-		if_etherbpfmtap(ifp, m);
+		ether_bpf_mtap_if(ifp, m);
 		len = m->m_pkthdr.len;
 		mflags = m->m_flags;
 		rc = ntb_transport_tx_enqueue(q->qp, m, m, len);

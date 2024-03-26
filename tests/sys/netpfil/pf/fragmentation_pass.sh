@@ -1,4 +1,3 @@
-# $FreeBSD$
 #
 # SPDX-License-Identifier: BSD-2-Clause
 #
@@ -116,7 +115,8 @@ v6_body()
 		"pass keep state" \
 		"block in" \
 		"pass in inet6 proto icmp6 icmp6-type { neighbrsol, neighbradv }" \
-		"pass in inet6 proto icmp6 icmp6-type { echoreq, echorep }"
+		"pass in inet6 proto icmp6 icmp6-type { echoreq, echorep }" \
+		"set skip on lo"
 
 	# Host test
 	atf_check -s exit:0 -o ignore \
@@ -425,6 +425,134 @@ no_df_cleanup()
 	pft_cleanup
 }
 
+atf_test_case "reassemble_slowpath" "cleanup"
+reassemble_slowpath_head()
+{
+	atf_set descr 'Test reassembly on the slow path'
+	atf_set require.user root
+}
+
+reassemble_slowpath_body()
+{
+	if ! sysctl -q kern.features.ipsec >/dev/null ; then
+		atf_skip "This test requires ipsec"
+	fi
+
+	setup_router_server_ipv4
+
+	# Now define an ipsec policy so we end up taking the slow path.
+	# We don't actually need the traffic to go through ipsec, we just don't
+	# want to go through ip_tryforward().
+	echo "flush;
+	spdflush;
+	spdadd 203.0.113.1/32 203.0.113.2/32 any -P out ipsec esp/transport//require;
+	add 203.0.113.1 203.0.113.2 esp 0x1001 -E aes-gcm-16 \"12345678901234567890\";" \
+	    | jexec router setkey -c
+
+	# Sanity check.
+	ping_server_check_reply exit:0 --ping-type=icmp
+
+	# Enable packet reassembly with clearing of the no-df flag.
+	pft_set_rules router \
+		"scrub in on ${epair_tester}b fragment no reassemble" \
+		"scrub on ${epair_server}a fragment reassemble" \
+		"pass"
+
+	# Ensure that the packet makes it through the slow path
+	atf_check -s exit:0 -o ignore \
+	    ping -c 1 -s 2000 198.51.100.2
+}
+
+reassemble_slowpath_cleanup()
+{
+	pft_cleanup
+}
+
+atf_test_case "dummynet" "cleanup"
+dummynet_head()
+{
+	atf_set descr 'dummynet + reassembly test'
+	atf_set require.user root
+}
+
+dummynet_body()
+{
+	pft_init
+	dummynet_init
+
+	epair=$(vnet_mkepair)
+	vnet_mkjail alcatraz ${epair}a
+
+	ifconfig ${epair}b inet 192.0.2.1/24 up
+	jexec alcatraz ifconfig ${epair}a 192.0.2.2/24 up
+
+	# Sanity check
+	atf_check -s exit:0 -o ignore ping -c 1 192.0.2.2
+
+	jexec alcatraz dnctl pipe 1 config bw 600Byte/s
+	jexec alcatraz dnctl pipe 2 config bw 700Byte/s
+
+	jexec alcatraz pfctl -e
+	pft_set_rules alcatraz \
+		"set reassemble yes" \
+		"block" \
+		"pass inet proto icmp all icmp-type echoreq dnpipe (1, 2)"
+
+	atf_check -s exit:0 -o ignore ping -s 2000 -c 1 192.0.2.2
+}
+
+dummynet_cleanup()
+{
+	pft_cleanup
+}
+
+atf_test_case "dummynet_nat" "cleanup"
+dummynet_nat_head()
+{
+	atf_set descr 'Test dummynet on NATed fragmented traffic'
+	atf_set require.user root
+}
+
+dummynet_nat_body()
+{
+	pft_init
+	dummynet_init
+
+	epair_one=$(vnet_mkepair)
+	ifconfig ${epair_one}a 192.0.2.1/24 up
+
+	epair_two=$(vnet_mkepair)
+
+	vnet_mkjail alcatraz ${epair_one}b ${epair_two}a
+	jexec alcatraz ifconfig ${epair_one}b 192.0.2.2/24 up
+	jexec alcatraz ifconfig ${epair_two}a 198.51.100.1/24 up
+	jexec alcatraz sysctl net.inet.ip.forwarding=1
+
+	vnet_mkjail singsing ${epair_two}b
+	jexec singsing ifconfig ${epair_two}b 198.51.100.2/24 up
+	jexec singsing route add default 198.51.100.1
+
+	route add 198.51.100.0/24 192.0.2.2
+
+	jexec alcatraz dnctl pipe 1 config bw 1600Byte/s
+	jexec alcatraz dnctl pipe 2 config bw 1700Byte/s
+
+	jexec alcatraz pfctl -e
+	pft_set_rules alcatraz \
+		"set reassemble yes" \
+		"nat on ${epair_two}a from 192.0.2.0/24 -> (${epair_two}a)" \
+		"block in" \
+		"pass in inet proto icmp all icmp-type echoreq dnpipe (1, 2)"
+
+	atf_check -s exit:0 -o ignore ping -c 1 198.51.100.2
+	atf_check -s exit:0 -o ignore ping -c 1 -s 2000 198.51.100.2
+}
+
+dummynet_nat_cleanup()
+{
+	pft_cleanup
+}
+
 atf_init_test_cases()
 {
 	atf_add_test_case "too_many_fragments"
@@ -435,4 +563,7 @@ atf_init_test_cases()
 	atf_add_test_case "overlimit"
 	atf_add_test_case "reassemble"
 	atf_add_test_case "no_df"
+	atf_add_test_case "reassemble_slowpath"
+	atf_add_test_case "dummynet"
+	atf_add_test_case "dummynet_nat"
 }

@@ -32,13 +32,9 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)ufs_vfsops.c	8.8 (Berkeley) 5/20/95
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_quota.h"
 #include "opt_ufs.h"
 
@@ -109,7 +105,7 @@ ufs_quotactl(struct mount *mp, int cmds, uid_t id, void *arg, bool *mp_busy)
 			return (EINVAL);
 		}
 	}
-	if ((u_int)type >= MAXQUOTAS)
+	if ((uint64_t)type >= MAXQUOTAS)
 		return (EINVAL);
 
 	switch (cmd) {

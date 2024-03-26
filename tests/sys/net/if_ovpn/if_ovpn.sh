@@ -308,10 +308,28 @@ atf_test_case "4in6" "cleanup"
 		keepalive 100 600
 	"
 
+	dd if=/dev/random of=test.img bs=1024 count=1024
+	cat test.img | jexec a nc -N -l 1234 &
+
 	# Give the tunnel time to come up
 	sleep 10
 
 	atf_check -s exit:0 -o ignore jexec b ping -c 3 198.51.100.1
+
+	# MTU sweep
+	for i in `seq 1000 1500`
+	do
+		atf_check -s exit:0 -o ignore jexec b \
+		    ping -c 1 -s $i 198.51.100.1
+	done
+
+	rcvmd5=$(jexec b nc -N -w 3 198.51.100.1 1234 | md5)
+	md5=$(md5 test.img)
+
+	if [ $md5  != $rcvmd5 ];
+	then
+		atf_fail "Transmit corruption!"
+	fi
 }
 
 4in6_cleanup()
@@ -805,14 +823,18 @@ ra_body()
 	ifconfig ${bridge} addm ${two}a
 
 	vnet_mkjail srv ${srv}b ${lan}a
+	jexec srv ifconfig lo0 inet 127.0.0.1/8 up
 	jexec srv ifconfig ${srv}b 192.0.2.1/24 up
 	jexec srv ifconfig ${lan}a 203.0.113.1/24 up
 	vnet_mkjail lan ${lan}b
+	jexec lan ifconfig lo0 inet 127.0.0.1/8 up
 	jexec lan ifconfig ${lan}b 203.0.113.2/24 up
 	jexec lan route add default 203.0.113.1
 	vnet_mkjail one ${one}b
+	jexec one ifconfig lo0 inet 127.0.0.1/8 up
 	jexec one ifconfig ${one}b 192.0.2.2/24 up
 	vnet_mkjail two ${two}b
+	jexec two ifconfig lo0 inet 127.0.0.1/8 up
 	jexec two ifconfig ${two}b 192.0.2.3/24 up
 
 	# Sanity checks
@@ -890,7 +912,9 @@ ra_body()
 
 	# Client-to-client communication
 	atf_check -s exit:0 -o ignore jexec one ping -c 1 198.51.100.3
+	atf_check -s exit:0 -o ignore jexec one ping -c 1 198.51.100.2
 	atf_check -s exit:0 -o ignore jexec two ping -c 1 198.51.100.2
+	atf_check -s exit:0 -o ignore jexec two ping -c 1 198.51.100.3
 
 	# RA test
 	atf_check -s exit:0 -o ignore jexec one ping -c 1 203.0.113.1

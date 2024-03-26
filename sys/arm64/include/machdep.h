@@ -22,8 +22,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _MACHINE_MACHDEP_H_
@@ -33,7 +31,6 @@
 
 struct arm64_bootparams {
 	vm_offset_t	modulep;
-	uint64_t	kern_delta;
 	vm_offset_t	kern_stack;
 	vm_paddr_t	kern_ttbr0;
 	uint64_t	hcr_el2;
@@ -51,6 +48,7 @@ extern enum arm64_bus arm64_bus_method;
 
 void dbg_init(void);
 bool has_hyp(void);
+bool in_vhe(void);
 void initarm(struct arm64_bootparams *);
 vm_offset_t parse_boot_param(struct arm64_bootparams *abp);
 #ifdef FDT

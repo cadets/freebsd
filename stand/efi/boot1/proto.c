@@ -19,9 +19,6 @@
  * purpose.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <machine/elf.h>
 #include <machine/stdarg.h>

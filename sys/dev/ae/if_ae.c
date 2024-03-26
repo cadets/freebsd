@@ -29,9 +29,6 @@
  * This driver is heavily based on age(4) Attansic L1 driver by Pyun YongHyeon.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>

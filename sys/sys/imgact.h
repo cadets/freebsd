@@ -27,8 +27,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SYS_IMGACT_H_
@@ -66,6 +64,7 @@ struct image_params {
 	const char *image_header;	/* header of file to exec */
 	unsigned long entry_addr;	/* entry address of target executable */
 	unsigned long reloc_base;	/* load address of image */
+	unsigned long et_dyn_addr;	/* PIE load base */
 	char *interpreter_name;		/* name of the interpreter */
 	void *auxargs;			/* ELF Auxinfo structure pointer */
 	struct sf_buf *firstpage;	/* first page that we mapped */

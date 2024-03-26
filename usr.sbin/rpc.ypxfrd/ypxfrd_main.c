@@ -33,8 +33,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "ypxfrd.h"
 #include <err.h>
 #include <fcntl.h>
@@ -184,7 +182,6 @@ static void reaper(int sig)
 	}
 
 	errno = saved_errno;
-	return;
 }
 
 void

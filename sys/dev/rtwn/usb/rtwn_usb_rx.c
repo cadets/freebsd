@@ -19,8 +19,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_wlan.h"
 
 #include <sys/param.h>
@@ -363,7 +361,6 @@ rtwn_rx_frame(struct rtwn_softc *sc, struct mbuf *m)
 void
 rtwn_bulk_rx_callback(struct usb_xfer *xfer, usb_error_t error)
 {
-	struct epoch_tracker et;
 	struct rtwn_usb_softc *uc = usbd_xfer_softc(xfer);
 	struct rtwn_softc *sc = &uc->uc_sc;
 	struct ieee80211com *ic = &sc->sc_ic;
@@ -406,7 +403,6 @@ tr_setup:
 			m->m_pkthdr.PH_loc.ptr = rtwn_rx_frame(sc, m);
 			m = m->m_nextpkt;
 		}
-		NET_EPOCH_ENTER(et);
 		RTWN_UNLOCK(sc);
 		m = m0;
 		while (m != NULL) {
@@ -424,7 +420,6 @@ tr_setup:
 			m = next;
 		}
 		RTWN_LOCK(sc);
-		NET_EPOCH_EXIT(et);
 		break;
 	default:
 		/* needs it to the inactive queue due to a error. */

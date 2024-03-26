@@ -28,9 +28,6 @@
  */
 
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #ifndef NO_COMPAT7
 #define _WANT_SEMUN_OLD
 #endif

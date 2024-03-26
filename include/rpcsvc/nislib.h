@@ -25,8 +25,6 @@
  * Sun Microsystems, Inc.
  * 2550 Garcia Avenue
  * Mountain View, California  94043
- *
- * $FreeBSD$
  */
 
 /*
@@ -40,8 +38,6 @@
 
 #ifndef	_RPCSVC_NISLIB_H
 #define	_RPCSVC_NISLIB_H
-
-/* From: #pragma ident	"@(#)nislib.h	1.16	94/05/03 SMI" */
 
 #ifdef __cplusplus
 extern "C" {

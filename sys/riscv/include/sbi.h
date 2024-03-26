@@ -31,8 +31,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _MACHINE_SBI_H_
@@ -161,11 +159,7 @@ sbi_call(uint64_t arg7, uint64_t arg6, uint64_t arg0, uint64_t arg1,
 	return (ret);
 }
 
-/* Base extension functions and variables. */
-extern u_long sbi_spec_version;
-extern u_long sbi_impl_id;
-extern u_long sbi_impl_version;
-
+/* Base extension functions. */
 static __inline long
 sbi_probe_extension(long id)
 {

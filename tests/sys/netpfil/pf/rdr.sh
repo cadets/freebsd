@@ -1,8 +1,8 @@
-# $FreeBSD$
+#
 #
 # SPDX-License-Identifier: BSD-2-Clause
 #
-# Copyright (c) 2018 Kristof Provost <kp@FreeBSD.org>
+# Copyright © 2023 Tom Jones <thj@freebsd.org>
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -27,47 +27,101 @@
 
 . $(atf_get_srcdir)/utils.subr
 
-atf_test_case "basic" "cleanup"
-basic_head()
+atf_test_case "tcp_v6" "cleanup"
+tcp_v6_head()
 {
-	atf_set descr 'Basic rdr test'
+	atf_set descr 'TCP rdr with IPv6'
 	atf_set require.user root
+	atf_set require.progs scapy python3
 }
 
-basic_body()
+#
+# Test that rdr works for TCP with IPv6.
+#
+#	a <-----> b <-----> c
+#
+# Test configures three jails (a, b and c) and connects them together with b as
+# a router between a and c.
+#
+# TCP traffic to b on port 80 is redirected to c on port 8000
+#
+# Test for incorrect checksums after the rewrite by looking at a packet capture (see bug 210860)
+#
+tcp_v6_body()
 {
 	pft_init
 
-	epair=$(vnet_mkepair)
+	j="rdr:tcp_v6"
+	epair_one=$(vnet_mkepair)
+	epair_two=$(vnet_mkepair)
 
-	vnet_mkjail alcatraz ${epair}b
+	echo $epair_one
+	echo $epair_two
 
-	ifconfig ${epair}a 192.0.2.2/24 up
-	route add -net 198.51.100.0/24 192.0.2.1
+	vnet_mkjail ${j}a ${epair_one}b
+	vnet_mkjail ${j}b ${epair_one}a ${epair_two}a
+	vnet_mkjail ${j}c ${epair_two}b
 
-	jexec alcatraz ifconfig ${epair}b 192.0.2.1/24 up
-	jexec alcatraz sysctl net.inet.ip.forwarding=1
+	# configure addresses for b
+	jexec ${j}b ifconfig lo0 up
+	jexec ${j}b ifconfig ${epair_one}a inet6 2001:db8:a::1/64 up no_dad
+	jexec ${j}b ifconfig ${epair_two}a inet6 2001:db8:b::1/64 up no_dad
 
-	# Enable pf!
-	jexec alcatraz pfctl -e
-	pft_set_rules alcatraz \
-		"rdr pass on ${epair}b proto tcp from any to 198.51.100.0/24 port 1234 -> 192.0.2.1 port 4321"
+	# configure addresses for a
+	jexec ${j}a ifconfig lo0 up
+	jexec ${j}a ifconfig ${epair_one}b inet6 2001:db8:a::2/64 up no_dad
 
-	echo "foo" | jexec alcatraz nc -N -l 4321 &
+	# configure addresses for c
+	jexec ${j}c ifconfig lo0 up
+	jexec ${j}c ifconfig ${epair_two}b inet6 2001:db8:b::2/64 up no_dad
+
+	# enable forwarding in the b jail
+	jexec ${j}b sysctl net.inet6.ip6.forwarding=1
+
+	# add routes so a and c can find each other
+	jexec ${j}a route add -inet6 2001:db8:b::0/64 2001:db8:a::1
+	jexec ${j}c route add -inet6 2001:db8:a::0/64 2001:db8:b::1
+
+	jexec ${j}b pfctl -e
+
+	pft_set_rules ${j}b \
+		"rdr on ${epair_one}a proto tcp from any to any port 80 -> 2001:db8:b::2 port 8000"
+
+	# Check that a can reach c over the router
+	atf_check -s exit:0 -o ignore \
+	    jexec ${j}a ping -6 -c 1 2001:db8:b::2
+
+	# capture packets on c so we can look for incorrect checksums
+	jexec ${j}c tcpdump --immediate-mode -w ${j}.pcap tcp and port 8000 &
+	tcpdumppid=$!
+
+	# start a web server and give it a second to start
+	jexec ${j}c python3 -m http.server &
 	sleep 1
 
-	result=$(nc -N -w 3 198.51.100.2 1234)
-	if [ "$result" != "foo" ]; then
-		atf_fail "Redirect failed"
-	fi
+	# http directly from a to c -> a ---> b
+	atf_check -s exit:0 -o ignore \
+		jexec ${j}a fetch -T 1 -o /dev/null -q "http://[2001:db8:b::2]:8000"
+
+	# http from a to b with a redirect  -> a ---> b
+	atf_check -s exit:0 -o ignore \
+		jexec ${j}a fetch -T 1 -o /dev/null -q "http://[2001:db8:a::1]:80"
+
+	# ask tcpdump to stop so we can check the packet capture
+	jexec ${j}c kill -s SIGINT $tcpdumppid
+
+	# Check for 'incorrect' in packet capture, this should tell us if
+	# checksums are bad with rdr rules
+	count=$(jexec ${j}c tcpdump -vvvv -r ${j}.pcap | grep incorrect | wc -l)
+	atf_check_equal "       0" "$count"
 }
 
-basic_cleanup()
+tcp_v6_cleanup()
 {
 	pft_cleanup
 }
 
 atf_init_test_cases()
 {
-	atf_add_test_case "basic"
+	atf_add_test_case "tcp_v6"
 }

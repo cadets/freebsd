@@ -1,4 +1,3 @@
-# $FreeBSD$
 #
 # SPDX-License-Identifier: BSD-2-Clause
 #
@@ -112,7 +111,8 @@ v6_body()
 		"scrub fragment reassemble" \
 		"block in" \
 		"pass in inet6 proto icmp6 icmp6-type { neighbrsol, neighbradv }" \
-		"pass in inet6 proto icmp6 icmp6-type { echoreq, echorep }"
+		"pass in inet6 proto icmp6 icmp6-type { echoreq, echorep }" \
+		"set skip on lo"
 
 	# Host test
 	atf_check -s exit:0 -o ignore \
@@ -300,17 +300,6 @@ reassemble_body()
 	atf_check -s exit:0 -o ignore ping -c 1 192.0.2.2
 
 	jexec alcatraz pfctl -e
-	pft_set_rules alcatraz \
-		"pass out" \
-		"block in" \
-		"pass in inet proto icmp all icmp-type echoreq"
-
-	# Single fragment passes
-	atf_check -s exit:0 -o ignore ping -c 1 192.0.2.2
-
-	# But a fragmented ping does not
-	atf_check -s exit:2 -o ignore ping -c 1 -s 2000 192.0.2.2
-
 	pft_set_rules alcatraz \
 		"scrub in" \
 		"pass out" \

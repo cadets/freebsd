@@ -32,9 +32,6 @@
  * TODO: Merge multicast socket option tests from ipsockopt.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>

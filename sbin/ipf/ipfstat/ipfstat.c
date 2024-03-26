@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 
 /*
  * Copyright (C) 2012 by Darren Reed.
@@ -38,10 +37,6 @@
 # include <paths.h>
 #endif
 
-#if !defined(lint)
-static const char sccsid[] = "@(#)fils.c	1.21 4/20/96 (C) 1993-2000 Darren Reed";
-static const char rcsid[] = "@(#)$Id$";
-#endif
 
 
 extern	char	*optarg;
@@ -328,7 +323,7 @@ int main(int argc, char *argv[])
 		case 'm' :
 			filter = parseipfexpr(optarg, NULL);
 			if (filter == NULL) {
-				fprintf(stderr, "Error parseing '%s'\n",
+				fprintf(stderr, "Error parsing '%s'\n",
 					optarg);
 				exit(1);
 			}
@@ -1573,7 +1568,7 @@ static void topipstates(i6addr_t saddr, i6addr_t daddr, int sport, int dport,
 		/*
 		 * For an IPv4 IP address we need at most 15 characters,
 		 * 4 tuples of 3 digits, separated by 3 dots. Enforce this
-		 * length, so the colums do not change positions based
+		 * length, so the columns do not change positions based
 		 * on the size of the IP address. This length makes the
 		 * output fit in a 80 column terminal.
 		 * We are lacking a good solution for IPv6 addresses (that

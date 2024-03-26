@@ -28,8 +28,6 @@
 
 /*
  * internal dummynet APIs.
- *
- * $FreeBSD$
  */
 
 #ifndef _IP_DN_PRIVATE_H
@@ -376,7 +374,6 @@ struct dn_pkt_tag {
 	uint64_t output_time;	/* when the pkt is due for delivery*/
 	uint16_t if_index;
 	uint16_t if_idxgen;
-	struct _ip6dn_args ip6opt;	/* XXX ipv6 options	*/
 	uint16_t iphdr_off;	/* IP header offset for mtodo()	*/
 };
 
@@ -393,6 +390,15 @@ enum {
 	PROTO_IPV4 =	0x08,
 	PROTO_IPV6 =	0x10,
 	PROTO_IFB =	0x0c, /* layer2 + ifbridge */
+};
+
+/*
+ * States for the Packet Loss Rate Gilbert-Elliott
+ * channel model
+ */
+enum {
+	PLR_STATE_G = 0,
+	PLR_STATE_B,
 };
 
 //extern struct dn_parms V_dn_cfg;

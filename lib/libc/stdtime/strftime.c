@@ -20,24 +20,8 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#ifndef lint
-#ifndef NOID
-static const char	elsieid[] = "@(#)strftime.3	8.3";
-/*
- * Based on the UCB version with the ID appearing below.
- * This is ANSIish only when "multibyte character == plain character".
- */
-#endif /* !defined NOID */
-#endif /* !defined lint */
-
 #include "namespace.h"
 #include "private.h"
-
-#if defined(LIBC_SCCS) && !defined(lint)
-static const char	sccsid[] = "@(#)strftime.c	5.4 (Berkeley) 3/14/89";
-#endif /* LIBC_SCCS and not lint */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include "tzfile.h"
 #include <fcntl.h>
@@ -318,7 +302,7 @@ label:
 					time_t		mkt;
 
 					tm = *t;
-					mkt = mktime(&tm);
+					mkt = timeoff(&tm, t->tm_gmtoff);
 					if (TYPE_SIGNED(time_t))
 						(void) sprintf_l(buf, loc, "%ld",
 							(long) mkt);

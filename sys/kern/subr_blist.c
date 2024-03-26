@@ -83,8 +83,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #ifdef _KERNEL
 
 #include <sys/param.h>
@@ -184,42 +182,13 @@ bitrange(int n, int count)
 	    ((u_daddr_t)-1 >> (BLIST_RADIX - (n + count))));
 }
 
-/*
- * Find the first bit set in a u_daddr_t.
- */
-static inline int
-generic_bitpos(u_daddr_t mask)
-{
-	int hi, lo, mid;
-
-	lo = 0;
-	hi = BLIST_RADIX;
-	while (lo + 1 < hi) {
-		mid = (lo + hi) >> 1;
-		if (mask & bitrange(0, mid))
-			hi = mid;
-		else
-			lo = mid;
-	}
-	return (lo);
-}
-
 static inline int
 bitpos(u_daddr_t mask)
 {
 
-	switch (sizeof(mask)) {
-#ifdef HAVE_INLINE_FFSLL
-	case sizeof(long long):
-		return (ffsll(mask) - 1);
-#endif
-#ifdef HAVE_INLINE_FFS
-	case sizeof(int):
-		return (ffs(mask) - 1);
-#endif
-	default:
-		return (generic_bitpos(mask));
-	}
+	_Static_assert(sizeof(long long) >= sizeof(mask),
+	    "mask too big for ffsll()");
+	return (ffsll(mask) - 1);
 }
 
 /*
@@ -510,9 +479,9 @@ dump_gap_stats(const struct gap_stats *stats, struct sbuf *s)
 	sbuf_printf(s, "largest free range: %jd\n", (intmax_t)stats->max);
 	sbuf_printf(s, "average maximal free range size: %jd\n",
 	    (intmax_t)stats->avg);
-	sbuf_printf(s, "number of maximal free ranges of different sizes:\n");
-	sbuf_printf(s, "               count  |  size range\n");
-	sbuf_printf(s, "               -----  |  ----------\n");
+	sbuf_cat(s, "number of maximal free ranges of different sizes:\n");
+	sbuf_cat(s, "               count  |  size range\n");
+	sbuf_cat(s, "               -----  |  ----------\n");
 	for (i = 0; i < stats->max_bucket; i++) {
 		if (stats->histo[i] != 0) {
 			sbuf_printf(s, "%20jd  |  ",

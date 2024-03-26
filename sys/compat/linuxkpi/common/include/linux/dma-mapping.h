@@ -25,8 +25,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 #ifndef	_LINUXKPI_LINUX_DMA_MAPPING_H_
 #define _LINUXKPI_LINUX_DMA_MAPPING_H_
@@ -45,6 +43,7 @@
 
 #include <vm/vm.h>
 #include <vm/vm_page.h>
+#include <vm/uma_align_mask.h>
 #include <vm/pmap.h>
 
 #include <machine/bus.h>
@@ -183,7 +182,7 @@ dma_map_page_attrs(struct device *dev, struct page *page, size_t offset,
     size_t size, enum dma_data_direction dir, unsigned long attrs)
 {
 
-	return (linux_dma_map_phys(dev, VM_PAGE_TO_PHYS(page) + offset, size));
+	return (linux_dma_map_phys(dev, page_to_phys(page) + offset, size));
 }
 
 /* linux_dma_(un)map_sg_attrs does not support attrs yet */
@@ -198,7 +197,7 @@ dma_map_page(struct device *dev, struct page *page,
     unsigned long offset, size_t size, enum dma_data_direction direction)
 {
 
-	return (linux_dma_map_phys(dev, VM_PAGE_TO_PHYS(page) + offset, size));
+	return (linux_dma_map_phys(dev, page_to_phys(page) + offset, size));
 }
 
 static inline void
@@ -352,8 +351,7 @@ dma_max_mapping_size(struct device *dev)
 #define	dma_unmap_len(p, name)			((p)->name)
 #define	dma_unmap_len_set(p, name, v)		(((p)->name) = (v))
 
-extern int uma_align_cache;
-#define	dma_get_cache_alignment()	uma_align_cache
+#define	dma_get_cache_alignment()	(uma_get_cache_align_mask() + 1)
 
 
 static inline int

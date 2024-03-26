@@ -29,9 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -1410,7 +1407,7 @@ ATF_TC_BODY(largepage_mmap, tc)
 		ATF_REQUIRE(munmap(addr, ps[i] == 0));
 
 		/* Clobber an anonymous mapping with a superpage. */
-		addr1 = mmap(NULL, ps[0], PROT_READ | PROT_WRITE,
+		addr1 = mmap(NULL, ps[i], PROT_READ | PROT_WRITE,
 		    MAP_ANON | MAP_PRIVATE | MAP_ALIGNED(ffsl(ps[i]) - 1), -1,
 		    0);
 		ATF_REQUIRE_MSG(addr1 != MAP_FAILED,

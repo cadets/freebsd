@@ -27,15 +27,14 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)ktrace.h	8.1 (Berkeley) 6/2/93
- * $FreeBSD$
  */
 
 #ifndef _SYS_KTRACE_H_
 #define _SYS_KTRACE_H_
 
 #include <sys/caprights.h>
+#include <sys/signal.h>
+#include <sys/_uio.h>
 
 /*
  * operations to ktrace system call  (KTROP(op))
@@ -335,8 +334,10 @@ void	ktrcapfail(enum ktr_cap_fail_type, const cap_rights_t *,
 extern u_int ktr_geniosize;
 #ifdef	KTRACE
 extern int ktr_filesize_limit_signal;
+#define	__ktrace_used
 #else
 #define	ktr_filesize_limit_signal 0
+#define	__ktrace_used	__unused
 #endif
 #else
 

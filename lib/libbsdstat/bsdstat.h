@@ -27,8 +27,6 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
- *
- * $FreeBSD$
  */
 
 #ifndef	_BSDSTAT_H_
@@ -38,7 +36,7 @@
  */
 
 /*
- * Statistic definition/description.  The are defined
+ * Statistic definition/description.  These are defined
  * for stats that correspond 1-1 w/ a collected stat
  * and for stats that are calculated indirectly.
  */

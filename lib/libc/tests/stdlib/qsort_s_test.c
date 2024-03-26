@@ -30,9 +30,6 @@
  * Test for qsort_s(3) routine.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

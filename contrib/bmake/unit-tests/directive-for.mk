@@ -1,4 +1,4 @@
-# $NetBSD: directive-for.mk,v 1.20 2023/05/10 13:03:06 rillig Exp $
+# $NetBSD: directive-for.mk,v 1.24 2023/12/06 22:28:20 rillig Exp $
 #
 # Tests for the .for directive.
 #
@@ -11,8 +11,6 @@
 #
 # See also:
 #	varmod-loop.mk		The ':@var@...@' modifier
-
-# expect-all
 
 # A typical use case for a .for loop is to populate a variable with a list of
 # values depending on other variables.  In simple cases, the same effect can
@@ -27,7 +25,7 @@ NUMBERS+=	${num}
 
 
 # The .for loop also works for multiple iteration variables.
-# This is something that the modifier :@ cannot do.
+# This is something that the modifier :@ cannot do as easily.
 .for name value in VARNAME value NAME2 value2
 ${name}=	${value}
 .endfor
@@ -87,9 +85,9 @@ var2=	value before
 .  warning After the .for loop, var2 must still have its original value.
 .endif
 
-# Until 2008-12-21, the values of the iteration variables were simply
-# inserted as plain text and then parsed as usual, which made it possible
-# to achieve all kinds of strange effects, such as generating '.if'
+# Before for.c 1.39 from 2008-12-21, the values of the iteration variables
+# were simply inserted as plain text and then parsed as usual, which made it
+# possible to achieve all kinds of strange effects, such as generating '.if'
 # directives or inserting '$' characters in random places, thereby changing
 # how following '$' are interpreted.
 #
@@ -191,15 +189,30 @@ INDIRECT=	direct
 .endfor
 
 
+# Regular global variables and the "variables" from the .for loop don't
+# interfere with each other.  In the following snippet, the variable 'DIRECT'
+# is used both as a global variable, as well as an iteration variable in the
+# .for loop.  The expression '${INDIRECT}' refers to the global variable, not
+# to the one from the .for loop.
+DIRECT=		global
+INDIRECT=	${DIRECT}
+.for DIRECT in iteration
+.  if "${DIRECT} ${INDIRECT}" != "iteration global"
+.    error
+.  endif
+.endfor
+
+
 # XXX: A parse error or evaluation error in the items of the .for loop
 # should skip the whole loop.  As of 2023-05-09, the loop is expanded as
 # usual.
 # expect+1: Unknown modifier "Z"
-.for var in word1 ${:Uword2:Z} word3
-.  info XXX: Not reached ${var}
+.for var in word1 before-${:Uword2:Z}-after word3
+.  info XXX: Should not reach ${var}
 .endfor
-# expect-2: XXX: Not reached word1
-# expect-3: XXX: Not reached word3
+# expect-2: XXX: Should not reach word1
+# expect-3: XXX: Should not reach before--after
+# expect-4: XXX: Should not reach word3
 
 
 # An empty list of variables to the left of the 'in' is a parse error.

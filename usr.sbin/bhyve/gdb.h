@@ -23,8 +23,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef __GDB_H__
@@ -34,6 +32,7 @@ void	gdb_cpu_add(struct vcpu *vcpu);
 void	gdb_cpu_breakpoint(struct vcpu *vcpu, struct vm_exit *vmexit);
 void	gdb_cpu_mtrap(struct vcpu *vcpu);
 void	gdb_cpu_suspend(struct vcpu *vcpu);
+void	gdb_cpu_debug(struct vcpu *vcpu, struct vm_exit *vmexit);
 void	init_gdb(struct vmctx *ctx);
 
 #endif /* !__GDB_H__ */

@@ -23,7 +23,6 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD$
 
 . $(atf_get_srcdir)/conf.sh
 
@@ -38,7 +37,7 @@ preserve_props_body()
 {
 	geli_test_setup
 
-	md=$(attach_md -s1m)
+	attach_md md -s1m
 	atf_check geli onetime /dev/${md}
 	md_secsize=$(diskinfo ${md} | cut -wf 2)
 	md_stripesize=$(diskinfo ${md} | cut -wf 5)
@@ -104,7 +103,7 @@ physpath_body()
 		atf_skip "$error_message"
 	fi
 
-	md=$(attach_md -s1m)
+	attach_md md -s1m
 	# If the underlying device has no physical path, then geli should not
 	# create one.
 	atf_check -o empty -e ignore diskinfo -p $md
@@ -135,17 +134,51 @@ physpath_cleanup()
 	true
 }
 
+unaligned_io_test()
+{
+	cipher=$1
+	secsize=$2
+	ealgo=${cipher%%:*}
+	keylen=${cipher##*:}
+
+	atf_check -s exit:0 -e ignore \
+		geli init -B none -e $ealgo -l $keylen -P -K keyfile \
+		-s $secsize ${md}
+	atf_check geli attach -p -k keyfile ${md}
+
+	atf_check $(atf_get_srcdir)/unaligned_io /dev/${md}.eli
+}
+
+atf_test_case unaligned_io cleanup
+unaligned_io_head()
+{
+	atf_set "descr" "regression test for PR 271766"
+	atf_set "require.user" "root"
+}
+unaligned_io_body()
+{
+	geli_test_setup
+
+	sectors=4
+
+	atf_check dd if=/dev/random of=keyfile bs=512 count=16 status=none
+	for_each_geli_config_nointegrity unaligned_io_test
+}
+unaligned_io_cleanup()
+{
+	geli_test_cleanup
+}
+
 atf_init_test_cases()
 {
 	atf_add_test_case physpath
 	atf_add_test_case preserve_props
 	atf_add_test_case preserve_disk_props
+	atf_add_test_case unaligned_io
 }
-
 
 common_cleanup()
 {
-
 	if [ -f "$MD_DEVS" ]; then
 		while read test_md; do
 			gnop destroy -f ${test_md}.nop 2>/dev/null

@@ -1,5 +1,3 @@
-/* #pragma ident	"@(#)auth_time.c	1.4	92/11/10 SMI" */
-
 /*
  *	auth_time.c
  *
@@ -26,9 +24,6 @@
  *	and returned. The SIGALRM processing is modified only if
  *	needed to deal with TCP connections.
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include "namespace.h"
 #include <stdio.h>

@@ -29,11 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char rcsid[] =
-  "$FreeBSD$";
-#endif /* not lint */
-
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -62,11 +57,28 @@ print_ether(const struct ether_addr *addr, const char *prefix)
 {
 	char *ether_format = ether_ntoa(addr);
 
-	if (f_ether != NULL && strcmp(f_ether, "dash") == 0) {
-		char *format_char;
+	if (f_ether != NULL) {
+		if (strcmp(f_ether, "dash") == 0) {
+			char *format_char;
 
-		while ((format_char = strchr(ether_format, ':')) != NULL) {
-			*format_char = '-';
+			while ((format_char = strchr(ether_format, ':')) != NULL) {
+				*format_char = '-';
+			}
+		} else if (strcmp(f_ether, "dotted") == 0) {
+			/* Indices 0 and 1 is kept as is. */
+			ether_format[ 2] = ether_format[ 3];
+			ether_format[ 3] = ether_format[ 4];
+			ether_format[ 4] = '.';
+			ether_format[ 5] = ether_format[ 6];
+			ether_format[ 6] = ether_format[ 7];
+			ether_format[ 7] = ether_format[ 9];
+			ether_format[ 8] = ether_format[10];
+			ether_format[ 9] = '.';
+			ether_format[10] = ether_format[12];
+			ether_format[11] = ether_format[13];
+			ether_format[12] = ether_format[15];
+			ether_format[13] = ether_format[16];
+			ether_format[14] = '\0';
 		}
 	}
 	printf("\t%s %s\n", prefix, ether_format);
@@ -84,9 +96,11 @@ print_lladdr(struct sockaddr_dl *sdl)
 }
 
 static void
-print_pcp(int s)
+print_pcp(if_ctx *ctx)
 {
-	if (ioctl(s, SIOCGLANPCP, (caddr_t)&ifr) == 0 &&
+	struct ifreq ifr = {};
+
+	if (ioctl_ctx_ifr(ctx, SIOCGLANPCP, &ifr) == 0 &&
 	    ifr.ifr_lan_pcp != IFNET_PCP_NONE)
 		printf("\tpcp %d\n", ifr.ifr_lan_pcp);
 }
@@ -101,7 +115,7 @@ link_status(if_ctx *ctx, const struct ifaddrs *ifa)
 	int rc, sock_hw;
 	static const u_char laggaddr[6] = {0};
 
-	sdl = (struct sockaddr_dl *) ifa->ifa_addr;
+	sdl = satosdl(ifa->ifa_addr);
 	if (sdl == NULL || sdl->sdl_alen == 0)
 		return;
 
@@ -142,21 +156,10 @@ link_status(if_ctx *ctx, const struct ifaddrs *ifa)
 
 	print_ether((const struct ether_addr *)&ifr.ifr_addr.sa_data, "hwaddr");
 pcp:
-	print_pcp(ctx->io_s);
+	print_pcp(ctx);
 }
 
 #else
-static uint8_t
-convert_iftype(uint8_t iftype)
-{
-	switch (iftype) {
-	case IFT_IEEE8023ADLAG:
-		return (IFT_ETHER);
-	case IFT_INFINIBANDLAG:
-		return (IFT_INFINIBAND);
-	}
-	return (iftype);
-}
 
 static void
 link_status_nl(if_ctx *ctx, if_link_t *link, if_addr_t *ifa __unused)
@@ -179,7 +182,7 @@ link_status_nl(if_ctx *ctx, if_link_t *link, if_addr_t *ifa __unused)
 		}
 	}
 	if (convert_iftype(link->ifi_type) == IFT_ETHER)
-		print_pcp(ctx->io_s);
+		print_pcp(ctx);
 }
 #endif
 

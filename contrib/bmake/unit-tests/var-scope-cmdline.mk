@@ -1,4 +1,4 @@
-# $NetBSD: var-scope-cmdline.mk,v 1.2 2023/04/07 05:54:16 rillig Exp $
+# $NetBSD: var-scope-cmdline.mk,v 1.4 2023/11/19 21:47:52 rillig Exp $
 #
 # Tests for variables specified on the command line.
 #
@@ -55,7 +55,7 @@
 # temporary loop variable after finishing the loop.  It was probably not
 # intended back then that a side effect of this seemingly simple change was
 # that both global and cmdline variables could now be undefined at will as a
-# side effect of evaluating a variable expression.  As of 2021-02-23, this is
+# side effect of evaluating an expression.  As of 2021-02-23, this is
 # still possible.
 #
 # Most cmdline variables are set at the very beginning, when parsing the
@@ -68,6 +68,7 @@
 
 # A normal global variable, without any cmdline variable nearby.
 VAR=	global
+# expect+1: global
 .info ${VAR}
 
 # The global variable is "overridden" by simply deleting it and then
@@ -77,6 +78,7 @@ VAR=	global
 #
 # See varmod-loop.mk for a non-obvious way to undefine a cmdline variable.
 .MAKEFLAGS: VAR=makeflags
+# expect+1: makeflags
 .info ${VAR}
 
 # If Var_SetWithFlags should ever forget to delete the global variable,

@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _GFX_FB_H
@@ -282,6 +280,8 @@ bool gfx_parse_mode_str(char *, int *, int *, int *);
 void term_image_display(teken_gfx_t *, const teken_rect_t *);
 
 void reset_font_flags(void);
+
+void gfx_interp_ref(void);
 
 #ifdef __cplusplus
 }

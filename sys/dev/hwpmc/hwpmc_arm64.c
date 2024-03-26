@@ -27,9 +27,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/pmc.h>
@@ -179,9 +176,9 @@ arm64_allocate_pmc(int cpu, int ri, struct pmc *pm,
 	}
 	pe = a->pm_ev;
 
-	/* Adjust the config value if needed. */
-	config = a->pm_md.pm_md_config;
-	if ((a->pm_md.pm_md_flags & PM_MD_RAW_EVENT) == 0) {
+	if ((a->pm_flags & PMC_F_EV_PMU) != 0) {
+		config = a->pm_md.pm_md_config;
+	} else {
 		config = (uint32_t)pe - PMC_EV_ARMV8_FIRST;
 		if (config > (PMC_EV_ARMV8_LAST - PMC_EV_ARMV8_FIRST))
 			return (EINVAL);
@@ -450,7 +447,7 @@ arm64_pcpu_init(struct pmc_mdep *md, int cpu)
 
 	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[arm64,%d] wrong cpu number %d", __LINE__, cpu));
-	PMCDBG1(MDP, INI, 1, "arm64-init cpu=%d", cpu);
+	PMCDBG0(MDP, INI, 1, "arm64-pcpu-init");
 
 	arm64_pcpu[cpu] = pac = malloc(sizeof(struct arm64_cpu), M_PMC,
 	    M_WAITOK | M_ZERO);
@@ -491,9 +488,15 @@ arm64_pcpu_fini(struct pmc_mdep *md, int cpu)
 {
 	uint32_t pmcr;
 
+	PMCDBG0(MDP, INI, 1, "arm64-pcpu-fini");
+
 	pmcr = arm64_pmcr_read();
 	pmcr &= ~PMCR_E;
 	arm64_pmcr_write(pmcr);
+
+	free(arm64_pcpu[cpu]->pc_arm64pmcs, M_PMC);
+	free(arm64_pcpu[cpu], M_PMC);
+	arm64_pcpu[cpu] = NULL;
 
 	return (0);
 }
@@ -605,5 +608,11 @@ pmc_arm64_initialize(void)
 void
 pmc_arm64_finalize(struct pmc_mdep *md)
 {
+	PMCDBG0(MDP, INI, 1, "arm64-finalize");
 
+	for (int i = 0; i < pmc_cpu_max(); i++)
+		KASSERT(arm64_pcpu[i] == NULL,
+		    ("[arm64,%d] non-null pcpu cpu %d", __LINE__, i));
+
+	free(arm64_pcpu, M_PMC);
 }

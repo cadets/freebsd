@@ -33,20 +33,6 @@
  * SUCH DAMAGE.
  */
 
-#if 0
-#ifndef lint
-static char const copyright[] =
-"@(#) Copyright (c) 1991, 1993, 1994\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#ifndef lint
-static char sccsid[] = "@(#)dd.c	8.5 (Berkeley) 4/2/94";
-#endif /* not lint */
-#endif
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/capsicum.h>
@@ -99,8 +85,7 @@ main(int argc __unused, char *argv[])
 {
 	struct itimerval itv = { { 1, 0 }, { 1, 0 } }; /* SIGALARM every second, if needed */
 
-	(void)siginterrupt(SIGINT, 1);
-	(void)signal(SIGINT, terminate);
+	prepare_io();
 
 	(void)setlocale(LC_CTYPE, "");
 	jcl(argv);
@@ -158,9 +143,9 @@ setup(void)
 		iflags = 0;
 		if (ddflags & C_IDIRECT)
 			iflags |= O_DIRECT;
-		check_terminate();
+		before_io();
 		in.fd = open(in.name, O_RDONLY | iflags, 0);
-		check_terminate();
+		after_io();
 		if (in.fd == -1)
 			err(1, "%s", in.name);
 	}
@@ -197,17 +182,18 @@ setup(void)
 			oflags |= O_FSYNC;
 		if (ddflags & C_ODIRECT)
 			oflags |= O_DIRECT;
-		check_terminate();
+		before_io();
 		out.fd = open(out.name, O_RDWR | oflags, DEFFILEMODE);
-		check_terminate();
+		after_io();
 		/*
 		 * May not have read access, so try again with write only.
 		 * Without read we may have a problem if output also does
 		 * not support seeks.
 		 */
 		if (out.fd == -1) {
+			before_io();
 			out.fd = open(out.name, O_WRONLY | oflags, DEFFILEMODE);
-			check_terminate();
+			after_io();
 			out.flags |= NOREAD;
 			cap_rights_clear(&rights, CAP_READ);
 		}
@@ -424,9 +410,9 @@ dd_in(void)
 
 		in.dbrcnt = 0;
 fill:
-		check_terminate();
+		before_io();
 		n = read(in.fd, in.dbp + in.dbrcnt, in.dbsz - in.dbrcnt);
-		check_terminate();
+		after_io();
 
 		/* EOF */
 		if (n == 0 && in.dbrcnt == 0)
@@ -607,9 +593,9 @@ dd_out(int force)
 					pending = 0;
 				}
 				if (cnt) {
-					check_terminate();
+					before_io();
 					nw = write(out.fd, outp, cnt);
-					check_terminate();
+					after_io();
 					out.seek_offset = 0;
 				} else {
 					return;

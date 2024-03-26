@@ -24,9 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/linker.h>
@@ -58,6 +55,10 @@ tslog(void * td, int type, const char * f, const char * s)
 {
 	uint64_t tsc = get_cyclecount();
 	long pos;
+
+	/* A NULL thread is thread0 before curthread is set. */
+	if (td == NULL)
+		td = &thread0;
 
 	/* Grab a slot. */
 	pos = atomic_fetchadd_long(&nrecs, 1);
@@ -108,23 +109,23 @@ sysctl_debug_tslog(SYSCTL_HANDLER_ARGS)
 		    (unsigned long long)timestamps[i].tsc);
 		switch (timestamps[i].type) {
 		case TS_ENTER:
-			sbuf_printf(sb, " ENTER");
+			sbuf_cat(sb, " ENTER");
 			break;
 		case TS_EXIT:
-			sbuf_printf(sb, " EXIT");
+			sbuf_cat(sb, " EXIT");
 			break;
 		case TS_THREAD:
-			sbuf_printf(sb, " THREAD");
+			sbuf_cat(sb, " THREAD");
 			break;
 		case TS_EVENT:
-			sbuf_printf(sb, " EVENT");
+			sbuf_cat(sb, " EVENT");
 			break;
 		}
 		sbuf_printf(sb, " %s", timestamps[i].f ? timestamps[i].f : "(null)");
 		if (timestamps[i].s)
 			sbuf_printf(sb, " %s\n", timestamps[i].s);
 		else
-			sbuf_printf(sb, "\n");
+			sbuf_putc(sb, '\n');
 	}
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
@@ -208,7 +209,7 @@ sysctl_debug_tslog_user(SYSCTL_HANDLER_ARGS)
 		    procs[pid].execname : "");
 		sbuf_printf(sb, " \"%s\"", procs[pid].namei ?
 		    procs[pid].namei : "");
-		sbuf_printf(sb, "\n");
+		sbuf_putc(sb, '\n');
 	}
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);

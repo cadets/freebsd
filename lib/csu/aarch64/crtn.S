@@ -28,17 +28,19 @@
  */
 
 #include <machine/asm.h>
-__FBSDID("$FreeBSD$");
+#include <sys/elf_common.h>
 
 	.section .init,"ax",@progbits
-	ldr	lr, [sp]
-	add	sp, sp, #16
+	ldp	x29, x30, [sp], #16
+	PAC_LR_AUTH
 	ret
 
 
 	.section .fini,"ax",@progbits
-	ldr	lr, [sp]
-	add	sp, sp, #16
+	ldp	x29, x30, [sp], #16
+	PAC_LR_AUTH
 	ret
 
 	.section .note.GNU-stack,"",%progbits
+
+GNU_PROPERTY_AARCH64_FEATURE_1_NOTE(GNU_PROPERTY_AARCH64_FEATURE_1_VAL)

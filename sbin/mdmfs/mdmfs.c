@@ -32,9 +32,6 @@
  * the deprecated mount_mfs(8).
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/linker.h>
 #include <sys/mdioctl.h>

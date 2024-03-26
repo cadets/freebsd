@@ -32,8 +32,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #define	KTR_BE_IO	0
 #define	KTR_LE_IO	0
 
@@ -142,8 +140,13 @@ bs_remap_earlyboot(void)
 }
 
 static void
-bs_gen_unmap(bus_size_t size __unused)
+bs_gen_unmap(bus_space_handle_t bsh, bus_size_t size)
 {
+
+	if (!pmap_bootstrapped)
+		return;
+
+	pmap_unmapdev((void *)bsh, size);
 }
 
 static int

@@ -30,9 +30,6 @@ SOFTWARE.
  * one subnet to a BOOTP server on a different subnet.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/socket.h>
@@ -84,7 +81,7 @@ __FBSDID("$FreeBSD$");
  * Externals, forward declarations, and global variables
  */
 
-static void usage(void);
+static void usage(void) __dead2;
 static void handle_reply(void);
 static void handle_request(void);
 

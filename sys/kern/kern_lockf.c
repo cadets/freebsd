@@ -56,13 +56,9 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)ufs_lockf.c	8.3 (Berkeley) 1/6/94
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_debug_lockf.h"
 
 #include <sys/param.h>
@@ -195,7 +191,7 @@ static void	 lf_print_owner(struct lock_owner *);
 struct lock_owner {
 	LIST_ENTRY(lock_owner) lo_link; /* (l) hash chain */
 	int	lo_refs;	    /* (l) Number of locks referring to this */
-	int	lo_flags;	    /* (c) Flags passwd to lf_advlock */
+	int	lo_flags;	    /* (c) Flags passed to lf_advlock */
 	caddr_t	lo_id;		    /* (c) Id value passed to lf_advlock */
 	pid_t	lo_pid;		    /* (c) Process Id of the lock owner */
 	int	lo_sysid;	    /* (c) System Id of the lock owner */

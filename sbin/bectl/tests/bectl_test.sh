@@ -24,7 +24,6 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD$
 
 ZPOOL_NAME_FILE=zpool_name
 get_zpool_name()
@@ -94,7 +93,6 @@ bectl_cleanup()
 atf_test_case bectl_create cleanup
 bectl_create_head()
 {
-
 	atf_set "descr" "Check the various forms of bectl create"
 	atf_set "require.user" root
 }
@@ -158,7 +156,6 @@ bectl_create_cleanup()
 atf_test_case bectl_destroy cleanup
 bectl_destroy_head()
 {
-
 	atf_set "descr" "Check bectl destroy"
 	atf_set "require.user" root
 }
@@ -241,14 +238,12 @@ bectl_destroy_body()
 }
 bectl_destroy_cleanup()
 {
-
 	bectl_cleanup $(get_zpool_name)
 }
 
 atf_test_case bectl_export_import cleanup
 bectl_export_import_head()
 {
-
 	atf_set "descr" "Check bectl export and import"
 	atf_set "require.user" root
 }
@@ -279,14 +274,12 @@ bectl_export_import_body()
 }
 bectl_export_import_cleanup()
 {
-
 	bectl_cleanup $(get_zpool_name)
 }
 
 atf_test_case bectl_list cleanup
 bectl_list_head()
 {
-
 	atf_set "descr" "Check bectl list"
 	atf_set "require.user" root
 }
@@ -324,14 +317,12 @@ bectl_list_body()
 }
 bectl_list_cleanup()
 {
-
 	bectl_cleanup $(get_zpool_name)
 }
 
 atf_test_case bectl_mount cleanup
 bectl_mount_head()
 {
-
 	atf_set "descr" "Check bectl mount/unmount"
 	atf_set "require.user" root
 }
@@ -368,14 +359,12 @@ bectl_mount_body()
 }
 bectl_mount_cleanup()
 {
-
 	bectl_cleanup $(get_zpool_name)
 }
 
 atf_test_case bectl_rename cleanup
 bectl_rename_head()
 {
-
 	atf_set "descr" "Check bectl rename"
 	atf_set "require.user" root
 }
@@ -404,14 +393,12 @@ bectl_rename_body()
 }
 bectl_rename_cleanup()
 {
-
 	bectl_cleanup $(get_zpool_name)
 }
 
 atf_test_case bectl_jail cleanup
 bectl_jail_head()
 {
-
 	atf_set "descr" "Check bectl rename"
 	atf_set "require.user" root
 	atf_set "require.progs" jail
@@ -525,6 +512,147 @@ bectl_jail_cleanup()
 	bectl_cleanup ${zpool}
 }
 
+atf_test_case bectl_promotion cleanup
+bectl_promotion_head()
+{
+	atf_set "descr" "Check bectl promotion upon activation"
+	atf_set "require.user" root
+}
+bectl_promotion_body()
+{
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "i386" ]; then
+		atf_skip "https://bugs.freebsd.org/249055"
+	fi
+
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "armv7" ]; then
+		atf_skip "https://bugs.freebsd.org/249229"
+	fi
+
+	cwd=$(realpath .)
+	zpool=$(make_zpool_name)
+	disk=${cwd}/disk.img
+	mount=${cwd}/mnt
+	root=${mount}/root
+
+	bectl_create_deep_setup ${zpool} ${disk} ${mount}
+	atf_check mkdir -p ${root}
+
+	# Sleeps interspersed to workaround some naming quirks; notably,
+	# bectl will append a serial if two snapshots were created within
+	# the same second, but it can only do that for the one root it's
+	# operating on.  It won't check that other roots don't have a snapshot
+	# with the same name, and the promotion will fail.
+	atf_check bectl -r ${zpool}/ROOT rename default A
+	sleep 1
+	atf_check bectl -r ${zpool}/ROOT create -r -e A B
+	sleep 1
+	atf_check bectl -r ${zpool}/ROOT create -r -e B C
+
+	# C should be a clone of B to start with
+	atf_check -o not-inline:"-" zfs list -Hr -o origin ${zpool}/ROOT/C
+
+	# Activating it should then promote it all the way out of clone-hood.
+	# This entails two promotes internally, as the first would promote it to
+	# a snapshot of A before finally promoting it the second time out of
+	# clone status.
+	atf_check -o not-empty bectl -r ${zpool}/ROOT activate C
+	atf_check -o inline:"-\n-\n" zfs list -Hr -o origin ${zpool}/ROOT/C
+}
+bectl_promotion_cleanup()
+{
+	bectl_cleanup $(get_zpool_name)
+}
+
+atf_test_case bectl_destroy_bootonce cleanup
+bectl_destroy_bootonce_head()
+{
+	atf_set "descr" "Check bectl destroy (bootonce)"
+	atf_set "require.user" root
+}
+bectl_destroy_bootonce_body()
+{
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "i386" ]; then
+		atf_skip "https://bugs.freebsd.org/249055"
+	fi
+
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "armv7" ]; then
+		atf_skip "https://bugs.freebsd.org/249229"
+	fi
+
+	cwd=$(realpath .)
+	zpool=$(make_zpool_name)
+	disk=${cwd}/disk.img
+	mount=${cwd}/mnt
+	root=${mount}/root
+
+	be=default2
+
+	bectl_create_setup ${zpool} ${disk} ${mount}
+	atf_check -s exit:0 -o empty bectl -r ${zpool}/ROOT create -e default ${be}
+
+	# Create boot environment and bootonce activate it
+	atf_check -s exit:0 -o ignore bectl -r ${zpool}/ROOT activate -t ${be}
+	atf_check -s exit:0 -o inline:"zfs:${zpool}/ROOT/${be}:\n" zfsbootcfg -z ${zpool}
+
+	# Destroy it
+	atf_check -s exit:0 -o ignore bectl -r ${zpool}/ROOT destroy ${be}
+
+	# Should be empty
+	atf_check -s exit:0 -o empty zfsbootcfg -z ${zpool}
+}
+bectl_destroy_bootonce_cleanup()
+{
+	bectl_cleanup $(get_zpool_name)
+}
+
+atf_test_case bectl_rename_bootonce cleanup
+bectl_rename_bootonce_head()
+{
+	atf_set "descr" "Check bectl destroy (bootonce)"
+	atf_set "require.user" root
+}
+bectl_rename_bootonce_body()
+{
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "i386" ]; then
+		atf_skip "https://bugs.freebsd.org/249055"
+	fi
+
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "armv7" ]; then
+		atf_skip "https://bugs.freebsd.org/249229"
+	fi
+
+	cwd=$(realpath .)
+	zpool=$(make_zpool_name)
+	disk=${cwd}/disk.img
+	mount=${cwd}/mnt
+	root=${mount}/root
+
+	be=default2
+
+	bectl_create_setup ${zpool} ${disk} ${mount}
+	atf_check -s exit:0 -o empty bectl -r ${zpool}/ROOT create -e default ${be}
+
+	# Create boot environment and bootonce activate it
+	atf_check -s exit:0 -o ignore bectl -r ${zpool}/ROOT activate -t ${be}
+	atf_check -s exit:0 -o inline:"zfs:${zpool}/ROOT/${be}:\n" zfsbootcfg -z ${zpool}
+
+	# Rename it
+	atf_check -s exit:0 -o ignore bectl -r ${zpool}/ROOT rename ${be} ${be}_renamed
+
+	# Should be renamed
+	atf_check -s exit:0 -o inline:"zfs:${zpool}/ROOT/${be}_renamed:\n" zfsbootcfg -z ${zpool}
+}
+bectl_rename_bootonce_cleanup()
+{
+	bectl_cleanup $(get_zpool_name)
+}
+
 atf_init_test_cases()
 {
 	atf_add_test_case bectl_create
@@ -534,4 +662,7 @@ atf_init_test_cases()
 	atf_add_test_case bectl_mount
 	atf_add_test_case bectl_rename
 	atf_add_test_case bectl_jail
+	atf_add_test_case bectl_promotion
+	atf_add_test_case bectl_destroy_bootonce
+	atf_add_test_case bectl_rename_bootonce
 }

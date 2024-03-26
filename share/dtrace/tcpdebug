@@ -24,8 +24,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
- *
  * The tcpdebug D script uses the tcp:kernel::debug tracepoints
  * to replicate the action of turning on TCPDEBUG in a kernel configuration.
  *
@@ -66,7 +64,8 @@ tcp:kernel::debug-input
 	printf("%s", flags & TH_PUSH ? "PUSH," :"");
 	printf("%s", flags & TH_URG ? "URG," :"");
 	printf("%s", flags & TH_ECE ? "ECE," :"");
-	printf("%s", flags & TH_CWR ? "CWR" :"");
+	printf("%s", flags & TH_CWR ? "CWR," :"");
+	printf("%s", flags & TH_AE ? "AE" :"");
 	printf("%s", flags != 0 ? ">" : "");
 
 	printf("\n");
@@ -99,7 +98,8 @@ tcp:kernel::debug-output
 	printf("%s", flags & TH_PUSH ? "PUSH," :"");
 	printf("%s", flags & TH_URG ? "URG," :"");
 	printf("%s", flags & TH_ECE ? "ECE," :"");
-	printf("%s", flags & TH_CWR ? "CWR" :"");
+	printf("%s", flags & TH_CWR ? "CWR," :"");
+	printf("%s", flags & TH_AE ? "AE" :"");
 	printf("%s", flags != 0 ? ">" : "");
 
 	printf("\n");
@@ -137,7 +137,8 @@ tcp:kernel::debug-drop
 	printf("%s", flags & TH_PUSH ? "PUSH," :"");
 	printf("%s", flags & TH_URG ? "URG," :"");
 	printf("%s", flags & TH_ECE ? "ECE," :"");
-	printf("%s", flags & TH_CWR ? "CWR" :"");
+	printf("%s", flags & TH_CWR ? "CWR," :"");
+	printf("%s", flags & TH_AE ? "AE" :"");
 	printf("%s", flags != 0 ? ">" : "");
 
 	printf("\n");

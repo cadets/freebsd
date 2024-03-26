@@ -26,11 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char rcsid[] =
-  "$FreeBSD$";
-#endif /* not lint */
-
 #include <ctype.h>
 #include <err.h>
 #include <grp.h>
@@ -418,7 +413,7 @@ pw_group_del(int argc, char **argv, char *arg1)
 	return (EXIT_SUCCESS);
 }
 
-static bool
+bool
 grp_has_member(struct group *grp, const char *name)
 {
 	int j;

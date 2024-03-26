@@ -1,9 +1,8 @@
-# $FreeBSD$
 
 mkimg_blksz_list="512 4096"
 mkimg_format_list="qcow qcow2 raw vhd vhdf vhdx vmdk"
 mkimg_geom_list="1x1 63x255"
-mkimg_scheme_list="apm bsd ebr gpt mbr vtoc8"
+mkimg_scheme_list="apm bsd ebr gpt mbr"
 
 bootcode()
 {
@@ -87,9 +86,7 @@ mkimg_rebase()
     fi
 
     if test $update = yes; then
-	# Prevent keyword expansion when writing the keyword.
-	(echo -n '# $'; echo -n FreeBSD; echo '$') > $baseline
-	cat $result >> $baseline
+	cat $result > $baseline
     fi
 
     rm $image $result _tmp-*

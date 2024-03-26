@@ -25,9 +25,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/ioccom.h>
 
@@ -123,7 +120,7 @@ static struct opts opts[] = {
 	ARG("data-len",		'l',	arg_uint32,	opt, data_len,
 	    "Length of data for I/O (bytes)"),
 	ARG("metadata-len",	'm',	arg_uint32,	opt, metadata_len,
-	    "Length of metadata segment (bytes) (igored)"),
+	    "Length of metadata segment (bytes) (ignored)"),
 	ARG("flags",		'f',	arg_uint8,	opt, flags,
 	    "NVMe command flags"),
 	ARG("input-file",	'i',	arg_path,	opt, ifn,

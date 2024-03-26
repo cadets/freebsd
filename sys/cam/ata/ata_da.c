@@ -26,9 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_ada.h"
 
 #include <sys/param.h>
@@ -233,11 +230,11 @@ static const char *ada_delete_method_desc[] =
 #endif
 
 struct disk_params {
-	u_int8_t  heads;
-	u_int8_t  secs_per_track;
-	u_int32_t cylinders;
-	u_int32_t secsize;	/* Number of bytes/logical sector */
-	u_int64_t sectors;	/* Total number sectors */
+	uint8_t  heads;
+	uint8_t  secs_per_track;
+	uint32_t cylinders;
+	uint32_t secsize;	/* Number of bytes/logical sector */
+	uint64_t sectors;	/* Total number sectors */
 };
 
 #define TRIM_MAX_BLOCKS	8
@@ -732,6 +729,22 @@ static struct ada_quirk_entry ada_quirk_table[] =
 	},
 	{
 		/*
+		 * Samsung 860 SSDs
+		 * 4k optimised, NCQ TRIM broken (normal TRIM fine)
+		 */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "Samsung SSD 860*", "*" },
+		/*quirks*/ADA_Q_4K | ADA_Q_NCQ_TRIM_BROKEN
+	},
+	{
+		/*
+		 * Samsung 870 SSDs
+		 * 4k optimised, NCQ TRIM broken (normal TRIM fine)
+		 */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "Samsung SSD 870*", "*" },
+		/*quirks*/ADA_Q_4K | ADA_Q_NCQ_TRIM_BROKEN
+	},
+	{
+		/*
 		 * Samsung SM863 Series SSDs (MZ7KM*)
 		 * 4k optimised, NCQ believed to be working
 		 */
@@ -817,6 +830,11 @@ static struct ada_quirk_entry ada_quirk_table[] =
 		/*quirks*/ADA_Q_4K | ADA_Q_NCQ_TRIM_BROKEN
 	},
 	{
+		/* Seagate IronWolf 110 SATA SSD NCQ Trim is unstable */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "ZA*NM*", "*" },
+		/*quirks*/ADA_Q_4K | ADA_Q_NCQ_TRIM_BROKEN
+	},
+	{
 		/* Default */
 		{
 		  T_ANY, SIP_MEDIA_REMOVABLE|SIP_MEDIA_FIXED,
@@ -832,7 +850,7 @@ static	periph_init_t	adainit;
 static	void		adadiskgonecb(struct disk *dp);
 static	periph_oninv_t	adaoninvalidate;
 static	periph_dtor_t	adacleanup;
-static	void		adaasync(void *callback_arg, u_int32_t code,
+static	void		adaasync(void *callback_arg, uint32_t code,
 				struct cam_path *path, void *arg);
 static	int		adabitsysctl(SYSCTL_HANDLER_ARGS);
 static	int		adaflagssysctl(SYSCTL_HANDLER_ARGS);
@@ -856,8 +874,8 @@ static	void		adaprobedone(struct cam_periph *periph, union ccb *ccb);
 static	void		adazonedone(struct cam_periph *periph, union ccb *ccb);
 static	void		adadone(struct cam_periph *periph,
 			       union ccb *done_ccb);
-static  int		adaerror(union ccb *ccb, u_int32_t cam_flags,
-				u_int32_t sense_flags);
+static  int		adaerror(union ccb *ccb, uint32_t cam_flags,
+				uint32_t sense_flags);
 static callout_func_t	adasendorderedtag;
 static void		adashutdown(void *arg, int howto);
 static void		adasuspend(void *arg);
@@ -1128,7 +1146,7 @@ adadump(void *arg, void *virtual, off_t offset, size_t length)
 		    NULL,
 		    CAM_DIR_OUT,
 		    0,
-		    (u_int8_t *) virtual,
+		    (uint8_t *) virtual,
 		    length,
 		    ada_default_timeout*1000);
 		if ((softc->flags & ADA_FLAG_CAN_48BIT) &&
@@ -1300,7 +1318,7 @@ adasetdeletemethod(struct ada_softc *softc)
 }
 
 static void
-adaasync(void *callback_arg, u_int32_t code,
+adaasync(void *callback_arg, uint32_t code,
 	struct cam_path *path, void *arg)
 {
 	struct ccb_getdev cgd;
@@ -1428,7 +1446,6 @@ adazonemodesysctl(SYSCTL_HANDLER_ARGS)
 static int
 adazonesupsysctl(SYSCTL_HANDLER_ARGS)
 {
-	char tmpbuf[180];
 	struct ada_softc *softc;
 	struct sbuf sb;
 	int error, first;
@@ -1436,15 +1453,14 @@ adazonesupsysctl(SYSCTL_HANDLER_ARGS)
 
 	softc = (struct ada_softc *)arg1;
 
-	error = 0;
 	first = 1;
-	sbuf_new(&sb, tmpbuf, sizeof(tmpbuf), 0);
+	sbuf_new_for_sysctl(&sb, NULL, 0, req);
 
 	for (i = 0; i < sizeof(ada_zone_desc_table) /
 	     sizeof(ada_zone_desc_table[0]); i++) {
 		if (softc->zone_flags & ada_zone_desc_table[i].value) {
 			if (first == 0)
-				sbuf_printf(&sb, ", ");
+				sbuf_cat(&sb, ", ");
 			else
 				first = 0;
 			sbuf_cat(&sb, ada_zone_desc_table[i].desc);
@@ -1452,12 +1468,10 @@ adazonesupsysctl(SYSCTL_HANDLER_ARGS)
 	}
 
 	if (first == 1)
-		sbuf_printf(&sb, "None");
+		sbuf_cat(&sb, "None");
 
-	sbuf_finish(&sb);
-
-	error = sysctl_handle_string(oidp, sbuf_data(&sb), sbuf_len(&sb), req);
-
+	error = sbuf_finish(&sb);
+	sbuf_delete(&sb);
 	return (error);
 }
 
@@ -1545,11 +1559,11 @@ adasysctlinit(void *context, int pending)
 	SYSCTL_ADD_PROC(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
 	    OID_AUTO, "unmapped_io", CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE,
 	    &softc->flags, (u_int)ADA_FLAG_UNMAPPEDIO, adabitsysctl, "I",
-	    "Unmapped I/O support *DEPRECATED* gone in FreeBSD 14");
+	    "Use unmapped I/O. This sysctl is *DEPRECATED*, gone in FreeBSD 15");
 	SYSCTL_ADD_PROC(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
 	    OID_AUTO, "rotating", CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE,
 	    &softc->flags, (u_int)ADA_FLAG_ROTATING, adabitsysctl, "I",
-	    "Rotating media *DEPRECATED* gone in FreeBSD 14");
+	    "Rotating media. This sysctl is *DEPRECATED*, gone in FreeBSD 15");
 
 #ifdef CAM_TEST_FAILURE
 	/*
@@ -1684,7 +1698,7 @@ adaflagssysctl(SYSCTL_HANDLER_ARGS)
 	if (softc->flags != 0)
 		sbuf_printf(&sbuf, "0x%b", (unsigned)softc->flags, ADA_FLAG_STRING);
 	else
-		sbuf_printf(&sbuf, "0");
+		sbuf_putc(&sbuf, '0');
 	error = sbuf_finish(&sbuf);
 	sbuf_delete(&sbuf);
 
@@ -2321,7 +2335,7 @@ adastart(struct cam_periph *periph, union ccb *start_ccb)
 	case ADA_STATE_NORMAL:
 	{
 		struct bio *bp;
-		u_int8_t tag_code;
+		uint8_t tag_code;
 
 		bp = cam_iosched_next_bio(softc->cam_iosched);
 		if (bp == NULL) {
@@ -3382,7 +3396,7 @@ adadone(struct cam_periph *periph, union ccb *done_ccb)
 }
 
 static int
-adaerror(union ccb *ccb, u_int32_t cam_flags, u_int32_t sense_flags)
+adaerror(union ccb *ccb, uint32_t cam_flags, uint32_t sense_flags)
 {
 #ifdef CAM_IO_STATS
 	struct ada_softc *softc;
@@ -3415,8 +3429,8 @@ static void
 adasetgeom(struct ada_softc *softc, struct ccb_getdev *cgd)
 {
 	struct disk_params *dp = &softc->params;
-	u_int64_t lbasize48;
-	u_int32_t lbasize;
+	uint64_t lbasize48;
+	uint32_t lbasize;
 	u_int maxio, d_flags;
 	size_t tmpsize;
 
@@ -3427,27 +3441,27 @@ adasetgeom(struct ada_softc *softc, struct ccb_getdev *cgd)
 		dp->heads = cgd->ident_data.current_heads;
 		dp->secs_per_track = cgd->ident_data.current_sectors;
 		dp->cylinders = cgd->ident_data.cylinders;
-		dp->sectors = (u_int32_t)cgd->ident_data.current_size_1 |
-			  ((u_int32_t)cgd->ident_data.current_size_2 << 16);
+		dp->sectors = (uint32_t)cgd->ident_data.current_size_1 |
+			  ((uint32_t)cgd->ident_data.current_size_2 << 16);
 	} else {
 		dp->heads = cgd->ident_data.heads;
 		dp->secs_per_track = cgd->ident_data.sectors;
 		dp->cylinders = cgd->ident_data.cylinders;
 		dp->sectors = cgd->ident_data.cylinders *
-			      (u_int32_t)(dp->heads * dp->secs_per_track);
+			      (uint32_t)(dp->heads * dp->secs_per_track);
 	}
-	lbasize = (u_int32_t)cgd->ident_data.lba_size_1 |
-		  ((u_int32_t)cgd->ident_data.lba_size_2 << 16);
+	lbasize = (uint32_t)cgd->ident_data.lba_size_1 |
+		  ((uint32_t)cgd->ident_data.lba_size_2 << 16);
 
 	/* use the 28bit LBA size if valid or bigger than the CHS mapping */
 	if (cgd->ident_data.cylinders == 16383 || dp->sectors < lbasize)
 		dp->sectors = lbasize;
 
 	/* use the 48bit LBA size if valid */
-	lbasize48 = ((u_int64_t)cgd->ident_data.lba_size48_1) |
-		    ((u_int64_t)cgd->ident_data.lba_size48_2 << 16) |
-		    ((u_int64_t)cgd->ident_data.lba_size48_3 << 32) |
-		    ((u_int64_t)cgd->ident_data.lba_size48_4 << 48);
+	lbasize48 = ((uint64_t)cgd->ident_data.lba_size48_1) |
+		    ((uint64_t)cgd->ident_data.lba_size48_2 << 16) |
+		    ((uint64_t)cgd->ident_data.lba_size48_3 << 32) |
+		    ((uint64_t)cgd->ident_data.lba_size48_4 << 48);
 	if ((cgd->ident_data.support.command2 & ATA_SUPPORT_ADDRESS48) &&
 	    lbasize48 > ATA_MAX_28BIT_LBA)
 		dp->sectors = lbasize48;

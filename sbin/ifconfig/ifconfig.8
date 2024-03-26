@@ -25,10 +25,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\"     From: @(#)ifconfig.8	8.3 (Berkeley) 1/5/94
-.\" $FreeBSD$
-.\"
-.Dd May 22, 2023
+.Dd November 08, 2023
 .Dt IFCONFIG 8
 .Os
 .Sh NAME
@@ -37,7 +34,7 @@
 .Sh SYNOPSIS
 .Nm
 .Op Fl j Ar jail
-.Op Fl kLmn
+.Op Fl DkLmn
 .Op Fl f Ar type Ns Cm \&: Ns Ar format
 .Ar interface
 .Op Cm create
@@ -56,7 +53,7 @@
 .Nm
 .Op Fl j Ar jail
 .Fl a
-.Op Fl dkLmuv
+.Op Fl dDkLmuv
 .Op Fl f Ar type Ns Cm \&: Ns Ar format
 .Op Fl G Ar groupname
 .Op Fl g Ar groupname
@@ -105,6 +102,12 @@ with no additional information.
 Use of this flag is mutually exclusive with all other flags and commands.
 .It Fl d
 Display only the interfaces that are down.
+.It Fl D
+Include the driver name and unit number of the interface in the output.
+This is normally the original name of the interface,
+even if it has been renamed; it may differ from the original name
+in some cases, such as
+.Xr epair 4 .
 .It Fl f Xo
 .Ar type Ns Cm \&: Ns Ar format Ns
 .Op Cm \&, Ns Ar type Ns Cm \&: Ns Ar format Ar ...
@@ -156,6 +159,9 @@ Adjust the display of link-level ethernet (MAC) addresses:
 Separate address segments with a colon
 .It Cm dash
 Separate address segments with a dash
+.It Cm dotted
+Dotted notation, for example:
+.Ql 5254.0015.4a3b
 .It Cm default
 Default format,
 .Cm colon
@@ -506,6 +512,9 @@ This action does not automatically disable routes using the interface.
 .It Cm group Ar groupname
 Assign the interface to a
 .Dq group .
+The
+.Ar groupname
+may not be longer than 15 characters and must not end in a digit.
 Any interface can be in multiple groups.
 .Pp
 Cloned interfaces are members of their interface family group by default.
@@ -702,7 +711,7 @@ buffers, enable them on the interface.
 .It Fl mextpg
 If the driver supports extended multi-page
 .Xr mbuf 9
-biffers, disable them on the interface.
+buffers, disable them on the interface.
 .It Cm wol , wol_ucast , wol_mcast , wol_magic
 Enable Wake On Lan (WOL) support, if available.
 WOL is a facility whereby a machine in a low power state may be woken
@@ -1059,7 +1068,7 @@ Legacy
 .Cm wds
 devices have a fixed peer relationship and do not, for example, roam
 if their peer stops communicating.
-For completeness a Dynamic WDS (DWDS) interface may marked as
+For completeness a Dynamic WDS (DWDS) interface may be marked as
 .Fl wdslegacy .
 .It Cm bssid
 Request a unique local mac address for the cloned device.
@@ -2865,12 +2874,24 @@ to send and receive pfsync state synchronisation messages.
 .It Fl syncdev
 Stop sending pfsync state synchronisation messages over the network.
 .It Cm syncpeer Ar peer_address
-Make the pfsync link point-to-point rather than using
-multicast to broadcast the state synchronisation messages.
-The peer_address is the IP address of the other host taking part in
-the pfsync cluster.
+Set the destination address for the state synchronization messages sent.
+The
+.Ar peer_address
+is normally the IPv4 or IPv6 address of the other host taking
+part in the pfsync cluster.
+.Pp
+When the
+.Ar peer_address
+is set to a unicast IP address, the pfsync link will behave
+as point-to-point rather than using multicast to broadcast the messages.
+.Pp
+When the
+.Ar peer_address
+is set to ff12::f0, the state synchronization
+messages will be broadcast using multicast over IPv6.
 .It Fl syncpeer
-Broadcast the packets using multicast.
+Unset the syncpeer.
+Packets will then be broadcast using multicast over IPv4.
 .It Cm maxupd Ar n
 Set the maximum number of updates for a single state which
 can be collapsed into one.
@@ -2881,6 +2902,11 @@ acknowledged that the associated state has been inserted.
 .It Fl defer
 Do not defer the first packet in a state.
 This is the default.
+.It Fl version Ar n
+Configure message format for compatibility with older versions of FreeBSD.
+Refer to
+.Xr pfsync 4
+for details.
 .El
 .Ss VLAN Parameters
 The following parameters are specific to

@@ -29,9 +29,6 @@
  * acl_cmp_np: Compare two ACL's.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/acl.h>
 #include <sys/errno.h>
 

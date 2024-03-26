@@ -29,8 +29,6 @@
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 /*
@@ -128,3 +126,5 @@ PFCTL_TEST(1014, "Ethernet rule with one label")
 PFCTL_TEST(1015, "Ethernet rule with several labels")
 PFCTL_TEST(1016, "Ethernet rule with ridentifier and one label")
 PFCTL_TEST(1017, "Ethernet rule with ridentifier and several labels")
+PFCTL_TEST(1018, "Test dynamic address mask")
+PFCTL_TEST(1019, "Test pflow option")

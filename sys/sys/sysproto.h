@@ -2,7 +2,6 @@
  * System call prototypes.
  *
  * DO NOT EDIT-- this file is automatically @generated.
- * $FreeBSD$
  */
 
 #ifndef _SYS_SYSPROTO_H_
@@ -255,12 +254,6 @@ struct msync_args {
 struct vfork_args {
 	syscallarg_t dummy;
 };
-struct sbrk_args {
-	char incr_l_[PADL_(int)]; int incr; char incr_r_[PADR_(int)];
-};
-struct sstk_args {
-	char incr_l_[PADL_(int)]; int incr; char incr_r_[PADR_(int)];
-};
 struct munmap_args {
 	char addr_l_[PADL_(void *)]; void * addr; char addr_r_[PADR_(void *)];
 	char len_l_[PADL_(size_t)]; size_t len; char len_r_[PADR_(size_t)];
@@ -320,7 +313,7 @@ struct dup2_args {
 struct fcntl_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
 	char cmd_l_[PADL_(int)]; int cmd; char cmd_r_[PADR_(int)];
-	char arg_l_[PADL_(long)]; long arg; char arg_r_[PADR_(long)];
+	char arg_l_[PADL_(intptr_t)]; intptr_t arg; char arg_r_[PADR_(intptr_t)];
 };
 struct select_args {
 	char nd_l_[PADL_(int)]; int nd; char nd_r_[PADR_(int)];
@@ -384,12 +377,12 @@ struct getsockopt_args {
 };
 struct readv_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
-	char iovp_l_[PADL_(struct iovec *)]; struct iovec * iovp; char iovp_r_[PADR_(struct iovec *)];
+	char iovp_l_[PADL_(const struct iovec *)]; const struct iovec * iovp; char iovp_r_[PADR_(const struct iovec *)];
 	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
 };
 struct writev_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
-	char iovp_l_[PADL_(struct iovec *)]; struct iovec * iovp; char iovp_r_[PADR_(struct iovec *)];
+	char iovp_l_[PADL_(const struct iovec *)]; const struct iovec * iovp; char iovp_r_[PADR_(const struct iovec *)];
 	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
 };
 struct settimeofday_args {
@@ -784,7 +777,7 @@ struct aio_return_args {
 	char aiocbp_l_[PADL_(struct aiocb *)]; struct aiocb * aiocbp; char aiocbp_r_[PADR_(struct aiocb *)];
 };
 struct aio_suspend_args {
-	char aiocbp_l_[PADL_(struct aiocb * const *)]; struct aiocb * const * aiocbp; char aiocbp_r_[PADR_(struct aiocb * const *)];
+	char aiocbp_l_[PADL_(const struct aiocb * const *)]; const struct aiocb * const * aiocbp; char aiocbp_r_[PADR_(const struct aiocb * const *)];
 	char nent_l_[PADL_(int)]; int nent; char nent_r_[PADR_(int)];
 	char timeout_l_[PADL_(const struct timespec *)]; const struct timespec * timeout; char timeout_r_[PADR_(const struct timespec *)];
 };
@@ -869,49 +862,49 @@ struct sigpending_args {
 };
 struct sigtimedwait_args {
 	char set_l_[PADL_(const sigset_t *)]; const sigset_t * set; char set_r_[PADR_(const sigset_t *)];
-	char info_l_[PADL_(struct siginfo *)]; struct siginfo * info; char info_r_[PADR_(struct siginfo *)];
+	char info_l_[PADL_(struct __siginfo *)]; struct __siginfo * info; char info_r_[PADR_(struct __siginfo *)];
 	char timeout_l_[PADL_(const struct timespec *)]; const struct timespec * timeout; char timeout_r_[PADR_(const struct timespec *)];
 };
 struct sigwaitinfo_args {
 	char set_l_[PADL_(const sigset_t *)]; const sigset_t * set; char set_r_[PADR_(const sigset_t *)];
-	char info_l_[PADL_(struct siginfo *)]; struct siginfo * info; char info_r_[PADR_(struct siginfo *)];
+	char info_l_[PADL_(struct __siginfo *)]; struct __siginfo * info; char info_r_[PADR_(struct __siginfo *)];
 };
 struct __acl_get_file_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 	char aclp_l_[PADL_(struct acl *)]; struct acl * aclp; char aclp_r_[PADR_(struct acl *)];
 };
 struct __acl_set_file_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 	char aclp_l_[PADL_(struct acl *)]; struct acl * aclp; char aclp_r_[PADR_(struct acl *)];
 };
 struct __acl_get_fd_args {
 	char filedes_l_[PADL_(int)]; int filedes; char filedes_r_[PADR_(int)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 	char aclp_l_[PADL_(struct acl *)]; struct acl * aclp; char aclp_r_[PADR_(struct acl *)];
 };
 struct __acl_set_fd_args {
 	char filedes_l_[PADL_(int)]; int filedes; char filedes_r_[PADR_(int)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 	char aclp_l_[PADL_(struct acl *)]; struct acl * aclp; char aclp_r_[PADR_(struct acl *)];
 };
 struct __acl_delete_file_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 };
 struct __acl_delete_fd_args {
 	char filedes_l_[PADL_(int)]; int filedes; char filedes_r_[PADR_(int)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 };
 struct __acl_aclcheck_file_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 	char aclp_l_[PADL_(struct acl *)]; struct acl * aclp; char aclp_r_[PADR_(struct acl *)];
 };
 struct __acl_aclcheck_fd_args {
 	char filedes_l_[PADL_(int)]; int filedes; char filedes_r_[PADR_(int)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 	char aclp_l_[PADL_(struct acl *)]; struct acl * aclp; char aclp_r_[PADR_(struct acl *)];
 };
 struct extattrctl_args {
@@ -1137,21 +1130,21 @@ struct swapcontext_args {
 };
 struct __acl_get_link_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 	char aclp_l_[PADL_(struct acl *)]; struct acl * aclp; char aclp_r_[PADR_(struct acl *)];
 };
 struct __acl_set_link_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 	char aclp_l_[PADL_(struct acl *)]; struct acl * aclp; char aclp_r_[PADR_(struct acl *)];
 };
 struct __acl_delete_link_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 };
 struct __acl_aclcheck_link_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
-	char type_l_[PADL_(acl_type_t)]; acl_type_t type; char type_r_[PADR_(acl_type_t)];
+	char type_l_[PADL_(__acl_type_t)]; __acl_type_t type; char type_r_[PADR_(__acl_type_t)];
 	char aclp_l_[PADL_(struct acl *)]; struct acl * aclp; char aclp_r_[PADR_(struct acl *)];
 };
 struct sigwait_args {
@@ -1604,7 +1597,7 @@ struct wait6_args {
 	char status_l_[PADL_(int *)]; int * status; char status_r_[PADR_(int *)];
 	char options_l_[PADL_(int)]; int options; char options_r_[PADR_(int)];
 	char wrusage_l_[PADL_(struct __wrusage *)]; struct __wrusage * wrusage; char wrusage_r_[PADR_(struct __wrusage *)];
-	char info_l_[PADL_(struct siginfo *)]; struct siginfo * info; char info_r_[PADR_(struct siginfo *)];
+	char info_l_[PADL_(struct __siginfo *)]; struct __siginfo * info; char info_r_[PADR_(struct __siginfo *)];
 };
 struct cap_rights_limit_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
@@ -1812,7 +1805,7 @@ struct shm_rename_args {
 };
 struct sigfastblock_args {
 	char cmd_l_[PADL_(int)]; int cmd; char cmd_r_[PADR_(int)];
-	char ptr_l_[PADL_(uint32_t *)]; uint32_t * ptr; char ptr_r_[PADR_(uint32_t *)];
+	char ptr_l_[PADL_(void *)]; void * ptr; char ptr_r_[PADR_(void *)];
 };
 struct __realpathat_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
@@ -1857,6 +1850,32 @@ struct swapoff_args {
 };
 struct kqueuex_args {
 	char flags_l_[PADL_(u_int)]; u_int flags; char flags_r_[PADR_(u_int)];
+};
+struct membarrier_args {
+	char cmd_l_[PADL_(int)]; int cmd; char cmd_r_[PADR_(int)];
+	char flags_l_[PADL_(unsigned)]; unsigned flags; char flags_r_[PADR_(unsigned)];
+	char cpu_id_l_[PADL_(int)]; int cpu_id; char cpu_id_r_[PADR_(int)];
+};
+struct timerfd_create_args {
+	char clockid_l_[PADL_(int)]; int clockid; char clockid_r_[PADR_(int)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+};
+struct timerfd_gettime_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char curr_value_l_[PADL_(struct itimerspec *)]; struct itimerspec * curr_value; char curr_value_r_[PADR_(struct itimerspec *)];
+};
+struct timerfd_settime_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char new_value_l_[PADL_(const struct itimerspec *)]; const struct itimerspec * new_value; char new_value_r_[PADR_(const struct itimerspec *)];
+	char old_value_l_[PADL_(struct itimerspec *)]; struct itimerspec * old_value; char old_value_r_[PADR_(struct itimerspec *)];
+};
+struct kcmp_args {
+	char pid1_l_[PADL_(pid_t)]; pid_t pid1; char pid1_r_[PADR_(pid_t)];
+	char pid2_l_[PADL_(pid_t)]; pid_t pid2; char pid2_r_[PADR_(pid_t)];
+	char type_l_[PADL_(int)]; int type; char type_r_[PADR_(int)];
+	char idx1_l_[PADL_(uintptr_t)]; uintptr_t idx1; char idx1_r_[PADR_(uintptr_t)];
+	char idx2_l_[PADL_(uintptr_t)]; uintptr_t idx2; char idx2_r_[PADR_(uintptr_t)];
 };
 int	sys_exit(struct thread *, struct exit_args *);
 int	sys_fork(struct thread *, struct fork_args *);
@@ -1910,8 +1929,6 @@ int	sys_umask(struct thread *, struct umask_args *);
 int	sys_chroot(struct thread *, struct chroot_args *);
 int	sys_msync(struct thread *, struct msync_args *);
 int	sys_vfork(struct thread *, struct vfork_args *);
-int	sys_sbrk(struct thread *, struct sbrk_args *);
-int	sys_sstk(struct thread *, struct sstk_args *);
 int	sys_munmap(struct thread *, struct munmap_args *);
 int	sys_mprotect(struct thread *, struct mprotect_args *);
 int	sys_madvise(struct thread *, struct madvise_args *);
@@ -2254,6 +2271,11 @@ int	sys_fspacectl(struct thread *, struct fspacectl_args *);
 int	sys_sched_getcpu(struct thread *, struct sched_getcpu_args *);
 int	sys_swapoff(struct thread *, struct swapoff_args *);
 int	sys_kqueuex(struct thread *, struct kqueuex_args *);
+int	sys_membarrier(struct thread *, struct membarrier_args *);
+int	sys_timerfd_create(struct thread *, struct timerfd_create_args *);
+int	sys_timerfd_gettime(struct thread *, struct timerfd_gettime_args *);
+int	sys_timerfd_settime(struct thread *, struct timerfd_settime_args *);
+int	sys_kcmp(struct thread *, struct kcmp_args *);
 
 #ifdef COMPAT_43
 
@@ -2745,6 +2767,12 @@ int	freebsd13_swapoff(struct thread *, struct freebsd13_swapoff_args *);
 
 #endif /* COMPAT_FREEBSD13 */
 
+
+#ifdef COMPAT_FREEBSD14
+
+
+#endif /* COMPAT_FREEBSD14 */
+
 #define	SYS_AUE_exit	AUE_EXIT
 #define	SYS_AUE_fork	AUE_FORK
 #define	SYS_AUE_read	AUE_READ
@@ -2810,8 +2838,6 @@ int	freebsd13_swapoff(struct thread *, struct freebsd13_swapoff_args *);
 #define	SYS_AUE_ogetpagesize	AUE_NULL
 #define	SYS_AUE_msync	AUE_MSYNC
 #define	SYS_AUE_vfork	AUE_VFORK
-#define	SYS_AUE_sbrk	AUE_SBRK
-#define	SYS_AUE_sstk	AUE_SSTK
 #define	SYS_AUE_ommap	AUE_MMAP
 #define	SYS_AUE_freebsd11_vadvise	AUE_O_VADVISE
 #define	SYS_AUE_munmap	AUE_MUNMAP
@@ -3224,6 +3250,11 @@ int	freebsd13_swapoff(struct thread *, struct freebsd13_swapoff_args *);
 #define	SYS_AUE_sched_getcpu	AUE_NULL
 #define	SYS_AUE_swapoff	AUE_SWAPOFF
 #define	SYS_AUE_kqueuex	AUE_KQUEUE
+#define	SYS_AUE_membarrier	AUE_NULL
+#define	SYS_AUE_timerfd_create	AUE_TIMERFD
+#define	SYS_AUE_timerfd_gettime	AUE_TIMERFD
+#define	SYS_AUE_timerfd_settime	AUE_TIMERFD
+#define	SYS_AUE_kcmp	AUE_NULL
 
 #undef PAD_
 #undef PADL_

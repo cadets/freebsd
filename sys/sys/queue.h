@@ -27,9 +27,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)queue.h	8.5 (Berkeley) 8/20/94
- * $FreeBSD$
  */
 
 #ifndef _SYS_QUEUE_H_
@@ -111,7 +108,7 @@
  * _INSERT_TAIL			-	-	+	+
  * _CONCAT			s	s	+	+
  * _REMOVE_AFTER		+	-	+	-
- * _REMOVE_HEAD			+	-	+	-
+ * _REMOVE_HEAD			+	+	+	+
  * _REMOVE			s	+	s	+
  * _SWAP			+	+	+	+
  *
@@ -596,6 +593,9 @@ struct {								\
 	    __containerof((elm)->field.le_prev,			\
 	    QUEUE_TYPEOF(type), field.le_next))
 
+#define LIST_REMOVE_HEAD(head, field) 					\
+	LIST_REMOVE(LIST_FIRST(head), field)
+
 #define	LIST_REMOVE(elm, field) do {					\
 	QMD_SAVELINK(oldnext, (elm)->field.le_next);			\
 	QMD_SAVELINK(oldprev, (elm)->field.le_prev);			\
@@ -841,6 +841,9 @@ struct {								\
 #define	TAILQ_PREV_FAST(elm, head, type, field)				\
     ((elm)->field.tqe_prev == &(head)->tqh_first ? NULL :		\
      __containerof((elm)->field.tqe_prev, QUEUE_TYPEOF(type), field.tqe_next))
+
+#define TAILQ_REMOVE_HEAD(head, field) 					\
+	TAILQ_REMOVE(head, TAILQ_FIRST(head), field)
 
 #define	TAILQ_REMOVE(head, elm, field) do {				\
 	QMD_SAVELINK(oldnext, (elm)->field.tqe_next);			\

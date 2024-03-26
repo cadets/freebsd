@@ -10,9 +10,6 @@
  *	Upgraded to function properly on 64-bit machines.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 
 #include <stdio.h>

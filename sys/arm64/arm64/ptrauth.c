@@ -35,9 +35,6 @@
 #error Must be built with pointer authentication disabled
 #endif
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/libkern.h>

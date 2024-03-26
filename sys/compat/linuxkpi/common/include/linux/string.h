@@ -25,8 +25,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 #ifndef	_LINUXKPI_LINUX_STRING_H_
 #define	_LINUXKPI_LINUX_STRING_H_
@@ -264,6 +262,14 @@ memcpy_and_pad(void *dst, size_t dstlen, const void *src, size_t len, int ch)
 	uint8_t *_ptr = (uint8_t *)(ptr);				\
 	int _c = (int)(bytepat);					\
 	size_t _o = offsetof(typeof(*(ptr)), smember);			\
+	memset(_ptr + _o, _c, sizeof(*(ptr)) - _o);			\
+})
+
+#define	memset_after(ptr, bytepat, smember)				\
+({									\
+	uint8_t *_ptr = (uint8_t *)(ptr);				\
+	int _c = (int)(bytepat);					\
+	size_t _o = offsetofend(typeof(*(ptr)), smember);		\
 	memset(_ptr + _o, _c, sizeof(*(ptr)) - _o);			\
 })
 

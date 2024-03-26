@@ -17,7 +17,6 @@
  * information: Portions Copyright [yyyy] [name of copyright owner]
  *
  * CDDL HEADER END
- * $FreeBSD$
  */
 
 /*
@@ -25,7 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)file_check.c	1.3	07/05/25 SMI"
 
 #include "file_common.h"
 

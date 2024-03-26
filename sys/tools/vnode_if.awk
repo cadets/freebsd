@@ -30,10 +30,6 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 
-#
-#	@(#)vnode_if.sh	8.1 (Berkeley) 6/10/93
-# $FreeBSD$
-#
 # Script to produce VFS front-end sugar.
 #
 # usage: vnode_if.awk <srcfile> [-c | -h | -p | -q]
@@ -173,8 +169,6 @@ common_head = \
     "/*\n" \
     " * This file is " generated " automatically.\n" \
     " * Do not modify anything in here by hand.\n" \
-    " *\n" \
-    " * Created from $FreeBSD$\n" \
     " */\n" \
     "\n";
 

@@ -28,7 +28,6 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-/*$FreeBSD$*/
 
 #ifndef _ICE_DEFS_H_
 #define _ICE_DEFS_H_
@@ -40,7 +39,7 @@
 #define BIT(a) (1UL << (a))
 #ifndef BIT_ULL
 #define BIT_ULL(a) (1ULL << (a))
-#endif /* BIT_ULL */
+#endif /* !BIT_ULL */
 
 #define BITS_PER_BYTE	8
 
@@ -52,7 +51,7 @@
 
 #ifndef MIN_T
 #define MIN_T(_t, _a, _b)	min((_t)(_a), (_t)(_b))
-#endif
+#endif /* !MIN_T */
 
 #define IS_ASCII(_ch)	((_ch) < 0x80)
 

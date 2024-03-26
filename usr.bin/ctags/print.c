@@ -29,15 +29,7 @@
  * SUCH DAMAGE.
  */
 
-#if 0
-#ifndef lint
-static char sccsid[] = "@(#)print.c	8.3 (Berkeley) 4/2/94";
-#endif
-#endif
-
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <limits.h>
 #include <stdio.h>
 #include <unistd.h>

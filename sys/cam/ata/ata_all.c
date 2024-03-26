@@ -26,9 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 
 #ifdef _KERNEL
@@ -467,7 +464,7 @@ ata_print_ident_sbuf(struct ata_params *ident_data, struct sbuf *sb)
 	int version;
 
 	ata_print_ident_short_sbuf(ident_data, sb);
-	sbuf_printf(sb, " ");
+	sbuf_putc(sb, ' ');
 
 	proto = (ident_data->config == ATA_PROTO_CFA) ? "CFA" :
 		(ident_data->config & ATA_PROTO_ATAPI) ? "ATAPI" : "ATA";
@@ -524,11 +521,11 @@ void
 ata_print_ident_short_sbuf(struct ata_params *ident_data, struct sbuf *sb)
 {
 
-	sbuf_printf(sb, "<");
+	sbuf_putc(sb, '<');
 	cam_strvis_sbuf(sb, ident_data->model, sizeof(ident_data->model), 0);
-	sbuf_printf(sb, " ");
+	sbuf_putc(sb, ' ');
 	cam_strvis_sbuf(sb, ident_data->revision, sizeof(ident_data->revision), 0);
-	sbuf_printf(sb, ">");
+	sbuf_putc(sb, '>');
 }
 
 void
@@ -548,11 +545,11 @@ semb_print_ident_sbuf(struct sep_identify_data *ident_data, struct sbuf *sb)
 
 	semb_print_ident_short_sbuf(ident_data, sb);
 
-	sbuf_printf(sb, " SEMB ");
+	sbuf_cat(sb, " SEMB ");
 	cam_strvis_sbuf(sb, ident_data->interface_id, 6, 0);
-	sbuf_printf(sb, " ");
+	sbuf_putc(sb, ' ');
 	cam_strvis_sbuf(sb, ident_data->interface_rev, 4, 0);
-	sbuf_printf(sb, " device\n");
+	sbuf_cat(sb, " device\n");
 }
 
 void
@@ -571,15 +568,15 @@ void
 semb_print_ident_short_sbuf(struct sep_identify_data *ident_data, struct sbuf *sb)
 {
 
-	sbuf_printf(sb, "<");
+	sbuf_putc(sb, '<');
 	cam_strvis_sbuf(sb, ident_data->vendor_id, 8, 0);
-	sbuf_printf(sb, " ");
+	sbuf_putc(sb, ' ');
 	cam_strvis_sbuf(sb, ident_data->product_id, 16, 0);
-	sbuf_printf(sb, " ");
+	sbuf_putc(sb, ' ');
 	cam_strvis_sbuf(sb, ident_data->product_rev, 4, 0);
-	sbuf_printf(sb, " ");
+	sbuf_putc(sb, ' ');
 	cam_strvis_sbuf(sb, ident_data->firmware_rev, 4, 0);
-	sbuf_printf(sb, ">");
+	sbuf_putc(sb, '>');
 }
 
 uint32_t
@@ -587,8 +584,8 @@ ata_logical_sector_size(struct ata_params *ident_data)
 {
 	if ((ident_data->pss & ATA_PSS_VALID_MASK) == ATA_PSS_VALID_VALUE &&
 	    (ident_data->pss & ATA_PSS_LSSABOVE512)) {
-		return (((u_int32_t)ident_data->lss_1 |
-		    ((u_int32_t)ident_data->lss_2 << 16)) * 2);
+		return (((uint32_t)ident_data->lss_1 |
+		    ((uint32_t)ident_data->lss_2 << 16)) * 2);
 	}
 	return (512);
 }
@@ -761,9 +758,9 @@ ata_read_log(struct ccb_ataio *ataio, uint32_t retries,
 void
 ata_bswap(int8_t *buf, int len)
 {
-	u_int16_t *ptr = (u_int16_t*)(buf + len);
+	uint16_t *ptr = (uint16_t*)(buf + len);
 
-	while (--ptr >= (u_int16_t*)buf)
+	while (--ptr >= (uint16_t*)buf)
 		*ptr = be16toh(*ptr);
 }
 
@@ -1037,7 +1034,7 @@ ata_static_identify_match(caddr_t identbuffer, caddr_t table_entry)
 
 void
 semb_receive_diagnostic_results(struct ccb_ataio *ataio,
-    u_int32_t retries, void (*cbfcnp)(struct cam_periph *, union ccb*),
+    uint32_t retries, void (*cbfcnp)(struct cam_periph *, union ccb*),
     uint8_t tag_action, int pcv, uint8_t page_code,
     uint8_t *data_ptr, uint16_t length, uint32_t timeout)
 {
@@ -1058,7 +1055,7 @@ semb_receive_diagnostic_results(struct ccb_ataio *ataio,
 
 void
 semb_send_diagnostic(struct ccb_ataio *ataio,
-    u_int32_t retries, void (*cbfcnp)(struct cam_periph *, union ccb *),
+    uint32_t retries, void (*cbfcnp)(struct cam_periph *, union ccb *),
     uint8_t tag_action, uint8_t *data_ptr, uint16_t length, uint32_t timeout)
 {
 
@@ -1078,7 +1075,7 @@ semb_send_diagnostic(struct ccb_ataio *ataio,
 
 void
 semb_read_buffer(struct ccb_ataio *ataio,
-    u_int32_t retries, void (*cbfcnp)(struct cam_periph *, union ccb*),
+    uint32_t retries, void (*cbfcnp)(struct cam_periph *, union ccb*),
     uint8_t tag_action, uint8_t page_code,
     uint8_t *data_ptr, uint16_t length, uint32_t timeout)
 {
@@ -1099,7 +1096,7 @@ semb_read_buffer(struct ccb_ataio *ataio,
 
 void
 semb_write_buffer(struct ccb_ataio *ataio,
-    u_int32_t retries, void (*cbfcnp)(struct cam_periph *, union ccb *),
+    uint32_t retries, void (*cbfcnp)(struct cam_periph *, union ccb *),
     uint8_t tag_action, uint8_t *data_ptr, uint16_t length, uint32_t timeout)
 {
 

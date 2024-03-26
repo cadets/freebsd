@@ -25,9 +25,6 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\" $FreeBSD$
-.\"	@(#)3.t	8.1 (Berkeley) 7/27/93
-.\"
 .ds lq ``
 .ds rq ''
 .ds RH "Upgrading a \*(Ps System

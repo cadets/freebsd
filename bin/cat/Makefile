@@ -1,5 +1,3 @@
-#	@(#)Makefile	8.1 (Berkeley) 5/31/93
-# $FreeBSD$
 
 .include <src.opts.mk>
 
@@ -22,7 +20,7 @@ SUBDIR.${MK_TESTS}+= tests
 #LIBADD+=        cap_net
 #CFLAGS+=-DWITH_CASPER
 #.endif
-# Depend on Makefile to rebiuld when WITH_CASPER changes
+# Depend on Makefile to rebuild when WITH_CASPER changes
 cat.o:	Makefile
 
 .include <bsd.prog.mk>

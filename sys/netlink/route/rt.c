@@ -26,10 +26,7 @@
  * SUCH DAMAGE.
  */
 
-#include "opt_netlink.h"
-
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_route.h"
@@ -201,7 +198,7 @@ dump_rc_nhg(struct nl_writer *nw, const struct nhgrp_object *nhg, struct rtmsg *
 		if (rtnh == NULL)
 			return;
 		rtnh->rtnh_flags = 0;
-		rtnh->rtnh_ifindex = wn[i].nh->nh_ifp->if_index;
+		rtnh->rtnh_ifindex = if_getindex(wn[i].nh->nh_ifp);
 		rtnh->rtnh_hops = wn[i].weight;
 		dump_rc_nhop_gw(nw, wn[i].nh);
 		uint32_t rtflags = nhop_get_rtflags(wn[i].nh);
@@ -256,7 +253,7 @@ dump_rc_nhop(struct nl_writer *nw, const struct route_nhop_data *rnd, struct rtm
 		nlattr_add_u32(nw, NL_RTA_EXPIRES, nh_expire - time_uptime);
 
 	/* In any case, fill outgoing interface */
-	nlattr_add_u32(nw, NL_RTA_OIF, nh->nh_ifp->if_index);
+	nlattr_add_u32(nw, NL_RTA_OIF, if_getindex(nh->nh_ifp));
 
 	if (rnd->rnd_weight != RT_DEFAULT_WEIGHT)
 		nlattr_add_u32(nw, NL_RTA_WEIGHT, rnd->rnd_weight);
@@ -559,9 +556,8 @@ dump_rtentry(struct rtentry *rt, void *_arg)
 	IF_DEBUG_LEVEL(LOG_DEBUG3) {
 		char rtbuf[INET6_ADDRSTRLEN + 5];
 		FIB_LOG(LOG_DEBUG3, wa->fibnum, wa->family,
-		    "Dump %s, offset %u, error %d",
-		    rt_print_buf(rt, rtbuf, sizeof(rtbuf)),
-		    wa->nw->offset, error);
+		    "Dump %s, error %d",
+		    rt_print_buf(rt, rtbuf, sizeof(rtbuf)), error);
 	}
 	wa->error = error;
 
@@ -581,7 +577,6 @@ dump_rtable_one(struct netlink_walkargs *wa, uint32_t fibnum, int family)
 
 	FIB_LOG(LOG_DEBUG2, fibnum, family, "End dump, iterated %d dumped %d",
 	    wa->count, wa->dumped);
-	NL_LOG(LOG_DEBUG2, "Current offset: %d", wa->nw->offset);
 }
 
 static int
@@ -753,9 +748,14 @@ finalize_nhop(struct nhop_object *nh, const struct sockaddr *dst, int *perror)
 
 		struct ifaddr *ifa = ifaof_ifpforaddr(gw_sa, nh->nh_ifp);
 		if (ifa == NULL) {
-			NL_LOG(LOG_DEBUG, "Unable to determine ifa, skipping");
-			*perror = EINVAL;
-			return (NULL);
+			/* Try link-level ifa. */
+			gw_sa = &nh->gw_sa;
+			ifa = ifaof_ifpforaddr(gw_sa, nh->nh_ifp);
+			if (ifa == NULL) {
+				NL_LOG(LOG_DEBUG, "Unable to determine ifa, skipping");
+				*perror = EINVAL;
+				return (NULL);
+			}
 		}
 		nhop_set_src(nh, ifa);
 	}

@@ -32,20 +32,6 @@
  * SUCH DAMAGE.
  */
 
-#ifndef lint
-static const char copyright[] =
-"@(#) Copyright (c) 1991, 1993\n\
-	The Regents of the University of California.  All rights reserved.\n";
-#endif /* not lint */
-
-#ifndef lint
-#if 0
-static char sccsid[] = "@(#)look.c	8.2 (Berkeley) 5/4/95";
-#endif
-#endif /* not lint */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * look -- find lines in a sorted list.
  *
@@ -89,7 +75,7 @@ static int	 look(wchar_t *, unsigned char *, unsigned char *);
 static wchar_t	*prepkey(const char *, wchar_t);
 static void	 print_from(wchar_t *, unsigned char *, unsigned char *);
 
-static void usage(void);
+static void usage(void) __dead2;
 
 static struct option longopts[] = {
 	{ "alternative",no_argument,	NULL, 'a' },

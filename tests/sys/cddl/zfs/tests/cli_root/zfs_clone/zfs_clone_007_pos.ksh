@@ -20,14 +20,9 @@
 # CDDL HEADER END
 #
 
-# $FreeBSD$
-
 #
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
-#
-# ident	"@(#)zfs_clone_007_pos.ksh	1.1	09/01/13 SMI"
-#
 . $STF_SUITE/include/libtest.kshlib
 
 ################################################################################

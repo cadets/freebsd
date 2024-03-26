@@ -31,9 +31,6 @@
  *	$NetBSD: fpu.c,v 1.5 2001/07/22 11:29:46 wiz Exp $
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/proc.h>
 #include <sys/systm.h>

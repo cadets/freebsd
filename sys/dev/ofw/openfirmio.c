@@ -1,8 +1,6 @@
 /*	$NetBSD: openfirmio.c,v 1.4 2002/09/06 13:23:19 gehenna Exp $ */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*-
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -41,8 +39,6 @@ __FBSDID("$FreeBSD$");
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)openfirm.c	8.1 (Berkeley) 6/11/93
  *
  */
 

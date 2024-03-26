@@ -26,8 +26,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * The FreeBSD IP packet firewall, main file
  */
@@ -69,6 +67,7 @@ __FBSDID("$FreeBSD$");
 #include <net/route/nhop.h>
 #include <net/pfil.h>
 #include <net/vnet.h>
+#include <net/if_pfsync.h>
 
 #include <netpfil/pf/pf_mtag.h>
 
@@ -1718,6 +1717,10 @@ do {								\
 				PULLUP_TO(hlen, ulp, struct ip);
 				break;
 
+			case IPPROTO_PFSYNC:
+				PULLUP_TO(hlen, ulp, struct pfsync_header);
+				break;
+
 			default:
 				if (V_fw_verbose)
 					printf("IPFW2: IPV6 - Unknown "
@@ -2883,8 +2886,7 @@ do {								\
 					cmd = ACTION_PTR(f);
 					l = f->cmd_len - f->act_ofs;
 					cmdlen = 0;
-					match = 1;
-					break;
+					continue;
 				}
 				/*
 				 * Dynamic entry not found. If CHECK_STATE,

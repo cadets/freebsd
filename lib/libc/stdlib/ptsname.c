@@ -29,11 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-#ifndef lint
-__FBSDID("$FreeBSD$");
-#endif /* not lint */
-
 #include "namespace.h"
 #include <sys/param.h>
 #include <sys/ioctl.h>

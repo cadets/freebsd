@@ -30,9 +30,6 @@
  * changes in ipcrm.c was done by Edwin Groothuis <edwin@FreeBSD.org>
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #define	_WANT_SYSVMSG_INTERNALS

@@ -27,15 +27,11 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	@(#)libkern.h	8.1 (Berkeley) 6/10/93
- * $FreeBSD$
  */
 
 #ifndef _SYS_LIBKERN_H_
 #define	_SYS_LIBKERN_H_
 
-#include <sys/cdefs.h>
 #include <sys/types.h>
 #ifdef _KERNEL
 #include <sys/systm.h>
@@ -114,6 +110,7 @@ static __inline off_t omax(off_t a, off_t b) { return (a > b ? a : b); }
 static __inline off_t omin(off_t a, off_t b) { return (a < b ? a : b); }
 static __inline int abs(int a) { return (a < 0 ? -a : a); }
 static __inline long labs(long a) { return (a < 0 ? -a : a); }
+static __inline int64_t abs64(int64_t a) { return (a < 0 ? -a : a); }
 static __inline quad_t qabs(quad_t a) { return (a < 0 ? -a : a); }
 
 #ifndef RANDOM_FENESTRASX
@@ -132,24 +129,63 @@ void	 arc4rand(void *, u_int, int);
 int	 timingsafe_bcmp(const void *, const void *, size_t);
 void	*bsearch(const void *, const void *, size_t,
 	    size_t, int (*)(const void *, const void *));
-#ifndef	HAVE_INLINE_FFS
-int	 ffs(int);
-#endif
-#ifndef	HAVE_INLINE_FFSL
-int	 ffsl(long);
-#endif
-#ifndef	HAVE_INLINE_FFSLL
-int	 ffsll(long long);
-#endif
-#ifndef	HAVE_INLINE_FLS
-int	 fls(int);
-#endif
-#ifndef	HAVE_INLINE_FLSL
-int	 flsl(long);
-#endif
-#ifndef	HAVE_INLINE_FLSLL
-int	 flsll(long long);
-#endif
+
+/*
+ * MHTODO: remove the 'HAVE_INLINE_FOO' defines once use of these flags has
+ * been purged everywhere. For now we provide them unconditionally.
+ */
+#define	HAVE_INLINE_FFS
+#define	HAVE_INLINE_FFSL
+#define	HAVE_INLINE_FFSLL
+#define	HAVE_INLINE_FLS
+#define	HAVE_INLINE_FLSL
+#define	HAVE_INLINE_FLSLL
+
+static __inline __pure2 int
+ffs(int mask)
+{
+
+	return (__builtin_ffs((u_int)mask));
+}
+
+static __inline __pure2 int
+ffsl(long mask)
+{
+
+	return (__builtin_ffsl((u_long)mask));
+}
+
+static __inline __pure2 int
+ffsll(long long mask)
+{
+
+	return (__builtin_ffsll((unsigned long long)mask));
+}
+
+static __inline __pure2 int
+fls(int mask)
+{
+
+	return (mask == 0 ? 0 :
+	    8 * sizeof(mask) - __builtin_clz((u_int)mask));
+}
+
+static __inline __pure2 int
+flsl(long mask)
+{
+
+	return (mask == 0 ? 0 :
+	    8 * sizeof(mask) - __builtin_clzl((u_long)mask));
+}
+
+static __inline __pure2 int
+flsll(long long mask)
+{
+
+	return (mask == 0 ? 0 :
+	    8 * sizeof(mask) - __builtin_clzll((unsigned long long)mask));
+}
+
 #define	bitcount64(x)	__bitcount64((uint64_t)(x))
 #define	bitcount32(x)	__bitcount32((uint32_t)(x))
 #define	bitcount16(x)	__bitcount16((uint16_t)(x))

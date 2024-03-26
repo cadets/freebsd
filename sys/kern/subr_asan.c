@@ -31,7 +31,6 @@
 #define	SAN_RUNTIME
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 #if 0
 __KERNEL_RCSID(0, "$NetBSD: subr_asan.c,v 1.26 2020/09/10 14:10:46 maxv Exp $");
 #endif
@@ -93,7 +92,10 @@ SYSCTL_INT(_debug_kasan, OID_AUTO, panic_on_violation, CTLFLAG_RDTUN,
     &panic_on_violation, 0,
     "Panic if an invalid access is detected");
 
-static bool kasan_enabled __read_mostly = false;
+#define kasan_enabled (!kasan_disabled)
+static bool kasan_disabled __read_mostly = true;
+SYSCTL_BOOL(_debug_kasan, OID_AUTO, disabled, CTLFLAG_RDTUN | CTLFLAG_NOFETCH,
+    &kasan_disabled, 0, "KASAN is disabled");
 
 /* -------------------------------------------------------------------------- */
 
@@ -137,7 +139,7 @@ kasan_init(void)
 	kasan_md_init();
 
 	/* Now officially enabled. */
-	kasan_enabled = true;
+	kasan_disabled = false;
 }
 
 void
@@ -181,7 +183,7 @@ kasan_code_name(uint8_t code)
 
 #define	REPORT(f, ...) do {				\
 	if (panic_on_violation) {			\
-		kasan_enabled = false;			\
+		kasan_disabled = true;			\
 		panic(f, __VA_ARGS__);			\
 	} else {					\
 		struct stack st;			\

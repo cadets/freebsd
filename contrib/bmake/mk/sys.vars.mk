@@ -1,4 +1,6 @@
-# $Id: sys.vars.mk,v 1.14 2023/02/17 22:32:47 sjg Exp $
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# $Id: sys.vars.mk,v 1.16 2024/02/17 17:26:57 sjg Exp $
 #
 #	@(#) Copyright (c) 2003-2023, Simon J. Gerraty
 #
@@ -128,4 +130,13 @@ M_Onr = Onr
 # If "key" appears more than once, there will be multiple
 # index values use ${M_Index:S,K,key,}:[1] to select only the first.
 M_Index = _:${M_RANGE}:@i@$${"$${_:[$$i]:MK}":?$$i:}@
+
+# mtime of each word - assumed to be a valid pathname
+.if ${.MAKE.LEVEL} < 20230510
+M_mtime = tW:S,^,${STAT:Ustat} -f %m ,:sh
+.else
+# M_mtime_fallback can be =error to throw an error
+# or =0 to use 0, default is to use current time
+M_mtime = mtime${M_mtime_fallback:U}
+.endif
 

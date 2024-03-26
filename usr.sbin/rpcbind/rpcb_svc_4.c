@@ -1,6 +1,5 @@
 /*
  * $NetBSD: rpcb_svc_4.c,v 1.1 2000/06/02 23:15:41 fvdl Exp $
- * $FreeBSD$
  */
 
 /*-
@@ -35,8 +34,6 @@
 /*
  * Copyright (c) 1986 - 1991 by Sun Microsystems, Inc.
  */
-
-/* #ident	"@(#)rpcb_svc_4.c	1.8	93/07/05 SMI" */
 
 /*
  * rpcb_svc_4.c

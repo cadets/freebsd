@@ -36,9 +36,6 @@ __RCSID("$NetBSD: stat.c,v 1.33 2011/01/15 22:54:10 njoly Exp $"
 "$OpenBSD: stat.c,v 1.14 2009/06/24 09:44:25 sobrado Exp $");
 #endif
 #endif
-
-__FBSDID("$FreeBSD$");
-
 #if HAVE_CONFIG_H
 #include "config.h" 
 #else  /* HAVE_CONFIG_H */
@@ -1025,7 +1022,7 @@ format1(const struct stat *st,
 		(void)strcat(lfmt, tmp);
 
 		/*
-		 * For precision of less that nine digits, trim off the
+		 * For precision of less than nine digits, trim off the
 		 * less significant figures.
 		 */
 		for (; prec < 9; prec++)

@@ -28,8 +28,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #define __ELF_WORD_SIZE 32
 
 #include <sys/param.h>
@@ -78,7 +76,7 @@ __FBSDID("$FreeBSD$");
 CTASSERT(sizeof(struct ia32_mcontext) == 640);
 CTASSERT(sizeof(struct ia32_ucontext) == 704);
 CTASSERT(sizeof(struct ia32_sigframe) == 800);
-CTASSERT(sizeof(struct siginfo32) == 64);
+CTASSERT(sizeof(struct __siginfo32) == 64);
 #ifdef COMPAT_FREEBSD4
 CTASSERT(sizeof(struct ia32_freebsd4_mcontext) == 260);
 CTASSERT(sizeof(struct ia32_freebsd4_ucontext) == 324);
@@ -116,7 +114,6 @@ struct sysentvec ia32_freebsd_sysvec = {
 	.sv_elf_core_osabi = ELFOSABI_FREEBSD,
 	.sv_elf_core_abi_vendor = FREEBSD_ABI_VENDOR,
 	.sv_elf_core_prepare_notes = elf32_prepare_notes,
-	.sv_imgact_try	= NULL,
 	.sv_minsigstksz	= MINSIGSTKSZ,
 	.sv_minuser	= FREEBSD32_MINUSER,
 	.sv_maxuser	= FREEBSD32_MAXUSER,
@@ -130,7 +127,8 @@ struct sysentvec ia32_freebsd_sysvec = {
 	.sv_fixlimit	= ia32_fixlimit,
 	.sv_maxssiz	= &ia32_maxssiz,
 	.sv_flags	= SV_ABI_FREEBSD | SV_ASLR | SV_IA32 | SV_ILP32 |
-			    SV_SHP | SV_TIMEKEEP | SV_RNG_SEED_VER | SV_DSO_SIG,
+			    SV_SHP | SV_TIMEKEEP | SV_RNG_SEED_VER |
+			    SV_DSO_SIG | SV_SIGSYS,
 	.sv_set_syscall_retval = ia32_set_syscall_retval,
 	.sv_fetch_syscall_args = ia32_fetch_syscall_args,
 	.sv_syscallnames = freebsd32_syscallnames,
@@ -151,7 +149,6 @@ static Elf32_Brandinfo ia32_brand_info = {
 	.brand		= ELFOSABI_FREEBSD,
 	.machine	= EM_386,
 	.compat_3_brand	= "FreeBSD",
-	.emul_path	= NULL,
 	.interp_path	= "/libexec/ld-elf.so.1",
 	.sysvec		= &ia32_freebsd_sysvec,
 	.interp_newpath	= "/libexec/ld-elf32.so.1",
@@ -167,7 +164,6 @@ static Elf32_Brandinfo ia32_brand_oinfo = {
 	.brand		= ELFOSABI_FREEBSD,
 	.machine	= EM_386,
 	.compat_3_brand	= "FreeBSD",
-	.emul_path	= NULL,
 	.interp_path	= "/usr/libexec/ld-elf.so.1",
 	.sysvec		= &ia32_freebsd_sysvec,
 	.interp_newpath	= "/libexec/ld-elf32.so.1",
@@ -183,7 +179,6 @@ static Elf32_Brandinfo kia32_brand_info = {
 	.brand		= ELFOSABI_FREEBSD,
 	.machine	= EM_386,
 	.compat_3_brand	= "FreeBSD",
-	.emul_path	= NULL,
 	.interp_path	= "/lib/ld.so.1",
 	.sysvec		= &ia32_freebsd_sysvec,
 	.brand_note	= &elf32_kfreebsd_brandnote,

@@ -29,10 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__SCCSID("@(#)exec.c	8.1 (Berkeley) 6/4/93");
-__FBSDID("$FreeBSD$");
-
 #include "namespace.h"
 #include <sys/param.h>
 #include <sys/stat.h>
@@ -140,7 +136,7 @@ execv(const char *name, char * const *argv)
 int
 execvp(const char *name, char * const *argv)
 {
-	return (_execvpe(name, argv, environ));
+	return (execvpe(name, argv, environ));
 }
 
 static int
@@ -292,7 +288,7 @@ execvP(const char *name, const char *path, char * const argv[])
 }
 
 int
-_execvpe(const char *name, char * const argv[], char * const envp[])
+execvpe(const char *name, char * const argv[], char * const envp[])
 {
 	const char *path;
 

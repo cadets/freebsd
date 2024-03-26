@@ -23,8 +23,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 #ifndef _NET80211_IEEE80211_SCAN_H_
 #define _NET80211_IEEE80211_SCAN_H_
@@ -148,6 +146,10 @@ struct ieee80211_scan_state {
 	unsigned long	ss_mindwell;		/* min dwell on channel */
 	unsigned long	ss_maxdwell;		/* max dwell on channel */
 };
+
+#define	IEEE80211_SS_FLAGS_BITS \
+	"\20\1NOPICK\2ACTIVE\3PICK1ST\4BGSCAN\5ONCE\6NOBCAST\7NOJOIN" \
+	"\15GOTPICK"
 
 /*
  * The upper 16 bits of the flags word is used to communicate
@@ -330,7 +332,7 @@ struct ieee80211_scanner {
 	void	(*scan_spare0)(void);
 	void	(*scan_spare1)(void);
 	void	(*scan_spare2)(void);
-	void	(*scan_spare4)(void);
+	void	(*scan_spare3)(void);
 };
 void	ieee80211_scanner_register(enum ieee80211_opmode,
 		const struct ieee80211_scanner *);

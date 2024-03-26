@@ -37,9 +37,6 @@
  * Many thanks to Jon Noack for testing and debugging this driver.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/cpu.h>

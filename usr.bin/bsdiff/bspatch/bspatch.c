@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #ifndef WITHOUT_CAPSICUM
 #include <sys/capsicum.h>
 #endif
@@ -38,6 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <fcntl.h>
 #include <libgen.h>
 #include <limits.h>
+#include <stdckdint.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,15 +65,8 @@ add_off_t(off_t a, off_t b)
 {
 	off_t result;
 
-#if __GNUC__ >= 5 || \
-    (defined(__has_builtin) && __has_builtin(__builtin_add_overflow))
-	if (__builtin_add_overflow(a, b, &result))
+	if (ckd_add(&result, a, b))
 		errx(1, "Corrupt patch");
-#else
-	if ((b > 0 && a > OFF_MAX - b) || (b < 0 && a < OFF_MIN - b))
-		errx(1, "Corrupt patch");
-	result = a + b;
-#endif
 	return result;
 }
 

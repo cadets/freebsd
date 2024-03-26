@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _LINUX_SIGNAL_H_
@@ -33,9 +31,7 @@
 
 int linux_do_sigaction(struct thread *, int, l_sigaction_t *, l_sigaction_t *);
 void siginfo_to_lsiginfo(const siginfo_t *si, l_siginfo_t *lsi, l_int sig);
-int lsiginfo_to_siginfo(struct thread *td, const l_siginfo_t *lsi,
-		siginfo_t *si, int sig);
 int linux_copyin_sigset(struct thread *td, l_sigset_t *, l_size_t, sigset_t *,
-		sigset_t **);
+    sigset_t **);
 
 #endif /* _LINUX_SIGNAL_H_ */

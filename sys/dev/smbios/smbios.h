@@ -25,8 +25,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SMBIOS_H_
@@ -40,6 +38,8 @@
 #define	SMBIOS_OFF	0
 #define	SMBIOS_LEN	4
 #define	SMBIOS_SIG	"_SM_"
+#define	SMBIOS3_LEN	5
+#define	SMBIOS3_SIG	"_SM3_"
 
 struct smbios_eps {
 	uint8_t		anchor_string[4];		/* '_SM_' */
@@ -57,6 +57,19 @@ struct smbios_eps {
 	uint16_t	number_structures;
 	uint8_t		BCD_revision;
 } __packed;
+
+struct smbios3_eps {
+        uint8_t		anchor_string[5];                /* '_SM3_' */
+        uint8_t		checksum;
+        uint8_t		length;
+        uint8_t		major_version;
+        uint8_t		minor_version;
+        uint8_t		docrev;
+        uint8_t		entry_point_revision;
+        uint8_t		reserved;
+        uint32_t	structure_table_max_size;
+        uint64_t	structure_table_address;
+};
 
 struct smbios_structure_header {
 	uint8_t		type;

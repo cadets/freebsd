@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef _SYS__TYPES_H_
@@ -188,6 +186,15 @@ typedef struct {
 	long double __max_align2 __aligned(_Alignof(long double));
 #endif
 } __max_align_t;
+
+/* Types for sys/acl.h */
+typedef __uint32_t	__acl_tag_t;
+typedef __uint32_t	__acl_perm_t;
+typedef __uint16_t	__acl_entry_type_t;
+typedef __uint16_t	__acl_flag_t;
+typedef __uint32_t	__acl_type_t;
+typedef __uint32_t	*__acl_permset_t;
+typedef __uint16_t	*__acl_flagset_t;
 
 typedef	__uint64_t	__dev_t;	/* device number */
 

@@ -69,8 +69,6 @@
 #include <dev/sound/pci/allegro_reg.h>
 #include <dev/sound/pci/allegro_code.h>
 
-SND_DECLARE_FILE("$FreeBSD$");
-
 /* -------------------------------------------------------------------- */
 
 enum {CHANGE=0, CALL=1, INTR=2, BORING=3, NONE=-1};
@@ -1441,10 +1439,10 @@ m3_pci_attach(device_t dev)
 			goto bad;
 		}
 	}
- 	snprintf(status, SND_STATUSLEN, "at %s 0x%jx irq %jd %s",
-	    (sc->regtype == SYS_RES_IOPORT)? "io" : "memory",
+	snprintf(status, SND_STATUSLEN, "%s 0x%jx irq %jd on %s",
+	    (sc->regtype == SYS_RES_IOPORT)? "port" : "mem",
 	    rman_get_start(sc->reg), rman_get_start(sc->irq),
-	    PCM_KLDSTRING(snd_maestro3));
+	    device_get_nameunit(device_get_parent(dev)));
 	if (pcm_setstatus(dev, status)) {
 		device_printf(dev, "attach: pcm_setstatus error\n");
 		goto bad;

@@ -29,9 +29,6 @@
  * Shreyank Amartya <Shreyank.Amartya@amd.com>
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
@@ -139,7 +136,7 @@ static struct resource_spec axgbe_pci_mac_spec[] = {
 	{ -1, 0 }
 };
 
-static pci_vendor_info_t axgbe_vendor_info_array[] =
+static const pci_vendor_info_t axgbe_vendor_info_array[] =
 {
 	PVID(0x1022, 0x1458,  "AMD 10 Gigabit Ethernet Driver"),
 	PVID(0x1022, 0x1459,  "AMD 10 Gigabit Ethernet Driver"),
@@ -1537,6 +1534,7 @@ axgbe_if_detach(if_ctx_t ctx)
 	mac_res[0] = pdata->xgmac_res;
 	mac_res[1] = pdata->xpcs_res;
 
+	phy_if->phy_stop(pdata);
 	phy_if->phy_exit(pdata);
 
 	/* Free Interrupts */
@@ -1608,7 +1606,6 @@ axgbe_pci_stop(if_ctx_t ctx)
 {
 	struct axgbe_if_softc   *sc = iflib_get_softc(ctx);
         struct xgbe_prv_data    *pdata = &sc->pdata;
-	struct xgbe_phy_if	*phy_if = &pdata->phy_if;
 	struct xgbe_hw_if       *hw_if = &pdata->hw_if;
 	int ret;
 
@@ -1622,8 +1619,6 @@ axgbe_pci_stop(if_ctx_t ctx)
 
 	hw_if->disable_tx(pdata);
 	hw_if->disable_rx(pdata);
-
-	phy_if->phy_stop(pdata);
 
 	ret = hw_if->exit(pdata);
 	if (ret)

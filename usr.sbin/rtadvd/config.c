@@ -1,4 +1,3 @@
-/*	$FreeBSD$	*/
 /*	$KAME: config.c,v 1.84 2003/08/05 12:34:23 itojun Exp $	*/
 
 /*-
@@ -1549,5 +1548,4 @@ make_packet(struct rainfo *rai)
 		syslog(LOG_DEBUG, "<%s>: nd_opt_dnssl_len = %d", __func__,
 		    ndopt_dnssl->nd_opt_dnssl_len);
 	}
-	return;
 }

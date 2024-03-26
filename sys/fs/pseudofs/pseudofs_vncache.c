@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-3-Clause
  *
- * Copyright (c) 2001 Dag-Erling Coïdan Smørgrav
+ * Copyright (c) 2001 Dag-Erling Smørgrav
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,8 +29,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_pseudofs.h"
 
 #include <sys/param.h>
@@ -308,7 +306,7 @@ pfs_purge(struct pfs_node *pn)
 	mtx_lock(&pfs_vncache_mutex);
 restart:
 	removed = 0;
-	for (i = 0; i < pfs_vncache_hash; i++) {
+	for (i = 0; i <= pfs_vncache_hash; i++) {
 restart_chain:
 		SLIST_FOREACH(pvd, &pfs_vncache_hashtbl[i], pvd_hash) {
 			if (pn != NULL && pvd->pvd_pn != pn)

@@ -24,9 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
@@ -48,7 +45,7 @@ __FBSDID("$FreeBSD$");
 
 #include <arm/ti/ti_sysc.h>
 
-#include <dev/extres/syscon/syscon.h>
+#include <dev/syscon/syscon.h>
 #include "syscon_if.h"
 
 #include "am335x_pwm.h"

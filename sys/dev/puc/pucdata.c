@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * PCI "universal" communications card driver configuration data (used to
  * match/attach the cards).
@@ -693,6 +691,13 @@ const struct puc_cfg puc_pci_devices[] = {
 	    "Exar XR17V352",
 	    125000000,
 	    PUC_PORT_2S, 0x10, 0, -1,
+	    .config_function = puc_config_exar_pcie
+	},
+
+	{   0x13a8, 0x0354, 0xffff, 0,
+	    "Exar XR17V354",
+	    125000000,
+	    PUC_PORT_4S, 0x10, 0, -1,
 	    .config_function = puc_config_exar_pcie
 	},
 

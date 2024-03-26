@@ -22,8 +22,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #define	__fenv_static
@@ -38,14 +36,6 @@
  * this as a default environment.
  */
 const fenv_t __fe_dfl_env = 0;
-
-#ifdef __riscv_float_abi_soft
-#define __set_env(env, flags, mask, rnd) env = ((flags) | (rnd) << 5)
-#define __env_flags(env)                ((env) & FE_ALL_EXCEPT)
-#define __env_mask(env)                 (0) /* No exception traps. */
-#define __env_round(env)                (((env) >> 5) & _ROUND_MASK)
-#include "fenv-softfloat.h"
-#endif
 
 extern inline int feclearexcept(int __excepts);
 extern inline int fegetexceptflag(fexcept_t *__flagp, int __excepts);

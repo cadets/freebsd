@@ -36,15 +36,10 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- *	from: @(#)trap.c	7.4 (Berkeley) 5/13/91
  */
 
 #include "opt_capsicum.h"
 #include "opt_ktrace.h"
-
-__FBSDID("$FreeBSD$");
-
 #include <sys/capsicum.h>
 #include <sys/ktr.h>
 #include <sys/vmmeter.h>
@@ -147,7 +142,8 @@ syscallenter(struct thread *td)
 	    AUDIT_SYSCALL_ENTER(sa->code, td) ||
 	    !sy_thr_static)) {
 		if (!sy_thr_static) {
-			error = syscall_thread_enter(td, se);
+			error = syscall_thread_enter(td, &se);
+			sy_thr_static = (se->sy_thrcnt & SY_THR_STATIC) != 0;
 			if (error != 0) {
 				td->td_errno = error;
 				goto retval;

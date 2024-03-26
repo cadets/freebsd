@@ -47,8 +47,6 @@
 #include "pin_patch.h"
 #include "pin_patch_realtek.h"
 
-SND_DECLARE_FILE("$FreeBSD$");
-
 static const struct {
 	uint32_t model;
 	uint32_t id;
@@ -338,6 +336,26 @@ hdac_pin_patch(struct hdaa_widget *w)
 			break;
 		case 11:
 			patch_str = "as=3 seq=15 color=Black loc=Left";
+			break;
+		}
+	} else if (id == HDA_CODEC_ALC230 &&
+	    subid == LENOVO_I330_SUBVENDOR) {
+		switch (nid) {
+		case 20:
+			patch_str = "as=1 seq=0 device=Speaker";
+			break;
+		case 33:
+			patch_str = "as=1 seq=15 device=Headphones";
+			break;
+		}
+	} else if (id == HDA_CODEC_ALC269 &&
+	    subid == LENOVO_X230_SUBVENDOR) {
+		switch (nid) {
+		case 21:
+			patch_str = "as=1 seq=15";
+			break;
+		case 24:
+			patch_str = "as=4 seq=15";
 			break;
 		}
 	} else {

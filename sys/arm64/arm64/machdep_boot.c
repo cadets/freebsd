@@ -27,9 +27,7 @@
  */
 
 #include "opt_platform.h"
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+#include "opt_ddb.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -49,6 +47,10 @@ __FBSDID("$FreeBSD$");
 #ifdef FDT
 #include <contrib/libfdt/libfdt.h>
 #include <dev/fdt/fdt_common.h>
+#endif
+
+#ifdef DDB
+#include <ddb/ddb.h>
 #endif
 
 extern int *end;
