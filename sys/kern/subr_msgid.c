@@ -70,14 +70,14 @@ CTASSERT(MAXCPU <= (1 << MSGID_CPUBITS));
 
 /*
  * Assert that if we burned at least MSGID_MAXPPS IDs a second per core, then
- * we have enough message ID space to run for at least 20 years.
+ * we have enough message ID space to run for at least 10 years.
  *
  * NB: To avoid uint64_t overflow at compile time, MSGID_MAXPPS is on the
  * right-hand side of the comparison, rather than the left.
  */
 #define	MSGID_MAXPPS		50000000ULL	/* 50M packets/sec/core */
 #define	MSGID_SECSPERYEAR	(365ULL*24ULL*60ULL*60ULL)
-#define	MSGID_MINYEARS		20ULL
+#define	MSGID_MINYEARS		10ULL
 CTASSERT((MSGID_MINYEARS * MSGID_SECSPERYEAR) <
     ((1ULL << MSGID_COUNTERBITS) / MSGID_MAXPPS));
 

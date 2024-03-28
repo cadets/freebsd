@@ -41,7 +41,7 @@
  * bits to be used as a counter.  See subr_msgid.c for compile-time assertions
  * constraining possible values for these bits.
  */
-#define	MSGID_CPUBITS		9ULL		/* At most 512 CPUs. */
+#define	MSGID_CPUBITS		10ULL		/* At most 1024 CPUs. */
 #define	MSGID_COUNTERBITS	(sizeof(msgid_t)*8ULL - MSGID_CPUBITS)
 #define	MSGID_CPUMASK							\
 	    (((1ULL << MSGID_CPUBITS) - 1ULL) << MSGID_COUNTERBITS)

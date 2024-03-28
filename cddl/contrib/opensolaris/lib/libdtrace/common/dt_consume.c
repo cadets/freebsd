@@ -1611,6 +1611,9 @@ dt_print_immstack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 
 	}
 
+	return (0);
+}
+
 int
 dt_format_stack(dtrace_hdl_t *dtp, caddr_t addr, int depth, int size)
 {

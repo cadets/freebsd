@@ -79,6 +79,7 @@
 #ifdef BHYVE_GDB
 #include "gdb.h"
 #endif
+#include "globals.h"
 #include "hypertrace.h"
 #include "mem.h"
 #include "mevent.h"

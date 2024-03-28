@@ -31,7 +31,7 @@ CFLAGS+= -DHAVE_ISSETUGID
 CFLAGS+=	-D__DTRACE_RUN_BENCHMARKS__
 .endif
 
-.if ${MK_DTRACE_DEBUG_ASAN} != "no"
+.if ${MK_DTRACE_ASAN} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 .elif ${MK_DTRACE_DEBUG_TSAN} != "no"
@@ -44,10 +44,6 @@ LDFLAGS+=	-fsanitize=thread
 #YFLAGS+=	-d
 
 LIBADD=	dtrace ctf elf proc pthread spl xo
-.if ${MK_DTRACE_ASAN} != "no"
-CFLAGS+=	-fsanitize=address -fsanitize=undefined
-LDFLAGS+=	-fsanitize=address -fsanitize=undefined
-.endif
 
 .if ${MK_DTRACE_TESTS} != "no"
 SUBDIR+=	tests

@@ -516,7 +516,7 @@ vtdtr_alloc_virtqueues(struct vtdtr_softc *sc)
 	VQ_ALLOC_INFO_INIT(&info[1], sc->vtdtr_tx_nseg, txq->vtdq_vqintr, sc,
 	    &txq->vtdq_vq, "%s-control TX", device_get_nameunit(dev));
 
-	error = virtio_alloc_virtqueues(dev, 0, 2, info);
+	error = virtio_alloc_virtqueues(dev, 2, info);
 	free(info, M_TEMP);
 
 	return (error);

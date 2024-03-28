@@ -41,9 +41,11 @@
 #define __DTRACED_CONNECTION_H_
 
 #include <sys/types.h>
+
 #include "dtraced.h"
 
 #include <atomic>
+#include <string>
 
 #define DTRACED_FDIDENTLEN             128ull
 

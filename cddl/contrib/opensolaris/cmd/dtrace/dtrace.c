@@ -1543,93 +1543,6 @@ process_prog:
 	return (arg);
 }
 
-/*ARGSUSED*/
-static int
-chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
-{
-	dtrace_actkind_t act;
-	uintptr_t addr;
-
-	if (rec == NULL) {
-		/*
-		 * We have processed the final record; output the newline if
-		 * we're not in quiet mode.
-		 */
-		if (!g_quiet)
-			oprintf("\n");
-
-		return (DTRACE_CONSUME_NEXT);
-	}
-
-	act = rec->dtrd_action;
-	addr = (uintptr_t)data->dtpda_data;
-
-	if (act == DTRACEACT_EXIT) {
-		g_status = *((uint32_t *)addr);
-		return (DTRACE_CONSUME_NEXT);
-	}
-
-	return (DTRACE_CONSUME_THIS);
-}
-
-/*ARGSUSED*/
-static int
-chew(const dtrace_probedata_t *data, void *arg)
-{
-	dtrace_probedesc_t *pd = data->dtpda_pdesc;
-	processorid_t cpu = data->dtpda_cpu;
-	static int heading;
-
-	if (atomic_load(&g_impatient)) {
-		atomic_store(&g_newline, 0);
-		return (DTRACE_CONSUME_ABORT);
-	}
-
-	if (heading == 0) {
-		if (!g_flowindent) {
-			if (!g_quiet) {
-				oprintf("%3s %6s %32s\n",
-				    "CPU", "ID", "FUNCTION:NAME");
-			}
-		} else {
-			oprintf("%3s %-41s\n", "CPU", "FUNCTION");
-		}
-		heading = 1;
-	}
-
-	if (!g_flowindent) {
-		if (!g_quiet) {
-			char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
-
-			(void) snprintf(name, sizeof (name), "%s:%s",
-			    pd->dtpd_func, pd->dtpd_name);
-
-			oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
-		}
-	} else {
-		int indent = data->dtpda_indent;
-		char *name;
-		size_t len;
-
-		if (data->dtpda_flow == DTRACEFLOW_NONE) {
-			len = indent + DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 5;
-			name = alloca(len);
-			(void) snprintf(name, len, "%*s%s%s:%s", indent, "",
-			    data->dtpda_prefix, pd->dtpd_func,
-			    pd->dtpd_name);
-		} else {
-			len = indent + DTRACE_FUNCNAMELEN + 5;
-			name = alloca(len);
-			(void) snprintf(name, len, "%*s%s%s", indent, "",
-			    data->dtpda_prefix, pd->dtpd_func);
-		}
-
-		oprintf("%3d %-41s ", cpu, name);
-	}
-
-	return (DTRACE_CONSUME_THIS);
-}
-
 static void
 setup_tracing(void)
 {
@@ -1670,17 +1583,112 @@ setup_tracing(void)
 	g_pslive = g_psc; /* count for prochandler() */
 }
 
-static void *
-dtc_work(void *arg)
+/*ARGSUSED*/
+static int
+chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 {
-	int done = 0, status;
+	dtrace_actkind_t act;
+	uintptr_t addr;
+
+	if (rec == NULL) {
+		/*
+		 * We have processed the final record; output the newline if
+		 * we're not in quiet mode.
+		 */
+		if (!g_quiet)
+			oprintf("\n");
+
+		return (DTRACE_CONSUME_NEXT);
+	}
+
+	act = rec->dtrd_action;
+	addr = (uintptr_t)data->dtpda_data;
+
+	if (act == DTRACEACT_EXIT) {
+		g_status = *((uint32_t *)addr);
+		return (DTRACE_CONSUME_NEXT);
+	}
+
+	return (DTRACE_CONSUME_THIS);
+}
+
+/*ARGSUSED*/
+static int
+chew(const dtrace_probedata_t *data, void *arg)
+{
+	dtrace_probedesc_t *pd = data->dtpda_pdesc;
+	processorid_t cpu = data->dtpda_cpu;
+	static int heading;
+
+	if (g_impatient) {
+		g_newline = 0;
+		return (DTRACE_CONSUME_ABORT);
+	}
+
+	if (heading == 0) {
+		if (!g_flowindent) {
+			if (!g_quiet) {
+				oprintf("%3s %6s %32s\n",
+				    "CPU", "ID", "FUNCTION:NAME");
+			}
+		} else {
+			oprintf("%3s %-41s\n", "CPU", "FUNCTION");
+		}
+		heading = 1;
+	}
+
+	if (!g_flowindent) {
+		if (dtrace_oformat(g_dtp)) {
+			dtrace_oformat_probe(g_dtp, data, cpu, pd);
+		} else if (!g_quiet) {
+			char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
+
+			(void) snprintf(name, sizeof (name), "%s:%s",
+			    pd->dtpd_func, pd->dtpd_name);
+
+			oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
+		}
+	} else {
+		int indent = data->dtpda_indent;
+		char *name;
+		size_t len;
+
+		if (data->dtpda_flow == DTRACEFLOW_NONE) {
+			len = indent + DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 5;
+			name = alloca(len);
+			(void) snprintf(name, len, "%*s%s%s:%s", indent, "",
+			    data->dtpda_prefix, pd->dtpd_func,
+			    pd->dtpd_name);
+		} else {
+			len = indent + DTRACE_FUNCNAMELEN + 5;
+			name = alloca(len);
+			(void) snprintf(name, len, "%*s%s%s", indent, "",
+			    data->dtpda_prefix, pd->dtpd_func);
+		}
+
+		oprintf("%3d %-41s ", cpu, name);
+	}
+
+	return (DTRACE_CONSUME_THIS);
+}
+
+typedef struct dtrace_workarg {
+	int print_upon_exit;
+} dtrace_workarg_t;
+
+static void *
+dtc_work(void *_arg)
+{
+	int done = 0, status, impatient;
 	dtrace_consumer_t con;
+	dtrace_workarg_t *arg = _arg;
 
 	con.dc_consume_probe = chew;
 	con.dc_consume_rec = chewrec;
 	con.dc_get_buf = NULL;
 	con.dc_put_buf = NULL;
 
+	dtrace_oformat_setup(g_dtp);
 	do {
 		if (!atomic_load(&g_intr) && !done) {
 			dtrace_sleep(g_dtp);
@@ -1696,7 +1704,7 @@ dtc_work(void *arg)
 		}
 
 #ifdef __FreeBSD__
-		if (atomic_load(&g_siginfo)) {
+		if (atomic_load(&g_siginfo) && !dtrace_oformat(g_dtp)) {
 			(void)dtrace_aggregate_print(g_dtp, g_ofp, NULL);
 			atomic_store(&g_siginfo, 0);
 		}
@@ -1739,17 +1747,23 @@ dtc_work(void *arg)
 
 	} while (!done);
 
-	oprintf("\n");
-	if (!atomic_load(&g_impatient)) {
-		if (dtrace_aggregate_print(g_dtp, g_ofp, NULL) == -1 &&
-		    dtrace_errno(g_dtp) != EINTR)
-			dfatal("failed to print aggregations");
+	if (!dtrace_oformat(g_dtp))
+		oprintf("\n");
+
+	impatient = atomic_load(&g_impatient);
+	if (arg != NULL) {
+		if (!impatient &&
+		    (!dtrace_oformat(g_dtp) || arg->print_upon_exit)) {
+			if (dtrace_aggregate_print(g_dtp, g_ofp, NULL) == -1 &&
+			    dtrace_errno(g_dtp) != EINTR)
+				dfatal("failed to print aggregations");
+		}
 	}
 
+	dtrace_oformat_teardown(g_dtp);
 	pthread_mutex_lock(&g_pgplistmtx);
 	pthread_cond_signal(&g_pgpcond);
 	pthread_mutex_unlock(&g_pgplistmtx);
-
 	return (NULL);
 }
 
@@ -1816,6 +1830,7 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 		dtrace_dump_ecbs(pgp);
 
 	if (n_pgps == 0) {
+		dtrace_workarg_t *arg;
 		if (dtrace_program_exec(g_dtp, pgp, &dpi) == -1) {
 			if (atomic_fetch_add(&g_intr, 1))
 				atomic_store(&g_impatient, 1);
@@ -2714,95 +2729,6 @@ bufhandler(const dtrace_bufdata_t *bufdata, void *arg)
 	}
 
 	return (DTRACE_HANDLE_OK);
-}
-
-/*ARGSUSED*/
-static int
-chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
-{
-	dtrace_actkind_t act;
-	uintptr_t addr;
-
-	if (rec == NULL) {
-		/*
-		 * We have processed the final record; output the newline if
-		 * we're not in quiet mode.
-		 */
-		if (!g_quiet)
-			oprintf("\n");
-
-		return (DTRACE_CONSUME_NEXT);
-	}
-
-	act = rec->dtrd_action;
-	addr = (uintptr_t)data->dtpda_data;
-
-	if (act == DTRACEACT_EXIT) {
-		g_status = *((uint32_t *)addr);
-		return (DTRACE_CONSUME_NEXT);
-	}
-
-	return (DTRACE_CONSUME_THIS);
-}
-
-/*ARGSUSED*/
-static int
-chew(const dtrace_probedata_t *data, void *arg)
-{
-	dtrace_probedesc_t *pd = data->dtpda_pdesc;
-	processorid_t cpu = data->dtpda_cpu;
-	static int heading;
-
-	if (g_impatient) {
-		g_newline = 0;
-		return (DTRACE_CONSUME_ABORT);
-	}
-
-	if (heading == 0) {
-		if (!g_flowindent) {
-			if (!g_quiet) {
-				oprintf("%3s %6s %32s\n",
-				    "CPU", "ID", "FUNCTION:NAME");
-			}
-		} else {
-			oprintf("%3s %-41s\n", "CPU", "FUNCTION");
-		}
-		heading = 1;
-	}
-
-	if (!g_flowindent) {
-		if (dtrace_oformat(g_dtp)) {
-			dtrace_oformat_probe(g_dtp, data, cpu, pd);
-		} else if (!g_quiet) {
-			char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
-
-			(void) snprintf(name, sizeof (name), "%s:%s",
-			    pd->dtpd_func, pd->dtpd_name);
-
-			oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
-		}
-	} else {
-		int indent = data->dtpda_indent;
-		char *name;
-		size_t len;
-
-		if (data->dtpda_flow == DTRACEFLOW_NONE) {
-			len = indent + DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 5;
-			name = alloca(len);
-			(void) snprintf(name, len, "%*s%s%s:%s", indent, "",
-			    data->dtpda_prefix, pd->dtpd_func,
-			    pd->dtpd_name);
-		} else {
-			len = indent + DTRACE_FUNCNAMELEN + 5;
-			name = alloca(len);
-			(void) snprintf(name, len, "%*s%s%s", indent, "",
-			    data->dtpda_prefix, pd->dtpd_func);
-		}
-
-		oprintf("%3d %-41s ", cpu, name);
-	}
-
-	return (DTRACE_CONSUME_THIS);
 }
 
 static void
@@ -3825,107 +3751,12 @@ main(int argc, char *argv[])
 	if (g_total == 0 && !g_grabanon && !(g_cflags & DTRACE_C_ZDEFS))
 		dfatal("no probes %s\n", g_cmdc ? "matched" : "specified");
 
-	(void) dtc_work(NULL);
+	dtrace_workarg_t workarg = { print_upon_exit };
+	(void) dtc_work(&workarg);
 	pthread_mutex_lock(&g_dtpmtx);
 	if (g_dtp)
 		dtrace_close(g_dtp);
 	pthread_mutex_unlock(&g_dtpmtx);
-
 	pthread_mutex_destroy(&g_dtpmtx);
-	(void) dtrace_getopt(g_dtp, "flowindent", &opt);
-	g_flowindent = opt != DTRACEOPT_UNSET;
-
-	(void) dtrace_getopt(g_dtp, "grabanon", &opt);
-	g_grabanon = opt != DTRACEOPT_UNSET;
-
-	(void) dtrace_getopt(g_dtp, "quiet", &opt);
-	g_quiet = opt != DTRACEOPT_UNSET;
-
-	(void) dtrace_getopt(g_dtp, "destructive", &opt);
-	if (opt != DTRACEOPT_UNSET)
-		notice("allowing destructive actions\n");
-
-	installsighands();
-
-	/*
-	 * Now that tracing is active and we are ready to consume trace data,
-	 * continue any grabbed or created processes, setting them running
-	 * using the /proc control mechanism inside of libdtrace.
-	 */
-	for (i = 0; i < g_psc; i++)
-		dtrace_proc_continue(g_dtp, g_psv[i]);
-
-	g_pslive = g_psc; /* count for prochandler() */
-
-	dtrace_oformat_setup(g_dtp);
-	do {
-		if (!g_intr && !done)
-			dtrace_sleep(g_dtp);
-
-#ifdef __FreeBSD__
-		/*
-		 * XXX: Supporting SIGINFO with oformat makes little sense, as
-		 * it can't really produce sensible DTrace output.
-		 *
-		 * If needed, we could support it by having an imaginary
-		 * "SIGINFO" probe that we can construct in the output but leave
-		 * it out for now.
-		 */
-		if (g_siginfo && !dtrace_oformat(g_dtp)) {
-			(void)dtrace_aggregate_print(g_dtp, g_ofp, NULL);
-			g_siginfo = 0;
-		}
-#endif
-
-		if (g_newline) {
-			/*
-			 * Output a newline just to make the output look
-			 * slightly cleaner.  Note that we do this even in
-			 * "quiet" mode...
-			 */
-			oprintf("\n");
-			g_newline = 0;
-		}
-
-		if (done || g_intr || (g_psc != 0 && g_pslive == 0)) {
-			done = 1;
-			if (dtrace_stop(g_dtp) == -1)
-				dfatal("couldn't stop tracing");
-		}
-
-		switch (dtrace_work(g_dtp, g_ofp, chew, chewrec, NULL)) {
-		case DTRACE_WORKSTATUS_DONE:
-			done = 1;
-			break;
-		case DTRACE_WORKSTATUS_OKAY:
-			break;
-		default:
-			if (!g_impatient && dtrace_errno(g_dtp) != EINTR)
-				dfatal("processing aborted");
-		}
-
-		if (g_ofp != NULL && fflush(g_ofp) == EOF)
-			clearerr(g_ofp);
-	} while (!done);
-
-	if (!dtrace_oformat(g_dtp))
-		oprintf("\n");
-
-	/*
-	 * Since there is no way to format a probe here and machine-readable
-	 * output makes little sense without explicitly asking for it, we print
-	 * nothing upon Ctrl-C if oformat is specified. If the user wishes to
-	 * get output upon exit, they must write an explicit dtrace:::END probe
-	 * to do so.
-	 */
-	if ((!g_impatient && !dtrace_oformat(g_dtp)) ||
-	    (!g_impatient && print_upon_exit)) {
-		if (dtrace_aggregate_print(g_dtp, g_ofp, NULL) == -1 &&
-		    dtrace_errno(g_dtp) != EINTR)
-			dfatal("failed to print aggregations");
-	}
-
-	dtrace_oformat_teardown(g_dtp);
-	dtrace_close(g_dtp);
 	return (g_status);
 }

@@ -41,6 +41,7 @@
 #include <sysexits.h>
 #include <unistd.h>
 
+#define __maybe_unused(x) __attribute__((unused)) (x)
 #define __cleanup(fn) __attribute__((__cleanup__(fn)))
 
 enum {
@@ -271,7 +272,7 @@ print_help(void)
 int
 main(int argc, const char **argv)
 {
-	int ch, show_all = 0, cleanup_all = 0;
+	int ch, __maybe_unused(show_all) = 0, __maybe_unused(cleanup_all) = 0;
 	__cleanup(freenames) names_t names_to_stat  = { 0, 0 };
 	__cleanup(freenames) names_t names_to_clean = { 0, 0 };
 	int action = -1;

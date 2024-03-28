@@ -422,8 +422,8 @@ MK_CTF:=	no
 .endif
 
 # TODO: Something to make this work with `make makeman` and perhaps cleaner?
-.if !make(showconfig) && ${MK_DTRACE_DEBUG_ASAN} != "no" && ${MK_DTRACE_DEBUG_TSAN} != "no"
-.error ${.newline}ERROR: WITH_DTRACE_DEBUG_ASAN and WITH_DTRACE_DEBUG_TSAN\
+.if !make(showconfig) && ${MK_DTRACE_ASAN} != "no" && ${MK_DTRACE_DEBUG_TSAN} != "no"
+.error ${.newline}ERROR: WITH_DTRACE_ASAN and WITH_DTRACE_DEBUG_TSAN\
 can not be set together.
 .endif
 

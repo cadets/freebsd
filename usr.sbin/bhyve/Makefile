@@ -12,7 +12,6 @@ PACKAGE=	bhyve
 MAN=	bhyve.8
 
 BHYVE_SYSDIR?=${SRCTOP}
-BHYVE_SRCDIR?=${.CURDIR}
 
 .PATH:	${.CURDIR}/${MACHINE_CPUARCH}	\
 	${SRCTOP}/sys/libkern		\
@@ -35,9 +34,6 @@ SRCS=	\
 	ctl_util.c		\
 	hda_codec.c		\
 	hypertrace.c		\
-	inout.c			\
-	ioapic.c		\
-	kernemu_dev.c		\
 	iov.c			\
 	mem.c			\
 	mevent.c		\
@@ -70,13 +66,8 @@ SRCS=	\
 	usb_emul.c		\
 	usb_mouse.c		\
 	virtio.c		\
-	vga.c			\
 	vmgenc.c		\
-	xmsr.c			\
-	spinup_ap.c		\
-	iov.c			\
 	vmexit.c		\
-	vmgenc.c		\
 	bhyve_provider.d
 
 LDFLAGS+= -l proc -l ctf -l elf -l z -l rtld_db -l pthread -l util

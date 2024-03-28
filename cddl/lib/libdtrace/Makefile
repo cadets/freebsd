@@ -8,20 +8,21 @@ SHLIBDIR?=	/lib
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/lib/libgen/common
 
-CXXFLAGS+=	-Werror				\
-		-Wall				\
-		-Wextra				\
-		-Wpedantic			\
-		-Wno-gnu-include-next		\
-		-Wno-nullability-extension	\
-		-Wno-gcc-compat			\
-		-Wno-unknown-pragmas		\
-		-Wno-c11-extensions		\
-		-Wno-zero-length-array		\
-		-Wno-gnu-anonymous-struct	\
-		-Wno-nested-anon-types		\
-		-Wno-c99-extensions		\
-		-Wno-gnu-zero-variadic-macro-arguments 
+CXXFLAGS+=	-Werror					\
+		-Wall					\
+		-Wextra					\
+		-Wpedantic				\
+		-Wno-gnu-include-next			\
+		-Wno-nullability-extension		\
+		-Wno-gcc-compat				\
+		-Wno-unknown-pragmas			\
+		-Wno-c11-extensions			\
+		-Wno-zero-length-array			\
+		-Wno-gnu-anonymous-struct		\
+		-Wno-nested-anon-types			\
+		-Wno-c99-extensions			\
+		-Wno-gnu-zero-variadic-macro-arguments  \
+		-Wno-variadic-macros
 
 PACKAGE=	dtrace
 LIB_CXX=	dtrace
@@ -177,11 +178,6 @@ DSRCS+=		regs_aarch64.d
 .endif
 .if ${MK_DTRACE_BENCHMARKS} != "no"
 CFLAGS+=	-D__DTRACE_RUN_BENCHMARKS__
-.endif
-
-.if ${MK_DTRACE_DEBUG_ASAN} != "no"
-CFLAGS+=	-fsanitize=undefined
-LDFLAGS+=	-fsanitize=undefined
 .endif
 
 .if ${MK_DTRACE_OPTIMIZED} != "no" && ${MACHINE_ARCH} != "mips" && \
