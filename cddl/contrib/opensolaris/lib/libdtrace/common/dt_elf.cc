@@ -2275,7 +2275,6 @@ HyperTraceELFParser::parseElfEcbDesc(dt_elf_ref_t ecbref, int newFD,
 	auto *eecb = (dt_elf_ecbdesc_t *)data->d_buf;
 	auto ecbKey = Var<dtrace_ecbdesc_t *, dt_elf_ref_t>(
 	    static_cast<dt_elf_ref_t>(elf_ndxscn(scn)));
-	//auto *ecb = Get<dtrace_ecbdesc_t *>(ecbMap[ecbKey]);
 	dtrace_ecbdesc_t *ecb;
 	if (!ecbMap.contains(ecbKey)) {
 		ecb = (dtrace_ecbdesc_t *)dt_zalloc(dtp,
@@ -2703,14 +2702,13 @@ HyperTraceELFParser::toProgram(dtrace_prog_t *oldpgp)
 		auto sName = String(name);
 		if (sName == sIdTable) {
 			Elf_Data *data = elf_getdata(scn, NULL);
-			// XXX: Clean up formatting here...
 			if (data == NULL) {
 				setErrorMessage(
 				    "elf_getdata(%s (%d), %s): failed: %s",
 				    newFilename.c_str(), newFD, idTable,
 				    elf_errmsg(-1));
-				return (
-				    makeError(nullptr, E_HYPERTRACE_ELFPARSE));
+				return (makeError(nullptr,
+				    E_HYPERTRACE_ELFPARSE));
 			}
 
 			/*
