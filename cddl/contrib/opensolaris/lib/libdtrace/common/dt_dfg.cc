@@ -81,7 +81,7 @@ DFGNode::DFGNode(dtrace_hdl_t *_dtp, dtrace_prog_t *pgp,
 }
 
 void
-get_node_data(dif_instr_t instr, DFGNodeData &data)
+getNodeData(dif_instr_t instr, DFGNodeData &data)
 {
 	uint8_t opcode = DIF_INSTR_OP(instr);
 
@@ -205,7 +205,7 @@ DFGNode::getInstruction(void) const
 }
 
 static bool
-dt_usite_uses_stack(DFGNode *n)
+usiteUsesStack(DFGNode *n)
 {
 	dif_instr_t instr;
 	uint8_t op;
@@ -231,7 +231,7 @@ dt_usite_uses_stack(DFGNode *n)
 }
 
 static bool
-dt_usite_contains_var(DFGNode *n, DFGNodeData &data)
+usiteContainsVar(DFGNode *n, DFGNodeData &data)
 {
 	dif_instr_t instr;
 	uint16_t v, var;
@@ -344,7 +344,7 @@ dt_usite_contains_var(DFGNode *n, DFGNodeData &data)
 }
 
 static bool
-dt_usite_contains_reg(DFGNode *n, DFGNode *curnode, uint8_t rd,
+usiteContainsReg(DFGNode *n, DFGNode *curnode, uint8_t rd,
     int *r1, int *r2)
 {
 	dif_instr_t instr = 0;
@@ -495,7 +495,7 @@ HyperTraceLinker::updateNodesInBBForVar(BasicBlock *bb, DFGNodeData &data,
 		if (n->uidx < bb->start || n->uidx > bb->end)
 			continue;
 
-		if (dt_usite_contains_var(n, data)) {
+		if (usiteContainsVar(n, data)) {
 			n->varDefs.insert(curnode);
 		}
 
@@ -558,7 +558,7 @@ HyperTraceLinker::updateNodesInBBForStack(Vec<BasicBlock *> &bb_path,
 			continue;
 		}
 
-		if (dt_usite_uses_stack(n)) {
+		if (usiteUsesStack(n)) {
 			auto stackId = getStack(bb_path, n);
 			assert(stackId != -1);
 			n->stacks[stackId].nodesOnStack.push_back(curnode);
@@ -588,7 +588,7 @@ HyperTraceLinker::updateNodesInBBForReg(dtrace_difo_t *difo, BasicBlock *bb,
 	curinstr = curnode->getInstruction();
 	curop = DIF_INSTR_OP(curinstr);
 
-	if (dt_usite_contains_reg(curnode, curnode, 0, &r1, &r2)) {
+	if (usiteContainsReg(curnode, curnode, 0, &r1, &r2)) {
 		assert(r1 == 1 || r2 == 1);
 		if (r1 == 1) {
 			curnode->r1Defs.insert(r0node);
@@ -622,7 +622,7 @@ HyperTraceLinker::updateNodesInBBForReg(dtrace_difo_t *difo, BasicBlock *bb,
 		if (n->uidx < bb->start || n->uidx > bb->end)
 			continue;
 
-		if (dt_usite_contains_reg(n, curnode, rd, &r1, &r2)) {
+		if (usiteContainsReg(n, curnode, rd, &r1, &r2)) {
 			assert(r1 == 1 || r2 == 1);
 			if (r1 == 1 && *seen_typecast == 0) {
 				n->r1Defs.insert(curnode);
@@ -661,7 +661,7 @@ HyperTraceLinker::updateNodesInBBForReg(dtrace_difo_t *difo, BasicBlock *bb,
 }
 
 static void
-dt_compute_active_varregs(uint8_t *active_varregs, size_t n_varregs,
+computeActiveVarRegs(uint8_t *active_varregs, size_t n_varregs,
     DFGNode *n)
 {
 	uint8_t r1, r2, rd;
@@ -838,7 +838,7 @@ HyperTraceLinker::updateActiveVarRegs(uint8_t active_varregs[DIF_DIR_NREGS],
 		 * Compute which registers are being activated or deactivated
 		 * with this node.
 		 */
-		dt_compute_active_varregs(active_varregs, DIF_DIR_NREGS, n);
+		computeActiveVarRegs(active_varregs, DIF_DIR_NREGS, n);
 
 		bool keep_going = false;
 		for (auto i = 0; i < DIF_DIR_NREGS + 2; i++)
@@ -884,7 +884,7 @@ HyperTraceLinker::updateActiveVarRegs(uint8_t active_varregs[DIF_DIR_NREGS],
 }
 
 static void
-remove_basicBlocks(BasicBlock *bb,
+removeBasicBlocks(BasicBlock *bb,
     HashMap<size_t, BasicBlock *> &bb_map, Vec<BasicBlock *> &bb_path)
 {
 	BasicBlock *parent_BasicBlock;
@@ -931,7 +931,7 @@ remove_basicBlocks(BasicBlock *bb,
 	}
 
 	if (remove)
-		remove_basicBlocks(parent_BasicBlock, bb_map, bb_path);
+		removeBasicBlocks(parent_BasicBlock, bb_map, bb_path);
 }
 
 void
@@ -986,7 +986,7 @@ HyperTraceLinker::updateDFG(dtrace_difo_t *difo, DFGNode *n,
 			return;
 
 		if (redefined || bb->children.empty())
-			remove_basicBlocks(bb, bb_map, bb_path);
+			removeBasicBlocks(bb, bb_map, bb_path);
 
 		if ((data.kind == DT_NKIND_REG && var_redefined == false) ||
 		    !redefined) {
@@ -1009,7 +1009,7 @@ HyperTraceLinker::updateDFG(dtrace_difo_t *difo, DFGNode *n,
 }
 
 static BasicBlock *
-dt_node_find_bb(BasicBlock *root, uint_t ins_idx)
+nodeFindBasicBlock(BasicBlock *root, uint_t ins_idx)
 {
 	std::stack<BasicBlock *> bb_stack;
 	USet<size_t> visited;
@@ -1096,7 +1096,7 @@ HyperTraceLinker::computeDFG(dtrace_ecbdesc_t *edp, dtrace_difo_t *difo)
 	 * that we are going to need.
 	 */
 	for (uint_t i = 0; i < difo->dtdo_len; i++) {
-		auto node_BasicBlock = dt_node_find_bb(
+		auto node_BasicBlock = nodeFindBasicBlock(
 		    static_cast<BasicBlock *>(difo->dtdo_bb), i);
 		assert(node_BasicBlock != nullptr);
 		dfgNodes.push_back(std::make_unique<DFGNode>(dtp, pgp, edp,
@@ -1116,7 +1116,7 @@ HyperTraceLinker::computeDFG(dtrace_ecbdesc_t *edp, dtrace_difo_t *difo)
 			continue;
 		instr = n->getInstruction();
 
-		get_node_data(instr, n->nodeData);
+		getNodeData(instr, n->nodeData);
 		updateDFG(difo, n, it);
 	}
 
