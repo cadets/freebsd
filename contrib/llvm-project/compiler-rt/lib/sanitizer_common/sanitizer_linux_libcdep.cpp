@@ -53,10 +53,10 @@
 #define pthread_getattr_np pthread_attr_get_np
 // The MAP_NORESERVE define has been removed in FreeBSD 11.x, and even before
 // that, it was never implemented. So just define it to zero.
-#undef MAP_NORESERVE
-#define MAP_NORESERVE 0
-extern const Elf_Auxinfo *__elf_aux_vector;
-#endif
+#    undef MAP_NORESERVE
+#    define MAP_NORESERVE 0
+extern const Elf_Auxinfo *__elf_aux_vector __attribute__ ((weak));
+#  endif
 
 #if SANITIZER_NETBSD
 #include <sys/sysctl.h>
