@@ -1774,7 +1774,7 @@ TypeInference::inferNode(DFGNode *n)
 		/*
 		 *     subr : t1 -> t2 ... -> tn -> t
 		 *  stack[0] : t1    stack[1] : t2     ...
-		 *  stack[n] : tm        m = stacklen - 1
+		 *  stack[n-1] : tn        m = stacklen - 1
 		 *                m >= n
 		 * ----------------------------------------
 		 *       call subr, %r1 => %r1 : t
@@ -2213,8 +2213,8 @@ TypeInference::inferNode(DFGNode *n)
 				    v2tf(ovar->dtdv_tf)->name().c_str());
 
 			if (v2tf(dif_var->dtdv_tf)
-				->getTypename(dif_var->dtdv_ctfid, buf,
-				    sizeof(buf)) != ((char *)buf))
+			    ->getTypename(dif_var->dtdv_ctfid, buf,
+			    sizeof(buf)) != ((char *)buf))
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): failed getting "
 				    "type name %ld: %s",
@@ -2223,8 +2223,8 @@ TypeInference::inferNode(DFGNode *n)
 				    v2tf(dif_var->dtdv_tf)->getErrMsg());
 
 			if (v2tf(ovar->dtdv_tf)
-				->getTypename(ovar->dtdv_ctfid, buf,
-				    sizeof(var_type)) != ((char *)var_type))
+			    ->getTypename(ovar->dtdv_ctfid, buf,
+			    sizeof(var_type)) != ((char *)var_type))
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): failed getting "
 				    "type name %ld: %s",
@@ -2283,7 +2283,7 @@ TypeInference::inferNode(DFGNode *n)
 		memset(mip, 0, sizeof(ctf_membinfo_t));
 
 		if (v2tf(dif_var->dtdv_tf)
-			->getMembInfo(dif_var->dtdv_ctfid, dn1->sym, mip) == 0)
+		    ->getMembInfo(dif_var->dtdv_ctfid, dn1->sym, mip) == 0)
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): failed to get "
 			    "member info: %s",
@@ -2314,8 +2314,8 @@ TypeInference::inferNode(DFGNode *n)
 				    dn1->ctfid, dn1->tf->getErrMsg());
 
 			if (v2tf(dif_var->dtdv_tf)
-				->getTypename(dif_var->dtdv_ctfid, var_type,
-				    sizeof(var_type)) != (char *)var_type)
+			    ->getTypename(dif_var->dtdv_ctfid, var_type,
+			    sizeof(var_type)) != (char *)var_type)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): failed getting "
 				    "type_name of %d: %s",
@@ -2334,8 +2334,8 @@ TypeInference::inferNode(DFGNode *n)
 				    dst_type[insid].c_str(), ktf->getErrMsg());
 
 			if (v2tf(dif_var->dtdv_tf)
-				->typeIsCompatibleWith(dst_ctfid, dn1->tf,
-				    dn1->ctfid) == 0)
+			    ->typeIsCompatibleWith(dst_ctfid, dn1->tf,
+			    dn1->ctfid) == 0)
 				dt_set_progerr(dtp, pgp,
 				    "inferNode(%s, %zu@%p): types %s "
 				    "(variable field) and %s "
