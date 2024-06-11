@@ -1404,6 +1404,8 @@ TypeInference::inferNode(DFGNode *n)
 		dif_var = linkerContext.getVarFromVarVec(var, DIFV_SCOPE_GLOBAL,
 		    DIFV_KIND_SCALAR);
 
+		// XXX(dstolfa): Probably fine to assert this?
+		assert(dn1 == nullptr);
 		if (dn1 == nullptr) {
 			if (isBuiltinVariable(var)) {
 				setBuiltinType(n, var, 0);
