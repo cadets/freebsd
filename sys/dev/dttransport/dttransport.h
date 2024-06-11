@@ -28,6 +28,8 @@
 #ifndef _DTTRANSPORT_H_
 #define _DTTRANSPORT_H_
 
+#include <sys/types.h>
+
 #define DTT_MAXDATALEN 2048ul
 
 #define	DTT_ELF			1

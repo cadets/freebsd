@@ -103,6 +103,9 @@ SECAUDIT=	audit.h \
 SECAUDITPACKAGE=	libbsm
 SECAUDITDIR=	${INCLUDEDIR}/security/audit
 
+.PATH: ${SRCTOP}/sys/dev/dttransport
+INCS+=	dttransport.h
+
 .PATH:	${SRCTOP}/sys/cam
 CAM=	cam.h \
 	cam_ccb.h \
