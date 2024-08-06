@@ -1432,28 +1432,25 @@ TypeInference::inferNode(DFGNode *n)
 		dif_var = linkerContext.getVarFromVarVec(var, DIFV_SCOPE_GLOBAL,
 		    DIFV_KIND_SCALAR);
 
-		// XXX(dstolfa): Probably fine to assert this?
 		assert(dn1 == nullptr);
-		if (dn1 == nullptr) {
-			if (isBuiltinVariable(var)) {
-				setBuiltinType(n, var, 0);
-				TYPING_LOG_DEFAULT(opcode, n);
-				return (n->dType);
-			} else if (dif_var == nullptr) {
-				fprintf(stderr,
-				    "inferNode(%s, %zu@%p): variable %d and "
-				    "dn1 don't exist\n",
-				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
-				    var);
-				return (-1);
-			} else {
-				n->ctfid = dif_var->dtdv_ctfid;
-				n->tf = v2tf(dif_var->dtdv_tf);
-				n->dType = dif_var->dtdv_type.dtdt_kind;
-				n->sym = dif_var->dtdv_sym;
-				TYPING_LOG_DEFAULT(opcode, n);
-				return (n->dType);
-			}
+		if (isBuiltinVariable(var)) {
+			setBuiltinType(n, var, 0);
+			TYPING_LOG_DEFAULT(opcode, n);
+			return (n->dType);
+		} else if (dif_var == nullptr) {
+			fprintf(stderr,
+			    "inferNode(%s, %zu@%p): variable %d and "
+			    "dn1 don't exist\n",
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
+			    var);
+			return (-1);
+		} else {
+			n->ctfid = dif_var->dtdv_ctfid;
+			n->tf = v2tf(dif_var->dtdv_tf);
+			n->dType = dif_var->dtdv_type.dtdt_kind;
+			n->sym = dif_var->dtdv_sym;
+			TYPING_LOG_DEFAULT(opcode, n);
+			return (n->dType);
 		}
 
 		if (dif_var != nullptr) {
