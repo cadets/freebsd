@@ -574,6 +574,34 @@ static std::unordered_map<uint8_t, String> insname = {
 	    n->tf->getTypename(n->ctfid).value_or("UNDEFINED").c_str(), \
 	    n->tf->name().c_str(), n->sym ? n->sym : "none", (void *)n->mip)
 
+dtrace_difv_t *
+TypeInference::findVariableFromNodeDefs(NodeSet &defs)
+{
+	for (auto defn : defs) {
+		uint8_t op = DIF_INSTR_OP(defn->Instruction());
+		if (op == DIF_OP_ADD || op == DIF_OP_MUL) {
+			// Check if either of the two registers lead to a DIF
+			// variable.
+			auto d1 = findVariableFromNodeDefs(defn->r1Defs);
+			auto d2 = findVariableFromNodeDefs(defn->r2Defs);
+			return (d1 ? d1 : d2);
+		} else if (op == DIF_OP_LDGS || op == DIF_OP_LDTS ||
+		    op == DIF_OP_LDLS) {
+			// Find the actual variable.
+			uint16_t id;
+			int scope, kind;
+			getVariableInfo(defn->Instruction(), &id, &scope,
+			    &kind);
+			return (linkerContext.getVarFromVarVec(id, scope, kind));
+		} else {
+			// If we encounter an unexpected instruction, it means
+			// there can't possibly be a variable at the root of it.
+			return (nullptr);
+		}
+	}
+	return (nullptr);
+}
+
 /*
  * This is the main part of the type inference algorithm.
  */
@@ -2016,30 +2044,6 @@ TypeInference::inferNode(DFGNode *n)
 
 			n->mip = mip;
 			n->tf = dn1->tf;
-#if 0
-			n->ctfid =
-			    dn1 == dn1 ? mip->ctm_type : dn1->ctfid;
-			n->dType =
-			    dn1 == dn1 ? DIF_TYPE_CTF : dn1->dType;
-#endif
-			/*
-			 * FIXME(dstolfa): Is this correct??
-			 * The above's idea is actually to compare data_dn1 ==
-			 * dn1 rather than dn1 == dn1 (bug). However, I'm not
-			 * entirely sure that we need to, because a pattern such
-			 * as:
-			 *
-			 * usetx ..., %r1
-			 * typecast ..., %r1
-			 * ...
-			 * ret %r1
-			 *
-			 * will never actually carry around a symbol in the
-			 * node, so if we have the symbol, that means that the
-			 * typecast instruction wasn't the one that actually
-			 * defined the node, so we can't end up with data_dn1 !=
-			 * dn1, and therefore this should just work.
-			 */
 			n->ctfid = mip->ctm_type;
 			n->dType = DIF_TYPE_CTF;
 		} else {
@@ -2161,101 +2165,62 @@ TypeInference::inferNode(DFGNode *n)
 			return (n->dType);
 		}
 
-		/*
-		 * Make sure all of the variable definitions match up, pick one
-		 * and check that it's a CTF type.
-		 *
-		 * FIXME(dstolfa): Doing something like foo[0].snd = foo->bar;
-		 * can cause the "not within a variable" if a stx happens on
-		 * something that had an `add` instruction later on, e.g. giving
-		 * an offset into the variable. This needs to be fixed.
-		 */
-		dif_var = nullptr;
-		for (auto dif_var : n->varSources) {
-			dtrace_difv_t *ovar = dif_var;
-
-			if (ovar == nullptr)
-				continue;
-
-			if (dif_var->dtdv_id != ovar->dtdv_id ||
-			    dif_var->dtdv_scope != ovar->dtdv_scope ||
-			    dif_var->dtdv_kind != ovar->dtdv_kind) {
-				dt_set_progerr(dtp, pgp,
-				    "inferNode(%s, %zu@%p): node has a "
-				    "mismatch in varsources: "
-				    "(%u, %u, %u) != (%u, %u, %u)",
-				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
-				    dif_var->dtdv_id, dif_var->dtdv_scope,
-				    dif_var->dtdv_kind, ovar->dtdv_id,
-				    ovar->dtdv_scope, ovar->dtdv_kind);
-			}
-
-			if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_CTF)
-				dt_set_progerr(dtp, pgp,
-				    "inferNode(%s, %zu@%p): instruction only "
-				    "makes sense on CTF variable types, got %d",
-				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
-				    dif_var->dtdv_type.dtdt_kind);
-
-			if (dif_var->dtdv_type.dtdt_kind !=
-			    ovar->dtdv_type.dtdt_kind)
-				dt_set_progerr(dtp, pgp,
-				    "inferNode(%s, %zu@%p): node has a "
-				    "mismatch in variable types: %d != %d",
-				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
-				    dif_var->dtdv_type.dtdt_kind,
-				    ovar->dtdv_type.dtdt_kind);
-
-			if (dif_var->dtdv_tf != ovar->dtdv_tf)
-				dt_set_progerr(dtp, pgp,
-				    "inferNode(%s, %zu@%p): node has a "
-				    "mismatch in variable typefiles: %s != %s",
-				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
-				    v2tf(dif_var->dtdv_tf)->name().c_str(),
-				    v2tf(ovar->dtdv_tf)->name().c_str());
-
-			if (v2tf(dif_var->dtdv_tf)
-			    ->getTypename(dif_var->dtdv_ctfid, buf,
-			    sizeof(buf)) != ((char *)buf))
-				dt_set_progerr(dtp, pgp,
-				    "inferNode(%s, %zu@%p): failed getting "
-				    "type name %ld: %s",
-				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
-				    dif_var->dtdv_ctfid,
-				    v2tf(dif_var->dtdv_tf)->getErrMsg());
-
-			if (v2tf(ovar->dtdv_tf)
-			    ->getTypename(ovar->dtdv_ctfid, buf,
-			    sizeof(var_type)) != ((char *)var_type))
-				dt_set_progerr(dtp, pgp,
-				    "inferNode(%s, %zu@%p): failed getting "
-				    "type name %ld: %s",
-				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
-				    ovar->dtdv_ctfid,
-				    v2tf(ovar->dtdv_tf)->getErrMsg());
-
-			if (dif_var->dtdv_ctfid != ovar->dtdv_ctfid) {
-				dt_set_progerr(dtp, pgp,
-				    "inferNode(%s, %zu@%p): node has a "
-				    "mismatch in varsource types: %s != %s",
-				    insname[opcode].c_str(), n->uidx, (void *)n->difo,
-				    buf, var_type);
-			}
-		}
-
-		if (dif_var == nullptr)
+		// Find the variable and ensure that their types match up.
+		// XXX(dstolfa): We don't actually check against all the
+		// possible paths, and instead just work with varsources. This
+		// is technically wrong, but it will do for the prototype.
+		dif_var = TypeInference::findVariableFromNodeDefs(n->r1Defs);
+		if (dif_var == nullptr) {
 			dt_set_progerr(dtp, pgp,
 			    "inferNode(%s, %zu@%p): register [%%r%d] "
 			    "is not within a variable",
 			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
 			    n->getRD());
-
-		if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_CTF)
+		}
+		if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_CTF) {
 			dt_set_progerr(dtp, pgp,
-			    "inferNode(%s, %zu@%p): variable %zu is not of "
-			    "a CTF type",
+			    "inferNode(%s, %zu@%p): instruction only "
+			    "makes sense on CTF variable types, got %d",
 			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
-			    dif_var->dtdv_id);
+			    dif_var->dtdv_type.dtdt_kind);
+		}
+		if (v2tf(dif_var->dtdv_tf)
+		    ->getTypename(dif_var->dtdv_ctfid, buf,
+		    sizeof(var_type)) != ((char *)var_type))
+			dt_set_progerr(dtp, pgp,
+			    "inferNode(%s, %zu@%p): failed getting "
+			    "type name %ld: %s",
+			    insname[opcode].c_str(), n->uidx, (void *)n->difo,
+			    dif_var->dtdv_ctfid, v2tf(dif_var->dtdv_tf)->getErrMsg());
+		for (auto var : n->varSources) {
+			if (v2tf(var->dtdv_tf)
+			    ->getTypename(var->dtdv_ctfid, buf,
+			    sizeof(var_type)) != ((char *)buf))
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): failed getting "
+				    "type name %ld: %s",
+				    insname[opcode].c_str(), n->uidx,
+				    (void *)n->difo, var->dtdv_ctfid,
+				    v2tf(var->dtdv_tf)->getErrMsg());
+
+			// We don't need to compare the variables against each
+			// other because if they're equal fo dif_var, they will
+			// be equal to each other.
+			if (!TypeInference::varEqualCTF(dif_var, var)) {
+				dt_set_progerr(dtp, pgp,
+				    "inferNode(%s, %zu@%p): node has a "
+				    "mismatch in variable sources with "
+				    "inferred variable: (%u, %u, %u) : %s@%s !="
+				    " (%u, %u, %u) : %s@%s",
+				    insname[opcode].c_str(), n->uidx,
+				    (void *)n->difo, dif_var->dtdv_id,
+				    dif_var->dtdv_scope, var_type,
+				    n->tf->name().c_str(), dif_var->dtdv_kind,
+				    var->dtdv_id, var->dtdv_scope,
+				    var->dtdv_kind, buf,
+				    v2tf(var->dtdv_tf)->name().c_str());
+			}
+		}
 
 		ctf_id_t varkind =
 		    v2tf(dif_var->dtdv_tf)->getKind(dif_var->dtdv_ctfid);

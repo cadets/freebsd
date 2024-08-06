@@ -79,6 +79,7 @@ class TypeInference {
 
     private:
 	void setErrorMessage(const char *, ...);
+	dtrace_difv_t *findVariableFromNodeDefs(NodeSet &);
 	int inferNode(DFGNode *);
 	int inferSubr(DFGNode *, NodeVec *);
 	int inferVar(DFGNode *, dtrace_difv_t *);
@@ -92,6 +93,15 @@ class TypeInference {
 	int ctfTypeCompare(Typefile *, ctf_id_t, Typefile *, ctf_id_t);
 	ctf_membinfo_t *getMipFromSymbol(DFGNode *);
 	ctf_membinfo_t *getMipByOffset(Typefile *, ctf_id_t, uint64_t);
+
+	static bool varEqualCTF(dtrace_difv_t *v1, dtrace_difv_t *v2) {
+		return (v1->dtdv_id == v2->dtdv_id &&
+		    v1->dtdv_scope == v2->dtdv_scope &&
+		    v1->dtdv_kind == v2->dtdv_kind &&
+		    v1->dtdv_type.dtdt_kind == v2->dtdv_type.dtdt_kind &&
+		    v1->dtdv_tf == v2->dtdv_tf &&
+		    v1->dtdv_ctfid == v2->dtdv_ctfid);
+	}
 
     public:
 	TypeInference(HyperTraceLinker &, dtrace_hdl_t *, dtrace_prog_t *);
