@@ -192,6 +192,7 @@ YFLAGS+=-d
 LIBADD=	ctf elf proc pthread rtld_db crypto xo
 .if ${MK_DTRACE_ASAN} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
+CXXFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 .endif
 
