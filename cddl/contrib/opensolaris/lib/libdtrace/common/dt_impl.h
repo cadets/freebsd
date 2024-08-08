@@ -448,6 +448,9 @@ struct dtrace_hdl {
  * compiler.  The DT_INT_* macro relies upon "int" being at index 0 in the
  * _dtrace_ints_* tables in dt_open.c; the others are also set up there.
  */
+
+#define	DT_OBJECT_D(dtp)	((dtp)->dt_ddefs->dm_name)
+
 #define	DT_INT_CTFP(dtp)	((dtp)->dt_ints[0].did_ctfp)
 #define	DT_INT_OBJECT(dtp)	((dtp)->dt_ints[0].did_object)
 #define	DT_INT_TYPE(dtp)	((dtp)->dt_ints[0].did_type)

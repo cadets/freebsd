@@ -306,27 +306,22 @@ HyperTraceLinker::insertVar(dtrace_difo_t *difo, uint16_t varid, uint8_t scope,
 
 	assert(var->dtdv_ctfid == CTF_ERR);
 	memcpy(var, difv, sizeof(dtrace_difv_t));
-	dt_module_t *d_mod = dt_module_lookup_by_name(dtp, "D");
-	assert(d_mod != NULL);
-	ctf_file_t *d_ctfp = dt_module_getctf(dtp, d_mod);
-	assert(d_ctfp != NULL);
-	if (difv->dtdv_ctfp != d_ctfp) {
+	if (strcmp(difv->dtdv_object, DT_OBJECT_D(dtp)) != 0) {
 		var->dtdv_ctfid = CTF_ERR;
-		var->dtdv_sym = NULL;
 		var->dtdv_type.dtdt_kind =
 		    DIF_TYPE_BOTTOM; /* can be anything */
 		var->dtdv_type.dtdt_size = 0;
-		var->dtdv_stack = NULL;
 		var->dtdv_tf = NULL;
 		var->dtdv_storedtype = difv->dtdv_storedtype;
 	} else {
 		var->dtdv_ctfid = difv->dtdv_ctfid;
-		var->dtdv_sym = NULL;
 		var->dtdv_type = difv->dtdv_type;
-		var->dtdv_stack = NULL;
 		var->dtdv_tf = dt_typefile_D();
 		var->dtdv_storedtype = difv->dtdv_storedtype;
 	}
+	var->dtdv_stack = NULL;
+	var->dtdv_sym = NULL;
+
 	_HYPERTRACE_LOG_LINKER(
 	    "inserting variable = {varid=%u, scope=%d, kind=%d}\n", varid,
 	    scope, kind);
@@ -382,26 +377,19 @@ HyperTraceLinker::insertVar(dtrace_difv_t *difv)
 
 	assert(var->dtdv_ctfid == CTF_ERR);
 	memcpy(var, difv, sizeof(dtrace_difv_t));
-	dt_module_t *d_mod = dt_module_lookup_by_name(dtp, "D");
-	assert(d_mod != NULL);
-	ctf_file_t *d_ctfp = dt_module_getctf(dtp, d_mod);
-	assert(d_ctfp != NULL);
-	if (difv->dtdv_ctfp != d_ctfp) {
+	if (strcmp(difv->dtdv_object, DT_OBJECT_D(dtp)) != 0) {
 		var->dtdv_ctfid = CTF_ERR;
-		var->dtdv_sym = NULL;
 		var->dtdv_type.dtdt_kind = DIF_TYPE_BOTTOM;
 		var->dtdv_type.dtdt_size = 0;
-		var->dtdv_stack = NULL;
 		var->dtdv_tf = NULL;
-		var->dtdv_storedtype = difv->dtdv_type;
 	} else {
 		var->dtdv_ctfid = difv->dtdv_ctfid;
-		var->dtdv_sym = NULL;
 		var->dtdv_type = difv->dtdv_type;
-		var->dtdv_stack = NULL;
 		var->dtdv_tf = dt_typefile_D();
-		var->dtdv_storedtype = difv->dtdv_type;
 	}
+	var->dtdv_sym = NULL;
+	var->dtdv_stack = NULL;
+	var->dtdv_storedtype = difv->dtdv_type;
 	_HYPERTRACE_LOG_LINKER(
 	    "inserting variable = {varid=%u, scope=%d, kind=%d}\n",
 	    difv->dtdv_id, difv->dtdv_scope, difv->dtdv_kind);
