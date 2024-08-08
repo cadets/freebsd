@@ -93,6 +93,7 @@ typedef struct dt_typedef {
 
 typedef struct dt_intdesc {
 	const char *did_name;	/* string name of the integer type */
+	const char *did_object;	/* object name of CTF container for this type */
 	ctf_file_t *did_ctfp;	/* CTF container for this type reference */
 	ctf_id_t did_type;	/* CTF type reference for this type */
 	uintmax_t did_limit;	/* maximum positive value held by type */
@@ -448,18 +449,22 @@ struct dtrace_hdl {
  * _dtrace_ints_* tables in dt_open.c; the others are also set up there.
  */
 #define	DT_INT_CTFP(dtp)	((dtp)->dt_ints[0].did_ctfp)
+#define	DT_INT_OBJECT(dtp)	((dtp)->dt_ints[0].did_object)
 #define	DT_INT_TYPE(dtp)	((dtp)->dt_ints[0].did_type)
 
 #define	DT_FUNC_CTFP(dtp)	((dtp)->dt_ddefs->dm_ctfp)
 #define	DT_FUNC_TYPE(dtp)	((dtp)->dt_type_func)
 
 #define	DT_FPTR_CTFP(dtp)	((dtp)->dt_ddefs->dm_ctfp)
+#define	DT_FPTR_OBJECT(dtp)	((dtp)->dt_ddefs->dm_name)
 #define	DT_FPTR_TYPE(dtp)	((dtp)->dt_type_fptr)
 
 #define	DT_STR_CTFP(dtp)	((dtp)->dt_ddefs->dm_ctfp)
+#define	DT_STR_OBJECT(dtp)	((dtp)->dt_ddefs->dm_name)
 #define	DT_STR_TYPE(dtp)	((dtp)->dt_type_str)
 
 #define	DT_DYN_CTFP(dtp)	((dtp)->dt_ddefs->dm_ctfp)
+#define	DT_DYN_OBJECT(dtp)	((dtp)->dt_ddefs->dm_name)
 #define	DT_DYN_TYPE(dtp)	((dtp)->dt_type_dyn)
 
 #define	DT_STACK_CTFP(dtp)	((dtp)->dt_ddefs->dm_ctfp)

@@ -148,6 +148,7 @@ dt_decl_pop(void)
 	dsp->ds_decl = NULL;
 	free(dsp->ds_ident);
 	dsp->ds_ident = NULL;
+	dsp->ds_object = NULL;
 	dsp->ds_ctfp = NULL;
 	dsp->ds_type = CTF_ERR;
 	dsp->ds_class = DT_DC_DEFAULT;
@@ -465,13 +466,17 @@ dt_decl_sou(uint_t kind, char *name)
 	dt_decl_t *ddp = dt_decl_spec(kind, name);
 	char n[DT_TYPE_NAMELEN];
 	ctf_file_t *ctfp;
+	const char *object;
 	ctf_id_t type;
 	uint_t flag;
 
-	if (yypcb->pcb_idepth != 0)
+	if (yypcb->pcb_idepth != 0) {
 		ctfp = yypcb->pcb_hdl->dt_cdefs->dm_ctfp;
-	else
+		object = yypcb->pcb_hdl->dt_cdefs->dm_name;
+	} else {
 		ctfp = yypcb->pcb_hdl->dt_ddefs->dm_ctfp;
+		object = yypcb->pcb_hdl->dt_ddefs->dm_name;
+	}
 
 	if (yypcb->pcb_dstack.ds_next != NULL)
 		flag = CTF_ADD_NONROOT;
@@ -499,7 +504,7 @@ dt_decl_sou(uint_t kind, char *name)
 	ddp->dd_ctfp = ctfp;
 	ddp->dd_type = type;
 
-	dt_scope_push(ctfp, type);
+	dt_scope_push(object, ctfp, type);
 	return (ddp);
 }
 
@@ -613,6 +618,7 @@ dt_decl_member(dt_node_t *dnp)
 			    ctf_errmsg(ctf_errno(dsp->ds_ctfp)));
 		}
 
+		dtt.dtt_object = dsp->ds_object;
 		dtt.dtt_ctfp = dsp->ds_ctfp;
 		dt_node_free(dnp);
 	}
@@ -628,6 +634,7 @@ dt_decl_member(dt_node_t *dnp)
 
 		dtt.dtt_type = ctf_add_type_cp(dsp->ds_ctfp,
 		    dtt.dtt_ctfp, dtt.dtt_type);
+		dtt.dtt_object = dsp->ds_object;
 		dtt.dtt_ctfp = dsp->ds_ctfp;
 		dtt.dtt_copied_ctf = 1;
 
@@ -663,13 +670,17 @@ dt_decl_enum(char *name)
 	dt_decl_t *ddp = dt_decl_spec(CTF_K_ENUM, name);
 	char n[DT_TYPE_NAMELEN];
 	ctf_file_t *ctfp;
+	const char *object;
 	ctf_id_t type;
 	uint_t flag;
 
-	if (yypcb->pcb_idepth != 0)
+	if (yypcb->pcb_idepth != 0) {
 		ctfp = yypcb->pcb_hdl->dt_cdefs->dm_ctfp;
-	else
+		object = yypcb->pcb_hdl->dt_cdefs->dm_name;
+	} else {
 		ctfp = yypcb->pcb_hdl->dt_ddefs->dm_ctfp;
+		object = yypcb->pcb_hdl->dt_ddefs->dm_name;
+	}
 
 	if (yypcb->pcb_dstack.ds_next != NULL)
 		flag = CTF_ADD_NONROOT;
@@ -689,7 +700,7 @@ dt_decl_enum(char *name)
 	ddp->dd_ctfp = ctfp;
 	ddp->dd_type = type;
 
-	dt_scope_push(ctfp, type);
+	dt_scope_push(object, ctfp, type);
 	return (ddp);
 }
 
@@ -784,7 +795,8 @@ dt_decl_enumerator(char *s, dt_node_t *dnp)
 	yyintdecimal = 0;
 
 	dnp = dt_node_int(value);
-	dt_node_type_assign(dnp, dsp->ds_ctfp, dsp->ds_type, B_FALSE);
+	dt_node_type_assign(dnp, dsp->ds_object, dsp->ds_ctfp, dsp->ds_type,
+	    B_FALSE);
 
 	if ((inp = malloc(sizeof (dt_idnode_t))) == NULL)
 		longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
@@ -803,6 +815,7 @@ dt_decl_enumerator(char *s, dt_node_t *dnp)
 
 	idp->di_iarg = inp;
 	idp->di_ctfp = dsp->ds_ctfp;
+	idp->di_object = dsp->ds_object;
 	idp->di_type = dsp->ds_type;
 }
 
@@ -939,6 +952,7 @@ dt_decl_type(dt_decl_t *ddp, dtrace_typeinfo_t *tip)
 			tip->dtt_type = ctf_add_type_cp(dmp->dm_ctfp,
 			    tip->dtt_ctfp, tip->dtt_type);
 			tip->dtt_ctfp = dmp->dm_ctfp;
+			tip->dtt_object = dmp->dm_name;
 			tip->dtt_copied_ctf = 1;
 
 			if (tip->dtt_type == CTF_ERR ||
@@ -1064,6 +1078,7 @@ dt_scope_create(dt_scope_t *dsp)
 	dsp->ds_next = NULL;
 	dsp->ds_ident = NULL;
 	dsp->ds_ctfp = NULL;
+	dsp->ds_object = NULL;
 	dsp->ds_type = CTF_ERR;
 	dsp->ds_class = DT_DC_DEFAULT;
 	dsp->ds_enumval = -1;
@@ -1084,7 +1099,7 @@ dt_scope_destroy(dt_scope_t *dsp)
 }
 
 void
-dt_scope_push(ctf_file_t *ctfp, ctf_id_t type)
+dt_scope_push(const char *object, ctf_file_t *ctfp, ctf_id_t type)
 {
 	dt_scope_t *rsp = &yypcb->pcb_dstack;
 	dt_scope_t *dsp = malloc(sizeof (dt_scope_t));
@@ -1096,6 +1111,7 @@ dt_scope_push(ctf_file_t *ctfp, ctf_id_t type)
 	dsp->ds_next = rsp->ds_next;
 	dsp->ds_ident = rsp->ds_ident;
 	dsp->ds_ctfp = ctfp;
+	dsp->ds_object = object;
 	dsp->ds_type = type;
 	dsp->ds_class = rsp->ds_class;
 	dsp->ds_enumval = rsp->ds_enumval;
@@ -1125,6 +1141,7 @@ dt_scope_pop(void)
 	rsp->ds_next = dsp->ds_next;
 	rsp->ds_ident = dsp->ds_ident;
 	rsp->ds_ctfp = dsp->ds_ctfp;
+	rsp->ds_object = dsp->ds_object;
 	rsp->ds_type = dsp->ds_type;
 	rsp->ds_class = dsp->ds_class;
 	rsp->ds_enumval = dsp->ds_enumval;

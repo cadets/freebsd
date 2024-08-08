@@ -108,7 +108,8 @@ dt_idcook_sign(dt_node_t *dnp, dt_ident_t *idp,
 		}
 	}
 
-	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
+	dt_node_type_assign(dnp, idp->di_object, idp->di_ctfp, idp->di_type,
+	    B_FALSE);
 }
 
 /*
@@ -153,6 +154,7 @@ dt_idcook_assc(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 		 */
 		if (!(idp->di_flags & DT_IDFLG_DECL)) {
 			idp->di_ctfp = DT_DYN_CTFP(yypcb->pcb_hdl);
+			idp->di_object = DT_DYN_OBJECT(yypcb->pcb_hdl);
 			idp->di_type = DT_DYN_TYPE(yypcb->pcb_hdl);
 		}
 
@@ -173,7 +175,8 @@ dt_idcook_assc(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 		if (argc != 0)
 			isp->dis_args[argc - 1].dn_list = NULL;
 
-		dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
+		dt_node_type_assign(dnp, idp->di_object, idp->di_ctfp,
+		    idp->di_type, B_FALSE);
 
 	} else {
 		dt_idcook_sign(dnp, idp, argc, args,
@@ -252,9 +255,11 @@ dt_idcook_func(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 
 		if (idp->di_kind == DT_IDENT_AGGFUNC) {
 			idp->di_ctfp = DT_DYN_CTFP(dtp);
+			idp->di_object = DT_DYN_OBJECT(dtp);
 			idp->di_type = DT_DYN_TYPE(dtp);
 		} else {
 			idp->di_ctfp = dtt.dtt_ctfp;
+			idp->di_object = dtt.dtt_object;
 			idp->di_type = dtt.dtt_type;
 		}
 
@@ -285,6 +290,7 @@ dt_idcook_func(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 
 			if (strcmp(p1, "@") == 0 || strcmp(p1, "...") == 0) {
 				isp->dis_args[i].dn_ctfp = NULL;
+				isp->dis_args[i].dn_object = NULL;
 				isp->dis_args[i].dn_type = CTF_ERR;
 				if (*p1 == '.')
 					isp->dis_varargs = i;
@@ -315,8 +321,8 @@ dt_idcook_func(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 				    p1, dtrace_errmsg(dtp, dtrace_errno(dtp)));
 			}
 
-			dt_node_type_assign(&isp->dis_args[i], dtt.dtt_ctfp,
-			    dtt.dtt_type, B_FALSE);
+			dt_node_type_assign(&isp->dis_args[i], dtt.dtt_object,
+			    dtt.dtt_ctfp, dtt.dtt_type, B_FALSE);
 		}
 	}
 
@@ -405,6 +411,7 @@ dt_idcook_args(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *ap)
 			longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
 
 		dt_node_type_assign(dnp,
+		    prp->pr_argv[ap->dn_value].dtt_object,
 		    prp->pr_argv[ap->dn_value].dtt_ctfp,
 		    prp->pr_argv[ap->dn_value].dtt_type,
 		    prp->pr_argv[ap->dn_value].dtt_flags & DTT_FL_USER ?
@@ -434,10 +441,11 @@ dt_idcook_args(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *ap)
 		 */
 		dnp->dn_ident->di_data = xidp->di_data;
 		dnp->dn_ident->di_ctfp = xidp->di_ctfp;
+		dnp->dn_ident->di_object = xidp->di_object;
 		dnp->dn_ident->di_type = xidp->di_type;
 
-		dt_node_type_assign(dnp, DT_DYN_CTFP(dtp), DT_DYN_TYPE(dtp),
-		    B_FALSE);
+		dt_node_type_assign(dnp, DT_DYN_OBJECT(dtp), DT_DYN_CTFP(dtp),
+		    DT_DYN_TYPE(dtp), B_FALSE);
 
 	} else {
 		xyerror(D_ARGS_XLATOR, "translator for %s[%lld] from %s to %s "
@@ -481,9 +489,11 @@ dt_idcook_regs(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *ap)
 	}
 
 	idp->di_ctfp = dtt.dtt_ctfp;
+	idp->di_object = dtt.dtt_object;
 	idp->di_type = dtt.dtt_type;
 
-	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
+	dt_node_type_assign(dnp, idp->di_object, idp->di_ctfp, idp->di_type,
+	    B_FALSE);
 }
 
 /*ARGSUSED*/
@@ -502,10 +512,12 @@ dt_idcook_type(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 		}
 
 		idp->di_ctfp = dtt.dtt_ctfp;
+		idp->di_object = dtt.dtt_object;
 		idp->di_type = dtt.dtt_type;
 	}
 
-	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
+	dt_node_type_assign(dnp, idp->di_object, idp->di_ctfp, idp->di_type,
+	    B_FALSE);
 }
 
 /*ARGSUSED*/
@@ -513,7 +525,8 @@ static void
 dt_idcook_thaw(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 {
 	if (idp->di_ctfp != NULL && idp->di_type != CTF_ERR)
-		dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
+		dt_node_type_assign(dnp, idp->di_object, idp->di_ctfp,
+		    idp->di_type, B_FALSE);
 }
 
 static void
@@ -940,6 +953,7 @@ dt_ident_create(const char *name, ushort_t kind, ushort_t flags, uint_t id,
 	idp->di_iarg = iarg;
 	idp->di_data = NULL;
 	idp->di_ctfp = NULL;
+	idp->di_object = NULL;
 	idp->di_type = CTF_ERR;
 	idp->di_next = NULL;
 	idp->di_gen = gen;
@@ -1038,9 +1052,11 @@ dt_ident_cook(dt_node_t *dnp, dt_ident_t *idp, dt_node_t **pargp)
 }
 
 void
-dt_ident_type_assign(dt_ident_t *idp, ctf_file_t *fp, ctf_id_t type)
+dt_ident_type_assign(dt_ident_t *idp, const char *object, ctf_file_t *fp,
+    ctf_id_t type)
 {
 	idp->di_ctfp = fp;
+	idp->di_object = object;
 	idp->di_type = type;
 }
 

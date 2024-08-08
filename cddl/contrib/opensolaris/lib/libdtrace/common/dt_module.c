@@ -1079,6 +1079,7 @@ dt_module_extern(dtrace_hdl_t *dtp, dt_module_t *dmp,
 
 	idp->di_data = sip;
 	idp->di_ctfp = tip->dtt_ctfp;
+	idp->di_object = tip->dtt_object;
 	idp->di_type = tip->dtt_type;
 
 	return (idp);
@@ -1676,6 +1677,7 @@ dtrace_symbol_type(dtrace_hdl_t *dtp, const GElf_Sym *symp,
 		if (idp == NULL)
 			return (dt_set_errno(dtp, EDT_NOSYM));
 
+		tip->dtt_object = idp->di_object;
 		tip->dtt_ctfp = idp->di_ctfp;
 		tip->dtt_type = idp->di_type;
 
@@ -1683,6 +1685,7 @@ dtrace_symbol_type(dtrace_hdl_t *dtp, const GElf_Sym *symp,
 		if (dt_module_getctf(dtp, dmp) == NULL)
 			return (-1); /* errno is set for us */
 
+		tip->dtt_object = dmp->dm_name;
 		tip->dtt_ctfp = dmp->dm_ctfp;
 		tip->dtt_type = ctf_lookup_by_symbol(dmp->dm_ctfp, sip->dts_id);
 
@@ -1692,6 +1695,7 @@ dtrace_symbol_type(dtrace_hdl_t *dtp, const GElf_Sym *symp,
 		}
 
 	} else {
+		tip->dtt_object = DT_FPTR_OBJECT(dtp);
 		tip->dtt_ctfp = DT_FPTR_CTFP(dtp);
 		tip->dtt_type = DT_FPTR_TYPE(dtp);
 	}

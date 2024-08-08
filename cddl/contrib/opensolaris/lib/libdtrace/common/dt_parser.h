@@ -50,6 +50,7 @@ extern "C" {
 
 typedef struct dt_node {
 	ctf_file_t *dn_ctfp;	/* CTF type container for node's type */
+	const char *dn_object;	/* object name for the CTF container */
 	ctf_id_t dn_type;	/* CTF type reference for node's type */
 	uchar_t dn_kind;	/* node kind (DT_NODE_*, defined below) */
 	uchar_t dn_flags;	/* node flags (DT_NF_*, defined below) */
@@ -206,7 +207,7 @@ extern int dt_node_is_pointer(const dt_node_t *);
 extern int dt_node_is_void(const dt_node_t *);
 extern int dt_node_is_bottom(const dt_node_t *);
 extern int dt_node_is_ptrcompat(const dt_node_t *, const dt_node_t *,
-	ctf_file_t **, ctf_id_t *);
+	const char **, ctf_file_t **, ctf_id_t *);
 extern int dt_node_is_argcompat(const dt_node_t *, const dt_node_t *);
 extern int dt_node_is_posconst(const dt_node_t *);
 extern int dt_node_is_actfunc(const dt_node_t *);
@@ -245,7 +246,8 @@ extern void dt_node_list_free(dt_node_t **);
 extern void dt_node_link_free(dt_node_t **);
 
 extern void dt_node_attr_assign(dt_node_t *, dtrace_attribute_t);
-extern void dt_node_type_assign(dt_node_t *, ctf_file_t *, ctf_id_t, boolean_t);
+extern void dt_node_type_assign(dt_node_t *, const char *, ctf_file_t *,
+    ctf_id_t, boolean_t);
 extern void dt_node_type_propagate(const dt_node_t *, dt_node_t *);
 extern const char *dt_node_addr_type_name(const dt_node_t *);
 extern const char *dt_node_type_name(const dt_node_t *, char *, size_t);

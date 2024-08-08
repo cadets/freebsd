@@ -337,7 +337,7 @@ dt_probe_discover(dt_provider_t *pvp, const dtrace_probedesc_t *pdp)
 			dtt.dtt_type = CTF_ERR;
 		} else {
 			dt_node_type_assign(prp->pr_nargv[adp->dtargd_mapping],
-			    dtt.dtt_ctfp, dtt.dtt_type,
+			    dtt.dtt_object, dtt.dtt_ctfp, dtt.dtt_type,
 			    dtt.dtt_flags & DTT_FL_USER ? B_TRUE : B_FALSE);
 		}
 
@@ -356,8 +356,8 @@ dt_probe_discover(dt_provider_t *pvp, const dtrace_probedesc_t *pdp)
 			dtt.dtt_ctfp = NULL;
 			dtt.dtt_type = CTF_ERR;
 		} else {
-			dt_node_type_assign(prp->pr_xargv[i], dtt.dtt_ctfp,
-			    dtt.dtt_type, B_FALSE);
+			dt_node_type_assign(prp->pr_xargv[i], dtt.dtt_object,
+			    dtt.dtt_ctfp, dtt.dtt_type, B_FALSE);
 		}
 
 		prp->pr_mapping[i] = adp->dtargd_mapping;
@@ -656,7 +656,8 @@ dt_probe_tag(dt_probe_t *prp, uint_t argn, dt_node_t *dnp)
 	bzero(dnp, sizeof (dt_node_t));
 	dnp->dn_kind = DT_NODE_TYPE;
 
-	dt_node_type_assign(dnp, dtt.dtt_ctfp, dtt.dtt_type, B_FALSE);
+	dt_node_type_assign(dnp, dtt.dtt_object, dtt.dtt_ctfp, dtt.dtt_type,
+	    B_FALSE);
 	dt_node_attr_assign(dnp, _dtrace_defattr);
 
 	return (dnp);

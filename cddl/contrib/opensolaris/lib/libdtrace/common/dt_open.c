@@ -798,12 +798,12 @@ static const dt_typedef_t _dtrace_typedefs_64[] = {
  * cache when a new dtrace client open occurs.  Values are set by dtrace_open().
  */
 static const dt_intdesc_t _dtrace_ints_32[] = {
-{ "int", NULL, CTF_ERR, 0x7fffffffULL },
-{ "unsigned int", NULL, CTF_ERR, 0xffffffffULL },
-{ "long", NULL, CTF_ERR, 0x7fffffffULL },
-{ "unsigned long", NULL, CTF_ERR, 0xffffffffULL },
-{ "long long", NULL, CTF_ERR, 0x7fffffffffffffffULL },
-{ "unsigned long long", NULL, CTF_ERR, 0xffffffffffffffffULL }
+{ "int", NULL, NULL, CTF_ERR, 0x7fffffffULL },
+{ "unsigned int", NULL, NULL, CTF_ERR, 0xffffffffULL },
+{ "long", NULL, NULL, CTF_ERR, 0x7fffffffULL },
+{ "unsigned long", NULL, NULL, CTF_ERR, 0xffffffffULL },
+{ "long long", NULL, NULL, CTF_ERR, 0x7fffffffffffffffULL },
+{ "unsigned long long", NULL, NULL, CTF_ERR, 0xffffffffffffffffULL }
 };
 
 /*
@@ -811,12 +811,12 @@ static const dt_intdesc_t _dtrace_ints_32[] = {
  * cache when a new dtrace client open occurs.  Values are set by dtrace_open().
  */
 static const dt_intdesc_t _dtrace_ints_64[] = {
-{ "int", NULL, CTF_ERR, 0x7fffffffULL },
-{ "unsigned int", NULL, CTF_ERR, 0xffffffffULL },
-{ "long", NULL, CTF_ERR, 0x7fffffffffffffffULL },
-{ "unsigned long", NULL, CTF_ERR, 0xffffffffffffffffULL },
-{ "long long", NULL, CTF_ERR, 0x7fffffffffffffffULL },
-{ "unsigned long long", NULL, CTF_ERR, 0xffffffffffffffffULL }
+{ "int", NULL, NULL, CTF_ERR, 0x7fffffffULL },
+{ "unsigned int", NULL, NULL, CTF_ERR, 0xffffffffULL },
+{ "long", NULL, NULL, CTF_ERR, 0x7fffffffffffffffULL },
+{ "unsigned long", NULL, NULL, CTF_ERR, 0xffffffffffffffffULL },
+{ "long long", NULL, NULL, CTF_ERR, 0x7fffffffffffffffULL },
+{ "unsigned long long", NULL, NULL, CTF_ERR, 0xffffffffffffffffULL }
 };
 
 /*
@@ -1686,6 +1686,7 @@ alloc:
 			    dtrace_errmsg(dtp, dtrace_errno(dtp)));
 			return (set_open_errno(dtp, errp, dtp->dt_errno));
 		}
+		dtp->dt_ints[i].did_object = dtt.dtt_object;
 		dtp->dt_ints[i].did_ctfp = dtt.dtt_ctfp;
 		dtp->dt_ints[i].did_type = dtt.dtt_type;
 	}

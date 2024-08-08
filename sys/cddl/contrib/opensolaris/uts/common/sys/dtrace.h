@@ -521,7 +521,8 @@ typedef struct dtrace_difv {
 	 */
 	ctf_id_t dtdv_ctfid;		/* variable CTF identifier */
 	char *dtdv_sym;			/* variable symbol name (if exists) */
-	ctf_file_t *dtdv_ctfp;		/* variable ctfp */
+	char dtdv_object[DTRACE_MODNAMELEN]; /* object name for CTF container */
+	ctf_file_t *dtdv_ctfp;		/* variable CTF container */
 	void *dtdv_tf;			/* variable's typefile */
 	void *dtdv_stack; 		/* expected stack (if applicable) */
 	dtrace_diftype_t dtdv_storedtype;	/* variable type (see above) */

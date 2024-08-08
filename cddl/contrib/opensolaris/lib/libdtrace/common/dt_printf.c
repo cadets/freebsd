@@ -748,6 +748,7 @@ dt_pfdict_create(dtrace_hdl_t *dtp)
 		pdi->pdi_buckets[h] = pfc;
 
 		dtt.dtt_ctfp = NULL;
+		dtt.dtt_object = NULL;
 		dtt.dtt_type = CTF_ERR;
 
 		/*
@@ -1137,7 +1138,8 @@ dt_printf_validate(dtrace_hdl_t *dtp, dt_pfargv_t *pfv, uint_t flags,
 		xyerror(D_TYPE_ERR, "failed to lookup agg type %s\n", aggtype);
 
 	bzero(&aggnode, sizeof (aggnode));
-	dt_node_type_assign(&aggnode, dtt.dtt_ctfp, dtt.dtt_type, B_FALSE);
+	dt_node_type_assign(&aggnode, dtt.dtt_object, dtt.dtt_ctfp,
+	    dtt.dtt_type, B_FALSE);
 
 	for (i = 0, j = 0; i < pfv->pfv_argc; i++, pfd = pfd->pfd_next) {
 		const dt_pfconv_t *pfc = pfd->pfd_conv;
