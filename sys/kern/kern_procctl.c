@@ -27,11 +27,14 @@
  * SUCH DAMAGE.
  */
 
+#include "opt_ktrace.h"
+
 #include <sys/param.h>
 #include <sys/_unrhdr.h>
 #include <sys/systm.h>
 #include <sys/capsicum.h>
 #include <sys/lock.h>
+#include <sys/malloc.h>
 #include <sys/mman.h>
 #include <sys/mutex.h>
 #include <sys/priv.h>
@@ -334,7 +337,7 @@ reap_kill_sched(struct reap_kill_tracker_head *tracker, struct proc *p2)
 		PROC_UNLOCK(p2);
 		return;
 	}
-	_PHOLD_LITE(p2);
+	_PHOLD(p2);
 	PROC_UNLOCK(p2);
 	t = malloc(sizeof(struct reap_kill_tracker), M_TEMP, M_WAITOK);
 	t->parent = p2;
@@ -460,7 +463,7 @@ reap_kill_subtree_once(struct thread *td, struct proc *p, struct proc *reaper,
 			} else {
 				PROC_LOCK(p2);
 				if ((p2->p_flag2 & P2_WEXIT) == 0) {
-					_PHOLD_LITE(p2);
+					_PHOLD(p2);
 					p2->p_flag2 |= P2_REAPKILLED;
 					PROC_UNLOCK(p2);
 					w->target = p2;
@@ -542,6 +545,8 @@ reap_kill(struct thread *td, struct proc *p, void *data)
 
 	rk = data;
 	sx_assert(&proctree_lock, SX_LOCKED);
+	if (CAP_TRACING(td))
+		ktrcapfail(CAPFAIL_SIGNAL, &rk->rk_sig);
 	if (IN_CAPABILITY_MODE(td))
 		return (ECAPMODE);
 	if (rk->rk_sig <= 0 || rk->rk_sig > _SIG_MAXSIG ||
@@ -568,17 +573,7 @@ reap_kill(struct thread *td, struct proc *p, void *data)
 		w.rk = rk;
 		w.error = &error;
 		TASK_INIT(&w.t, 0, reap_kill_proc_work, &w);
-
-		/*
-		 * Prevent swapout, since w, ksi, and possibly rk, are
-		 * allocated on the stack.  We sleep in
-		 * reap_kill_subtree_once() waiting for task to
-		 * complete single-threading.
-		 */
-		PHOLD(td->td_proc);
-
 		reap_kill_subtree(td, p, reaper, &w);
-		PRELE(td->td_proc);
 		crfree(w.cr);
 	}
 	PROC_LOCK(p);
@@ -1122,7 +1117,7 @@ sys_procctl(struct thread *td, struct procctl_args *uap)
 	if (uap->com >= PROC_PROCCTL_MD_MIN)
 		return (cpu_procctl(td, uap->idtype, uap->id,
 		    uap->com, uap->data));
-	if (uap->com == 0 || uap->com >= nitems(procctl_cmds_info))
+	if (uap->com <= 0 || uap->com >= nitems(procctl_cmds_info))
 		return (EINVAL);
 	cmd_info = &procctl_cmds_info[uap->com];
 	bzero(&x, sizeof(x));

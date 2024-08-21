@@ -1,4 +1,3 @@
-
 .include <src.opts.mk>
 
 CONFDIR=	/etc/rc.d
@@ -17,7 +16,6 @@ CONFS=	DAEMON \
 	cfumass \
 	cleanvar \
 	cleartmp \
-	cron \
 	ctld \
 	ddb \
 	defaultroute \
@@ -26,7 +24,6 @@ CONFS=	DAEMON \
 	dtraced \
 	dumpon \
 	fsck \
-	gbde \
 	geli \
 	geli2 \
 	gptboot \
@@ -69,7 +66,6 @@ CONFS=	DAEMON \
 	nfsuserd \
 	nisdomain \
 	${_nscd} \
-	ntpdate \
 	${_opensm} \
 	os-release \
 	pf \
@@ -130,6 +126,10 @@ CONFGROUPS+=		RESOLVCONF
 RESOLVCONF=		resolv
 RESOLVCONFPACKAGE=	resolvconf
 
+CONFGROUPS+=		CRON
+CRON+=			cron
+CRONPACKAGE=		cron
+
 .if ${MK_NIS} != "no"
 CONFS+=	ypbind \
 	ypldap \
@@ -165,7 +165,7 @@ APMPACKAGE=	apm
 CONFGROUPS+=	AUDIT
 AUDIT+=		auditd
 AUDIT+=		auditdistd
-AUDITPACKAGE=	rc
+AUDITPACKAGE=	audit
 .endif
 
 .if ${MK_AUTOFS} != "no"
@@ -258,7 +258,9 @@ CONSOLEPACKAGE=	console-tools
 .endif
 
 .if ${MK_LPR} != "no"
-CONFS+=		lpd
+CONFGROUPS+=	LP
+LP+=		lpd
+LPPACKAGE=	lp
 .endif
 
 .if ${MK_KERBEROS} != "no"
@@ -279,7 +281,10 @@ _nscd=		nscd
 .endif
 
 .if ${MK_NTP} != "no"
-CONFS+=		ntpd
+CONFGROUPS+=	NTP
+NTP+=		ntpd \
+		ntpdate
+NTPPACKAGE=	ntp
 .endif
 
 .if ${MK_OFED} != "no"

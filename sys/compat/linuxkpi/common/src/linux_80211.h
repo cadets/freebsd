@@ -42,6 +42,12 @@
 #ifndef _LKPI_SRC_LINUX_80211_H
 #define _LKPI_SRC_LINUX_80211_H
 
+#include "opt_wlan.h"
+
+#if defined(IEEE80211_DEBUG) && !defined(LINUXKPI_DEBUG_80211)
+#define	LINUXKPI_DEBUG_80211
+#endif
+
 /* #define	LINUXKPI_DEBUG_80211 */
 
 #ifndef	D80211_TODO
@@ -159,6 +165,7 @@ struct lkpi_sta {
 struct lkpi_vif {
         TAILQ_ENTRY(lkpi_vif)	lvif_entry;
 	struct ieee80211vap	iv_vap;
+	eventhandler_tag	lvif_ifllevent;
 
 	struct mtx		mtx;
 	struct wireless_dev	wdev;
@@ -267,12 +274,12 @@ struct lkpi_hw {	/* name it mac80211_sc? */
 
 struct lkpi_chanctx {
 	bool				added_to_drv;	/* Managed by MO */
-	struct ieee80211_chanctx_conf	conf __aligned(CACHE_LINE_SIZE);
+	struct ieee80211_chanctx_conf	chanctx_conf __aligned(CACHE_LINE_SIZE);
 };
 #define	LCHANCTX_TO_CHANCTX_CONF(_lchanctx)		\
-    (&(_lchanctx)->conf)
+    (&(_lchanctx)->chanctx_conf)
 #define	CHANCTX_CONF_TO_LCHANCTX(_conf)			\
-    container_of(_conf, struct lkpi_chanctx, conf)
+    container_of(_conf, struct lkpi_chanctx, chanctx_conf)
 
 struct lkpi_wiphy {
 	const struct cfg80211_ops	*ops;

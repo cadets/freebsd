@@ -392,7 +392,7 @@ macio_attach(device_t dev)
 			for (subchild = OF_child(child); subchild != 0;
 			    subchild = OF_peer(subchild))
 				macio_add_intr(subchild, dinfo);
-		cdev = device_add_child(dev, NULL, -1);
+		cdev = device_add_child(dev, NULL, DEVICE_UNIT_ANY);
 		if (cdev == NULL) {
 			device_printf(dev, "<%s>: device_add_child failed\n",
 			    dinfo->mdi_obdinfo.obd_name);
@@ -686,6 +686,7 @@ macio_map_resource(device_t bus, device_t child, struct resource *r,
 	    length, args.memattr);
 	if (map->r_vaddr == NULL)
 		return (ENOMEM);
+	map->r_size = length;
 	map->r_bustag = &bs_le_tag;
 	map->r_bushandle = (bus_space_handle_t)map->r_vaddr;
 	return (0);

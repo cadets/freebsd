@@ -1,4 +1,3 @@
-
 .include <src.opts.mk>
 
 LLVM_BASE=	${SRCTOP}/contrib/llvm-project
@@ -50,6 +49,7 @@ SRCS+=		ELF/Arch/PPC.cpp
 SRCS+=		ELF/Arch/PPC64.cpp
 SRCS+=		ELF/Arch/RISCV.cpp
 SRCS+=		ELF/Arch/SPARCV9.cpp
+SRCS+=		ELF/Arch/SystemZ.cpp
 SRCS+=		ELF/Arch/X86.cpp
 SRCS+=		ELF/Arch/X86_64.cpp
 SRCS+=		ELF/CallGraphSort.cpp

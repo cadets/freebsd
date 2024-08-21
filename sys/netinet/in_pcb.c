@@ -234,6 +234,12 @@ in_pcbhashseed_init(void)
 VNET_SYSINIT(in_pcbhashseed_init, SI_SUB_PROTO_DOMAIN, SI_ORDER_FIRST,
     in_pcbhashseed_init, 0);
 
+VNET_DEFINE_STATIC(int, connect_inaddr_wild) = 1;
+#define	V_connect_inaddr_wild	VNET(connect_inaddr_wild)
+SYSCTL_INT(_net_inet_ip, OID_AUTO, connect_inaddr_wild,
+    CTLFLAG_VNET | CTLFLAG_RW, &VNET_NAME(connect_inaddr_wild), 0,
+    "Allow connecting to INADDR_ANY or INADDR_BROADCAST for connect(2)");
+
 static void in_pcbremhash(struct inpcb *);
 
 /*
@@ -655,6 +661,10 @@ in_pcballoc(struct socket *so, struct inpcbinfo *pcbinfo)
 
 #if defined(IPSEC) || defined(IPSEC_SUPPORT) || defined(MAC)
 out:
+	crfree(inp->inp_cred);
+#ifdef INVARIANTS
+	inp->inp_cred = NULL;
+#endif
 	uma_zfree_smr(pcbinfo->ipi_zone, inp);
 	return (error);
 #endif
@@ -1305,7 +1315,7 @@ in_pcbconnect_setup(struct inpcb *inp, struct sockaddr_in *sin,
 		inp->inp_flowtype = hash_type;
 	}
 #endif
-	if (!CK_STAILQ_EMPTY(&V_in_ifaddrhead)) {
+	if (V_connect_inaddr_wild && !CK_STAILQ_EMPTY(&V_in_ifaddrhead)) {
 		/*
 		 * If the destination address is INADDR_ANY,
 		 * use the primary local address.
@@ -1805,10 +1815,6 @@ in_pcbdrop(struct inpcb *inp)
 {
 
 	INP_WLOCK_ASSERT(inp);
-#ifdef INVARIANTS
-	if (inp->inp_socket != NULL && inp->inp_ppcb != NULL)
-		MPASS(inp->inp_refcount > 1);
-#endif
 
 	inp->inp_flags |= INP_DROPPED;
 	if (inp->inp_flags & INP_INHASHLIST)
@@ -2865,7 +2871,6 @@ in_pcbtoxinpcb(const struct inpcb *inp, struct xinpcb *xi)
 		sotoxsocket(inp->inp_socket, &xi->xi_socket);
 	bcopy(&inp->inp_inc, &xi->inp_inc, sizeof(struct in_conninfo));
 	xi->inp_gencnt = inp->inp_gencnt;
-	xi->inp_ppcb = (uintptr_t)inp->inp_ppcb;
 	xi->inp_flow = inp->inp_flow;
 	xi->inp_flowid = inp->inp_flowid;
 	xi->inp_flowtype = inp->inp_flowtype;
@@ -3149,10 +3154,6 @@ db_print_inpcb(struct inpcb *inp, const char *name, int indent)
 	db_printf("inp_flow: 0x%x\n", inp->inp_flow);
 
 	db_print_inconninfo(&inp->inp_inc, "inp_conninfo", indent);
-
-	db_print_indent(indent);
-	db_printf("inp_ppcb: %p   inp_pcbinfo: %p   inp_socket: %p\n",
-	    inp->inp_ppcb, inp->inp_pcbinfo, inp->inp_socket);
 
 	db_print_indent(indent);
 	db_printf("inp_label: %p   inp_flags: 0x%x (",

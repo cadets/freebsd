@@ -130,10 +130,11 @@ struct exportlist {
 	SLIST_ENTRY(exportlist) entries;
 };
 /* ex_flag bits */
-#define	EX_LINKED	0x1
-#define	EX_DONE		0x2
-#define	EX_DEFSET	0x4
-#define	EX_PUBLICFH	0x8
+#define	EX_LINKED	0x01
+#define	EX_DONE		0x02
+#define	EX_DEFSET	0x04
+#define	EX_PUBLICFH	0x08
+#define	EX_ADMINWARN	0x10
 
 SLIST_HEAD(exportlisthead, exportlist);
 
@@ -272,6 +273,7 @@ static char *exnames_default[2] = { _PATH_EXPORTS, NULL };
 static char **exnames;
 static char **hosts = NULL;
 static int force_v2 = 0;
+static int warn_admin = 1;
 static int resvport_only = 1;
 static int nhosts = 0;
 static int dir_only = 1;
@@ -285,6 +287,8 @@ static int *sock_fd;
 static int sock_fdcnt;
 static int sock_fdpos;
 static int suspend_nfsd = 0;
+static int nofork = 0;
+static int skiplocalhost = 0;
 
 static int opt_flags;
 static int have_v6 = 1;
@@ -434,10 +438,13 @@ main(int argc, char **argv)
 	else
 		close(s);
 
-	while ((c = getopt(argc, argv, "2deh:lnp:RrS")) != -1)
+	while ((c = getopt(argc, argv, "2Adeh:lNnp:RrSs")) != -1)
 		switch (c) {
 		case '2':
 			force_v2 = 1;
+			break;
+		case 'A':
+			warn_admin = 0;
 			break;
 		case 'e':
 			/* now a no-op, since this is the default */
@@ -490,6 +497,12 @@ main(int argc, char **argv)
 		case 'S':
 			suspend_nfsd = 1;
 			break;
+		case 'N':
+			nofork = 1;
+			break;
+		case 's':
+			skiplocalhost = 1;
+			break;
 		default:
 			usage();
 		}
@@ -508,6 +521,9 @@ main(int argc, char **argv)
 			nhosts = 0;
 		}
 	}
+
+	if (nhosts == 0 && skiplocalhost != 0)
+		warnx("-s without -h, ignored");
 
 	if (modfind("nfsd") < 0) {
 		/* Not present in kernel, try loading it */
@@ -530,7 +546,7 @@ main(int argc, char **argv)
 	get_mountlist();
 	if (debug)
 		warnx("here we go");
-	if (debug == 0) {
+	if (debug == 0 && nofork == 0) {
 		daemon(0, 0);
 		signal(SIGINT, SIG_IGN);
 		signal(SIGQUIT, SIG_IGN);
@@ -566,7 +582,7 @@ main(int argc, char **argv)
 				out_of_mem();
 			hosts[0] = "*";
 			nhosts = 1;
-		} else {
+		} else if (skiplocalhost == 0) {
 			hosts_bak = hosts;
 			if (have_v6) {
 				hosts_bak = realloc(hosts, (nhosts + 2) *
@@ -1106,8 +1122,8 @@ static void
 usage(void)
 {
 	fprintf(stderr,
-		"usage: mountd [-2] [-d] [-e] [-l] [-n] [-p <port>] [-r] "
-		"[-S] [-h <bindip>] [export_file ...]\n");
+	    "usage: mountd [-2] [-d] [-e] [-l] [-N] [-n] [-p <port>] [-r] [-S] "
+	    "[-s] [-h <bindip>] [export_file ...]\n");
 	exit(1);
 }
 
@@ -1694,6 +1710,20 @@ get_exportlist_one(int passno)
 					    warnx("found ep fs=0x%x,0x%x",
 						fsb.f_fsid.val[0],
 						fsb.f_fsid.val[1]);
+				    }
+
+				    if (warn_admin != 0 &&
+					(ep->ex_flag & EX_ADMINWARN) == 0 &&
+					strcmp(unvis_dir, fsb.f_mntonname) !=
+					0) {
+					if (debug)
+					    warnx("exporting %s exports entire "
+						"%s file system", unvis_dir,
+						    fsb.f_mntonname);
+					syslog(LOG_ERR, "Warning: exporting %s "
+					    "exports entire %s file system",
+					    unvis_dir, fsb.f_mntonname);
+					ep->ex_flag |= EX_ADMINWARN;
 				    }
 
 				    /*

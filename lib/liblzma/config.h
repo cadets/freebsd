@@ -151,15 +151,9 @@
 /* Define to 1 if x86 encoder is enabled. */
 #define HAVE_ENCODER_X86 1
 
-/* Define to 1 if you have the <fcntl.h> header file. */
-#define HAVE_FCNTL_H 1
-
 /* Define to 1 if __attribute__((__constructor__)) is supported for functions.
    */
 #define HAVE_FUNC_ATTRIBUTE_CONSTRUCTOR 1
-
-/* Define to 1 if __attribute__((__ifunc__())) is supported for functions. */
-#define HAVE_FUNC_ATTRIBUTE_IFUNC 1
 
 /* Define to 1 if you have the 'futimens' function. */
 #define HAVE_FUTIMENS 1
@@ -195,11 +189,9 @@
 /* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
 
-/* Define to 1 if you have the <limits.h> header file. */
-#define HAVE_LIMITS_H 1
-
-/* Define to 1 if you have the <linux/landlock.h> header file. */
-/* #undef HAVE_LINUX_LANDLOCK_H */
+/* Define to 1 if Linux Landlock is supported. See configure.ac for details.
+   */
+/* #undef HAVE_LINUX_LANDLOCK */
 
 /* Define to 1 if .lz (lzip) decompression support is enabled. */
 #define HAVE_LZIP_DECODER 1
@@ -325,9 +317,6 @@
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #define HAVE_SYS_STAT_H 1
 
-/* Define to 1 if you have the <sys/time.h> header file. */
-#define HAVE_SYS_TIME_H 1
-
 /* Define to 1 if you have the <sys/types.h> header file. */
 #define HAVE_SYS_TYPES_H 1
 
@@ -405,16 +394,16 @@
 #define PACKAGE_NAME "XZ Utils"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "XZ Utils 5.6.0"
+#define PACKAGE_STRING "XZ Utils 5.6.2"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "xz"
 
 /* Define to the home page for this package. */
-#define PACKAGE_URL "https://xz.tukaani.org/xz-utils/"
+#define PACKAGE_URL "https://tukaani.org/xz/"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "5.6.0"
+#define PACKAGE_VERSION "5.6.2"
 
 /* Define to necessary symbol if this constant uses a non-standard name on
    your system. */
@@ -579,7 +568,7 @@
 
 
 /* Version number of package */
-#define VERSION "5.6.0"
+#define VERSION "5.6.2"
 
 /* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
    significant byte first (like Motorola and SPARC, unlike Intel). */

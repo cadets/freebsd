@@ -239,7 +239,6 @@ static __inline uint32_t tlb_calc_wimg(vm_paddr_t pa, vm_memattr_t ma);
 
 static vm_size_t tsize2size(unsigned int);
 static unsigned int size2tsize(vm_size_t);
-static unsigned long ilog2(unsigned long);
 
 static void set_mas4_defaults(void);
 
@@ -749,6 +748,11 @@ mmu_booke_bootstrap(vm_offset_t start, vm_offset_t kernelend)
 	debugf("ptbl_buf_pool_vabase = 0x%"PRI0ptrX" end = 0x%"PRI0ptrX"\n",
 	    ptbl_buf_pool_vabase, virtual_avail);
 #endif
+#ifdef	__powerpc64__
+	/* Allocate KVA space for crashdumpmap. */
+	crashdumpmap = (caddr_t)virtual_avail;
+	virtual_avail += MAXDUMPPGS * PAGE_SIZE;
+#endif
 
 	/* Calculate corresponding physical addresses for the kernel region. */
 	phys_kernelend = kernload + kernsize;
@@ -1050,8 +1054,9 @@ mmu_booke_kextract(vm_offset_t va)
 
 /*
  * Initialize the pmap module.
- * Called by vm_init, to initialize any structures that the pmap
- * system needs to map virtual memory.
+ *
+ * Called by vm_mem_init(), to initialize any structures that the pmap system
+ * needs to map virtual memory.
  */
 static void
 mmu_booke_init(void)

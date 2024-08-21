@@ -505,6 +505,12 @@ void dmu_object_set_checksum(objset_t *os, uint64_t object, uint8_t checksum,
 void dmu_object_set_compress(objset_t *os, uint64_t object, uint8_t compress,
     dmu_tx_t *tx);
 
+/*
+ * Get an estimated cache size for an object. Caller must expect races.
+ */
+int dmu_object_cached_size(objset_t *os, uint64_t object,
+    uint64_t *l1sz, uint64_t *l2sz);
+
 void dmu_write_embedded(objset_t *os, uint64_t object, uint64_t offset,
     void *data, uint8_t etype, uint8_t comp, int uncompressed_size,
     int compressed_size, int byteorder, dmu_tx_t *tx);
@@ -752,8 +758,6 @@ void dmu_buf_sub_user_size(dmu_buf_t *db, uint64_t nsub);
 void *dmu_buf_get_user(dmu_buf_t *db);
 
 objset_t *dmu_buf_get_objset(dmu_buf_t *db);
-dnode_t *dmu_buf_dnode_enter(dmu_buf_t *db);
-void dmu_buf_dnode_exit(dmu_buf_t *db);
 
 /* Block until any in-progress dmu buf user evictions complete. */
 void dmu_buf_user_evict_wait(void);
@@ -902,7 +906,11 @@ extern uint_t zfs_max_recordsize;
  */
 void dmu_prefetch(objset_t *os, uint64_t object, int64_t level, uint64_t offset,
 	uint64_t len, enum zio_priority pri);
+void dmu_prefetch_by_dnode(dnode_t *dn, int64_t level, uint64_t offset,
+	uint64_t len, enum zio_priority pri);
 void dmu_prefetch_dnode(objset_t *os, uint64_t object, enum zio_priority pri);
+int dmu_prefetch_wait(objset_t *os, uint64_t object, uint64_t offset,
+    uint64_t size);
 
 typedef struct dmu_object_info {
 	/* All sizes are in bytes unless otherwise indicated. */

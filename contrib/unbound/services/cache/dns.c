@@ -96,7 +96,8 @@ store_rrsets(struct module_env* env, struct reply_info* rep, time_t now,
 				struct ub_packed_rrset_key* ck;
 				lock_rw_rdlock(&rep->ref[i].key->entry.lock);
 				/* if deleted rrset, do not copy it */
-				if(rep->ref[i].key->id == 0)
+				if(rep->ref[i].key->id == 0 ||
+					rep->ref[i].id != rep->ref[i].key->id)
 					ck = NULL;
 				else 	ck = packed_rrset_copy_region(
 					rep->ref[i].key, region, now);
@@ -109,14 +110,22 @@ store_rrsets(struct module_env* env, struct reply_info* rep, time_t now,
 			/* no break: also copy key item */
 			/* the line below is matched by gcc regex and silences
 			 * the fallthrough warning */
+			ATTR_FALLTHROUGH
 			/* fallthrough */
 		case 1: /* ref updated, item inserted */
 			rep->rrsets[i] = rep->ref[i].key;
+			/* ref was updated; make sure the message ttl is
+			 * updated to the minimum of the current rrsets. */
+			lock_rw_rdlock(&rep->ref[i].key->entry.lock);
+			/* if deleted, skip ttl update. */
+			if(rep->ref[i].key->id != 0 &&
+				rep->ref[i].id == rep->ref[i].key->id) {
+				ttl = ((struct packed_rrset_data*)
+				    rep->rrsets[i]->entry.data)->ttl;
+				if(ttl < min_ttl) min_ttl = ttl;
+			}
+			lock_rw_unlock(&rep->ref[i].key->entry.lock);
 		}
-		/* if ref was updated make sure the message ttl is updated to
-		 * the minimum of the current rrsets. */
-		ttl = ((struct packed_rrset_data*)rep->rrsets[i]->entry.data)->ttl;
-		if(ttl < min_ttl) min_ttl = ttl;
 	}
 	if(min_ttl < rep->ttl) {
 		rep->ttl = min_ttl;
@@ -193,46 +202,6 @@ dns_cache_store_msg(struct module_env* env, struct query_info* qinfo,
 	slabhash_insert(env->msg_cache, hash, &e->entry, rep, env->alloc);
 }
 
-/** see if an rrset is expired above the qname, return upper qname. */
-static int
-rrset_expired_above(struct module_env* env, uint8_t** qname, size_t* qnamelen,
-	uint16_t searchtype, uint16_t qclass, time_t now, uint8_t* expiretop,
-	size_t expiretoplen)
-{
-	struct ub_packed_rrset_key *rrset;
-	uint8_t lablen;
-
-	while(*qnamelen > 0) {
-		/* look one label higher */
-		lablen = **qname;
-		*qname += lablen + 1;
-		*qnamelen -= lablen + 1;
-		if(*qnamelen <= 0)
-			break;
-
-		/* looks up with a time of 0, to see expired entries */
-		if((rrset = rrset_cache_lookup(env->rrset_cache, *qname,
-			*qnamelen, searchtype, qclass, 0, 0, 0))) {
-			struct packed_rrset_data* data =
-				(struct packed_rrset_data*)rrset->entry.data;
-			if(now > data->ttl) {
-				/* it is expired, this is not wanted */
-				lock_rw_unlock(&rrset->entry.lock);
-				log_nametypeclass(VERB_ALGO, "this rrset is expired", *qname, searchtype, qclass);
-				return 1;
-			}
-			/* it is not expired, continue looking */
-			lock_rw_unlock(&rrset->entry.lock);
-		}
-
-		/* do not look above the expiretop. */
-		if(expiretop && *qnamelen == expiretoplen &&
-			query_dname_compare(*qname, expiretop)==0)
-			break;
-	}
-	return 0;
-}
-
 /** find closest NS or DNAME and returns the rrset (locked) */
 static struct ub_packed_rrset_key*
 find_closest_of_type(struct module_env* env, uint8_t* qname, size_t qnamelen, 
@@ -266,12 +235,12 @@ find_closest_of_type(struct module_env* env, uint8_t* qname, size_t qnamelen,
 			/* check for expiry, but we have to let go of the rrset
 			 * for the lock ordering */
 			lock_rw_unlock(&rrset->entry.lock);
-			/* the expired_above function always takes off one
-			 * label (if qnamelen>0) and returns the final qname
-			 * where it searched, so we can continue from there
-			 * turning the O N*N search into O N. */
-			if(!rrset_expired_above(env, &qname, &qnamelen,
-				searchtype, qclass, now, expiretop,
+			/* the rrset_cache_expired_above function always takes
+			 * off one label (if qnamelen>0) and returns the final
+			 * qname where it searched, so we can continue from
+			 * there turning the O N*N search into O N. */
+			if(!rrset_cache_expired_above(env->rrset_cache, &qname,
+				&qnamelen, searchtype, qclass, now, expiretop,
 				expiretoplen)) {
 				/* we want to return rrset, but it may be
 				 * gone from cache, if so, just loop like
@@ -377,6 +346,13 @@ find_add_addrs(struct module_env* env, uint16_t qclass,
 			 * not use dns64 translation */
 			neg = msg_cache_lookup(env, ns->name, ns->namelen,
 				LDNS_RR_TYPE_AAAA, qclass, 0, now, 0);
+			/* Because recursion for lookup uses BIT_CD, check
+			 * for that so it stops the recursion lookup, if a
+			 * negative answer is cached. Because the cache uses
+			 * the CD flag for type AAAA. */
+			if(!neg)
+				neg = msg_cache_lookup(env, ns->name, ns->namelen,
+					LDNS_RR_TYPE_AAAA, qclass, BIT_CD, now, 0);
 			if(neg) {
 				delegpt_add_neg_msg(dp, neg);
 				lock_rw_unlock(&neg->entry.lock);
@@ -436,6 +412,13 @@ cache_fill_missing(struct module_env* env, uint16_t qclass,
 			 * not use dns64 translation */
 			neg = msg_cache_lookup(env, ns->name, ns->namelen,
 				LDNS_RR_TYPE_AAAA, qclass, 0, now, 0);
+			/* Because recursion for lookup uses BIT_CD, check
+			 * for that so it stops the recursion lookup, if a
+			 * negative answer is cached. Because the cache uses
+			 * the CD flag for type AAAA. */
+			if(!neg)
+				neg = msg_cache_lookup(env, ns->name, ns->namelen,
+					LDNS_RR_TYPE_AAAA, qclass, BIT_CD, now, 0);
 			if(neg) {
 				delegpt_add_neg_msg(dp, neg);
 				lock_rw_unlock(&neg->entry.lock);

@@ -54,7 +54,8 @@ bool	interp_has_builtin_cmd(const char *cmd);
 
 /* Called by interp.c for interp_*.c embedded interpreters */
 int	interp_include(const char *);	/* Execute commands from filename */
-void	interp_init(void);		/* Initialize interpreater */
+void	interp_preinit(void);		/* Initialize interpreater execution engine */
+void	interp_init(void);		/* Initialize interpreater and run main script */
 int	interp_run(const char *);	/* Run a single command */
 
 /* interp_backslash.c */
@@ -281,6 +282,7 @@ int tslog_init(void);
 int tslog_publish(void);
 
 vm_offset_t build_font_module(vm_offset_t);
+vm_offset_t build_splash_module(vm_offset_t);
 
 /* MI module loaders */
 #ifdef __elfN

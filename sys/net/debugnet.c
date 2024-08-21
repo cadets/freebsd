@@ -566,13 +566,9 @@ debugnet_input_one(struct ifnet *ifp, struct mbuf *m)
 	}
 	if (m->m_len < ETHER_HDR_LEN) {
 		DNETDEBUG_IF(ifp,
-	    "discard frame without leading eth header (len %u pktlen %u)\n",
+	    "discard frame without leading eth header (len %d pktlen %d)\n",
 		    m->m_len, m->m_pkthdr.len);
 		goto done;
-	}
-	if ((m->m_flags & M_HASFCS) != 0) {
-		m_adj(m, -ETHER_CRC_LEN);
-		m->m_flags &= ~M_HASFCS;
 	}
 	eh = mtod(m, struct ether_header *);
 	etype = ntohs(eh->ether_type);

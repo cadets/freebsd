@@ -629,8 +629,11 @@ struct omsghdr {
  */
 enum shutdown_how {
 	SHUT_RD = 0,		/* shut down the reading side */
+#define	SHUT_RD		SHUT_RD
 	SHUT_WR,		/* shut down the writing side */
+#define	SHUT_WR		SHUT_WR
 	SHUT_RDWR		/* shut down both sides */
+#define	SHUT_RDWR	SHUT_RDWR
 };
 
 #if __BSD_VISIBLE
@@ -666,6 +669,10 @@ struct mmsghdr {
 	ssize_t		msg_len;		/* message length */
 };
 #endif /* __BSD_VISIBLE */
+
+#if defined(_FORTIFY_SOURCE) && _FORTIFY_SOURCE > 0
+#include <ssp/socket.h>
+#endif
 
 #ifndef	_KERNEL
 

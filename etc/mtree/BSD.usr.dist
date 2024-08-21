@@ -36,7 +36,7 @@
     ..
     lib
         clang
-            17
+            18
                 include
                     cuda_wrappers
                         bits
@@ -253,8 +253,6 @@
             BSD_daemon
             ..
             FreeBSD_version
-            ..
-            IPv6
             ..
             bhyve
             ..

@@ -1,4 +1,4 @@
-
+PACKAGE=lp
 CONFS=	hosts.lpd printcap
 PROG=	lpd
 MAN=	lpd.8

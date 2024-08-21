@@ -45,7 +45,6 @@
 #endif
 
 #include <dev/sound/pcm/sound.h>
-#include <dev/sound/chip.h>
 #include <dev/sound/pci/csareg.h>
 #include <dev/sound/pci/csavar.h>
 
@@ -302,7 +301,7 @@ csa_attach(device_t dev)
 	}
 	func->varinfo = &scp->binfo;
 	func->func = SCF_PCM;
-	scp->pcm = device_add_child(dev, "pcm", -1);
+	scp->pcm = device_add_child(dev, "pcm", DEVICE_UNIT_ANY);
 	device_set_ivars(scp->pcm, func);
 
 	/* Midi Interface */
@@ -313,7 +312,7 @@ csa_attach(device_t dev)
 	}
 	func->varinfo = &scp->binfo;
 	func->func = SCF_MIDI;
-	scp->midi = device_add_child(dev, "midi", -1);
+	scp->midi = device_add_child(dev, "midi", DEVICE_UNIT_ANY);
 	device_set_ivars(scp->midi, func);
 
 	bus_generic_attach(dev);

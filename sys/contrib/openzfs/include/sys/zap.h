@@ -225,6 +225,7 @@ int zap_lookup_uint64(objset_t *os, uint64_t zapobj, const uint64_t *key,
     int key_numints, uint64_t integer_size, uint64_t num_integers, void *buf);
 int zap_contains(objset_t *ds, uint64_t zapobj, const char *name);
 int zap_prefetch(objset_t *os, uint64_t zapobj, const char *name);
+int zap_prefetch_object(objset_t *os, uint64_t zapobj);
 int zap_prefetch_uint64(objset_t *os, uint64_t zapobj, const uint64_t *key,
     int key_numints);
 
@@ -253,6 +254,9 @@ int zap_add_by_dnode(dnode_t *dn, const char *key,
 int zap_add_uint64(objset_t *ds, uint64_t zapobj, const uint64_t *key,
     int key_numints, int integer_size, uint64_t num_integers,
     const void *val, dmu_tx_t *tx);
+int zap_add_uint64_by_dnode(dnode_t *dn, const uint64_t *key,
+    int key_numints, int integer_size, uint64_t num_integers,
+    const void *val, dmu_tx_t *tx);
 
 /*
  * Set the attribute with the given name to the given value.  If an
@@ -265,6 +269,9 @@ int zap_add_uint64(objset_t *ds, uint64_t zapobj, const uint64_t *key,
 int zap_update(objset_t *ds, uint64_t zapobj, const char *name,
     int integer_size, uint64_t num_integers, const void *val, dmu_tx_t *tx);
 int zap_update_uint64(objset_t *os, uint64_t zapobj, const uint64_t *key,
+    int key_numints,
+    int integer_size, uint64_t num_integers, const void *val, dmu_tx_t *tx);
+int zap_update_uint64_by_dnode(dnode_t *dn, const uint64_t *key,
     int key_numints,
     int integer_size, uint64_t num_integers, const void *val, dmu_tx_t *tx);
 
@@ -291,6 +298,8 @@ int zap_remove_norm(objset_t *ds, uint64_t zapobj, const char *name,
     matchtype_t mt, dmu_tx_t *tx);
 int zap_remove_by_dnode(dnode_t *dn, const char *name, dmu_tx_t *tx);
 int zap_remove_uint64(objset_t *os, uint64_t zapobj, const uint64_t *key,
+    int key_numints, dmu_tx_t *tx);
+int zap_remove_uint64_by_dnode(dnode_t *dn, const uint64_t *key,
     int key_numints, dmu_tx_t *tx);
 
 /*

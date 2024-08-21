@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2022 Bojan Novković <bnovkov@freebsd.org>
  *
@@ -45,6 +45,7 @@ static void db_pprint_type(db_addr_t addr, struct ctf_type_v3 *type,
 
 static u_int max_depth = DB_PPRINT_DEFAULT_DEPTH;
 static struct db_ctf_sym_data sym_data;
+static const char *asteriskstr = "*****";
 
 /*
  * Pretty-prints a CTF_INT type.
@@ -117,7 +118,7 @@ db_pprint_struct(db_addr_t addr, struct ctf_type_v3 *type, u_int depth)
 				return;
 			}
 			mtype = db_ctf_typeid_to_type(&sym_data, mp->ctm_type);
-			maddr = addr + mp->ctm_offset;
+			maddr = addr + (mp->ctm_offset / NBBY);
 			mname = db_ctf_stroff_to_str(&sym_data, mp->ctm_name);
 			db_indent = depth;
 			if (mname != NULL) {
@@ -140,7 +141,7 @@ db_pprint_struct(db_addr_t addr, struct ctf_type_v3 *type, u_int depth)
 				return;
 			}
 			mtype = db_ctf_typeid_to_type(&sym_data, mp->ctlm_type);
-			maddr = addr + CTF_LMEM_OFFSET(mp);
+			maddr = addr + (CTF_LMEM_OFFSET(mp) / NBBY);
 			mname = db_ctf_stroff_to_str(&sym_data, mp->ctlm_name);
 			db_indent = depth;
 			if (mname != NULL) {
@@ -225,13 +226,14 @@ db_pprint_enum(db_addr_t addr, struct ctf_type_v3 *type, u_int depth)
 	for (; ep < endp; ep++) {
 		if (val == ep->cte_value) {
 			valname = db_ctf_stroff_to_str(&sym_data, ep->cte_name);
-			if (valname != NULL)
+			if (valname != NULL) {
 				db_printf("%s (0x%lx)", valname, (long)val);
-			else
-				db_printf("(0x%lx)", (long)val);
-			break;
+				break;
+			}
 		}
 	}
+	if (ep == endp)
+		db_printf("0x%lx", (long)val);
 }
 
 /*
@@ -247,9 +249,14 @@ db_pprint_ptr(db_addr_t addr, struct ctf_type_v3 *type, u_int depth)
 	const char *qual = "";
 	const char *name;
 	db_addr_t val;
+	uint32_t tid;
 	u_int kind;
+	int ptrcnt;
 
-	ref_type = db_ctf_typeid_to_type(&sym_data, type->ctt_type);
+	ptrcnt = 1;
+	tid = type->ctt_type;
+again:
+	ref_type = db_ctf_typeid_to_type(&sym_data, tid);
 	kind = CTF_V3_INFO_KIND(ref_type->ctt_info);
 	switch (kind) {
 	case CTF_K_STRUCT:
@@ -257,25 +264,41 @@ db_pprint_ptr(db_addr_t addr, struct ctf_type_v3 *type, u_int depth)
 		break;
 	case CTF_K_VOLATILE:
 		qual = "volatile ";
-		break;
+		tid = ref_type->ctt_type;
+		goto again;
 	case CTF_K_CONST:
 		qual = "const ";
-		break;
+		tid = ref_type->ctt_type;
+		goto again;
+	case CTF_K_RESTRICT:
+		qual = "restrict ";
+		tid = ref_type->ctt_type;
+		goto again;
+	case CTF_K_POINTER:
+		ptrcnt++;
+		tid = ref_type->ctt_type;
+		goto again;
+	case CTF_K_TYPEDEF:
+		tid = ref_type->ctt_type;
+		goto again;
 	default:
 		break;
 	}
 
-	val = db_get_value(addr, sizeof(db_addr_t), false);
-	if (depth < max_depth) {
+	ptrcnt = min(ptrcnt, strlen(asteriskstr));
+	val = (addr != 0) ? db_get_value(addr, sizeof(db_addr_t), false) : 0;
+	if (depth < max_depth && (val != 0)) {
 		/* Print contents of memory pointed to by this pointer. */
-		db_pprint_type(addr, ref_type, depth + 1);
+		db_pprint_type(val, ref_type, depth + 1);
 	} else {
 		name = db_ctf_stroff_to_str(&sym_data, ref_type->ctt_name);
 		db_indent = depth;
 		if (name != NULL)
-			db_printf("(%s%s *) 0x%lx", qual, name, (long)val);
+			db_printf("(%s%s %.*s) 0x%lx", qual, name, ptrcnt,
+			    asteriskstr, (long)val);
 		else
-			db_printf("0x%lx", (long)val);
+			db_printf("(%s %.*s) 0x%lx", qual, ptrcnt, asteriskstr,
+			    (long)val);
 	}
 }
 

@@ -130,8 +130,11 @@ sanitize(const struct cmd *f, int argc, char *argv[])
 			sanact = 3;
 		else if (strcmp(opt.sanact, "crypto") == 0)
 			sanact = 4;
+		else if ((sanact = (int)strtol(opt.sanact, NULL, 10) != 0)
+		    && (sanact >= 1 && sanact <= 4))
+			; /* compat with nvme sanitize -a number */
 		else {
-			fprintf(stderr, "Incorrect Sanitize Action value\n");
+			fprintf(stderr, "Incorrect Sanitize Action value: %s\n", opt.sanact);
 			arg_help(argc, argv, f);
 		}
 	}
@@ -182,7 +185,8 @@ sanitize(const struct cmd *f, int argc, char *argv[])
 
 wait:
 	read_logpage(fd, NVME_LOG_SANITIZE_STATUS,
-	    NVME_GLOBAL_NAMESPACE_TAG, 0, 0, 0, &ss, sizeof(ss));
+	    NVME_GLOBAL_NAMESPACE_TAG, 0, 0, 0,
+	    0, 0, 0, 0, &ss, sizeof(ss));
 	switch (NVMEV(NVME_SS_PAGE_SSTAT_STATUS, ss.sstat)) {
 	case NVME_SS_PAGE_SSTAT_STATUS_NEVER:
 		printf("Never sanitized");

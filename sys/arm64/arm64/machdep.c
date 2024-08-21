@@ -131,7 +131,6 @@ static struct trapframe proc0_tf;
 int early_boot = 1;
 int cold = 1;
 static int boot_el;
-static uint64_t hcr_el2;
 
 struct kva_md_info kmi;
 
@@ -207,12 +206,7 @@ pan_enable(void)
 bool
 has_hyp(void)
 {
-
-	/*
-	 * XXX The E2H check is wrong, but it's close enough for now.  Needs to
-	 * be re-evaluated once we're running regularly in EL2.
-	 */
-	return (boot_el == CURRENTEL_EL_EL2 && (hcr_el2 & HCR_E2H) == 0);
+	return (boot_el == CURRENTEL_EL_EL2);
 }
 
 bool
@@ -444,7 +438,7 @@ arm64_get_writable_addr(void *addr, void **out)
 	/*
 	 * If it is within the DMAP region and is writable use that.
 	 */
-	if (PHYS_IN_DMAP(pa)) {
+	if (PHYS_IN_DMAP_RANGE(pa)) {
 		addr = (void *)PHYS_TO_DMAP(pa);
 		if (PAR_SUCCESS(arm64_address_translate_s1e1w(
 		    (vm_offset_t)addr))) {
@@ -754,7 +748,7 @@ try_load_dtb(caddr_t kmdp)
 		return;
 	}
 
-	if (OF_install(OFW_FDT, 0) == FALSE)
+	if (!OF_install(OFW_FDT, 0))
 		panic("Cannot install FDT");
 
 	if (OF_init((void *)dtbp) != 0)
@@ -905,7 +899,6 @@ initarm(struct arm64_bootparams *abp)
 	TSRAW(&thread0, TS_ENTER, __func__, NULL);
 
 	boot_el = abp->boot_el;
-	hcr_el2 = abp->hcr_el2;
 
 	/* Parse loader or FDT boot parametes. Determine last used address. */
 	lastaddr = parse_boot_param(abp);
@@ -996,7 +989,7 @@ initarm(struct arm64_bootparams *abp)
 
 	physmem_init_kernel_globals();
 
-	devmap_bootstrap(0, NULL);
+	devmap_bootstrap();
 
 	valid = bus_probe();
 

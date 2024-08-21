@@ -248,4 +248,3 @@ Nested page table walk:
 
  - `sys/cddl/dev/dtrace/amd64/dtrace_vm_subr.c` -- Implements a nested page
    table walk suitable for use inside the DTrace probe context.
-

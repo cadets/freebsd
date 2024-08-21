@@ -37,7 +37,6 @@
 
 #include <dev/sound/pcm/sound.h>
 #include <dev/sound/pci/hdspe.h>
-#include <dev/sound/chip.h>
 
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
@@ -474,7 +473,8 @@ hdspe_probe(device_t dev)
 {
 	uint32_t rev;
 
-	if (pci_get_vendor(dev) == PCI_VENDOR_XILINX &&
+	if ((pci_get_vendor(dev) == PCI_VENDOR_XILINX ||
+	    pci_get_vendor(dev) == PCI_VENDOR_RME) &&
 	    pci_get_device(dev) == PCI_DEVICE_XILINX_HDSPE) {
 		rev = pci_get_revid(dev);
 		switch (rev) {
@@ -580,7 +580,7 @@ hdspe_attach(device_t dev)
 		scp = malloc(sizeof(struct sc_pcminfo), M_DEVBUF, M_NOWAIT | M_ZERO);
 		scp->hc = &chan_map[i];
 		scp->sc = sc;
-		scp->dev = device_add_child(dev, "pcm", -1);
+		scp->dev = device_add_child(dev, "pcm", DEVICE_UNIT_ANY);
 		device_set_ivars(scp->dev, scp);
 	}
 

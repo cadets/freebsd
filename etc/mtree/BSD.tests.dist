@@ -91,6 +91,10 @@
         ..
         usr.sbin
             dtrace
+                amd64
+                    arrays
+                    ..
+                ..
                 common
                     aggs
                     ..
@@ -435,10 +439,6 @@
                     ustack
                     ..
                 ..
-                amd64
-                    arrays
-                    ..
-                ..
             ..
             zfsd
             ..
@@ -538,6 +538,8 @@
             ..
             rpc
             ..
+            secure
+            ..
             setjmp
             ..
             ssp
@@ -584,6 +586,8 @@
         libcrypt
         ..
         libdevdctl
+        ..
+        libdiff
         ..
         libexecinfo
         ..
@@ -999,6 +1003,8 @@
                     etalon
                     ..
                 ..
+                virstor
+                ..
             ..
         ..
         kern
@@ -1353,17 +1359,19 @@
         ..
         tftp
         ..
+        touch
+        ..
         tr
         ..
         truncate
         ..
         tsort
         ..
-        units
-        ..
         unifdef
         ..
         uniq
+        ..
+        units
         ..
         unzip
         ..
@@ -1385,6 +1393,8 @@
     usr.sbin
         chown
         ..
+        ctladm
+        ..
         daemon
         ..
         etcupdate
@@ -1396,6 +1406,8 @@
         jail
         ..
         makefs
+        ..
+        mixer
         ..
         newsyslog
         ..

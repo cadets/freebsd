@@ -675,6 +675,10 @@ ig4iic_transfer(device_t dev, struct iic_msg *msgs, uint32_t nmsgs)
 		rpstart = !stop;
 	}
 
+	if (error == IIC_ENOACK && bootverbose)
+		device_printf(dev, "Warning: NACK for slave address 0x%x\n",
+		    msgs[i].slave >> 1);
+
 	if (!allocated)
 		sx_unlock(&sc->call_lock);
 	return (error);
@@ -1041,7 +1045,7 @@ ig4iic_attach(ig4iic_softc_t *sc)
 		goto done;
 	ig4iic_get_fifo(sc);
 
-	sc->iicbus = device_add_child(sc->dev, "iicbus", -1);
+	sc->iicbus = device_add_child(sc->dev, "iicbus", DEVICE_UNIT_ANY);
 	if (sc->iicbus == NULL) {
 		device_printf(sc->dev, "iicbus driver not found\n");
 		error = ENXIO;

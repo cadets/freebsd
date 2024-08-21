@@ -81,11 +81,10 @@ snprintf_func(int ch, struct snprintf_arg *const info)
 		}
 		break;
 	case PRINT_METHOD_WRITE:
-		if (info->remain > 0) {
-			*info->str++ = ch;
-			info->remain--;
-		} else
+		if (info->remain == 0)
 			printf_out(info);
+		*info->str++ = ch;
+		info->remain--;
 		break;
 	}
 }
@@ -368,7 +367,7 @@ handle_sign:
 			else if (hflag)
 				num = (short)va_arg(ap, int);
 			else if (cflag)
-				num = (char)va_arg(ap, int);
+				num = (signed char)va_arg(ap, int);
 			else
 				num = va_arg(ap, int);
 number:

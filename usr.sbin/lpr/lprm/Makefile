@@ -1,8 +1,8 @@
-
 .PATH: ${.CURDIR:H}/common_source
 
 BINDIR=	/usr/bin
 
+PACKAGE=lp
 PROG=	lprm
 BINOWN=	root
 BINGRP=	daemon

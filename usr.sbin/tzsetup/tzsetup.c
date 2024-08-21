@@ -709,7 +709,7 @@ confirm_zone(const char *filename)
 	tm = localtime(&t);
 
 	snprintf(prompt, sizeof(prompt),
-	    "Does the abbreviation `%s' look reasonable?", tm->tm_zone);
+	    "Does the timezone abbreviation `%s' look reasonable?", tm->tm_zone);
 	conf.title = "Confirmation";
 	rv = (bsddialog_yesno(&conf, prompt, 5, 72) == BSDDIALOG_YES);
 	return (rv);
@@ -957,7 +957,7 @@ main(int argc, char **argv)
 		    "If it is set to local time,\n"
 		    "or you don't know, please choose NO here!");
 
-		conf.title = "Select local or UTC (Greenwich Mean Time) clock";
+		conf.title = "Select local or UTC (Coordinated Universal Time) clock";
 		if (bsddialog_yesno(&conf, prompt, 7, 73) == BSDDIALOG_YES) {
 			if (reallydoit)
 				unlink(path_wall_cmos_clock);

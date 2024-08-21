@@ -152,8 +152,14 @@ struct vmspace;
 
 extern struct shminfo	shminfo;
 
+#define	SHMSEG_FREE     	0x0200
+#define	SHMSEG_REMOVED  	0x0400
+#define	SHMSEG_ALLOCATED	0x0800
+
 void	shmexit(struct vmspace *);
 void	shmfork(struct proc *, struct proc *);
+int	kern_get_shmsegs(struct thread *td, struct shmid_kernel **res,
+	    size_t *sz);
 
 #else /* !_KERNEL */
 
@@ -165,9 +171,6 @@ typedef __size_t        size_t;
 #endif
 
 __BEGIN_DECLS
-#if __BSD_VISIBLE
-int shmsys(int, ...);
-#endif
 void *shmat(int, const void *, int);
 int shmget(key_t, size_t, int);
 int shmctl(int, int, struct shmid_ds *);

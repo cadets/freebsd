@@ -225,7 +225,7 @@ void fill_kinfo_proc(struct proc *, struct kinfo_proc *);
  *  Legacy PS_ flag.  This moved to p_flag but is maintained for
  *  compatibility.
  */
-#define	PS_INMEM	0x00001		/* Loaded into memory. */
+#define	PS_INMEM	0x00001		/* Loaded into memory, always true. */
 
 /* ki_sessflag values */
 #define	KI_CTTY		0x00000001	/* controlling tty vnode active */
@@ -371,7 +371,7 @@ struct kinfo_file {
 				struct sockaddr_storage	kf_sa_peer;
 				/* Address of so_pcb. */
 				uint64_t	kf_sock_pcb;
-				/* Address of inp_ppcb. */
+				/* Obsolete! May be reused as a spare. */
 				uint64_t	kf_sock_inpcb;
 				/* Address of unp_conn. */
 				uint64_t	kf_sock_unpconn;
@@ -613,7 +613,7 @@ struct kinfo_vmobject {
 #define	KKST_MAXLEN	1024
 
 #define	KKST_STATE_STACKOK	0		/* Stack is valid. */
-#define	KKST_STATE_SWAPPED	1		/* Stack swapped out. */
+#define	KKST_STATE_SWAPPED	1		/* Stack swapped out, obsolete. */
 #define	KKST_STATE_RUNNING	2		/* Stack ephemeral. */
 
 #if defined(__amd64__) || defined(__i386__)

@@ -73,14 +73,16 @@
 #define	VM_PHYSSEG_MAX		64
 
 /*
- * Create two free page pools: VM_FREEPOOL_DEFAULT is the default pool
- * from which physical pages are allocated and VM_FREEPOOL_DIRECT is
- * the pool from which physical pages for small UMA objects are
- * allocated.
+ * Create three free page pools: VM_FREEPOOL_DEFAULT is the default pool from
+ * which physical pages are allocated and VM_FREEPOOL_DIRECT is the pool from
+ * which physical pages for page tables and small UMA objects are allocated.
+ * VM_FREEPOOL_LAZYINIT is a special-purpose pool that is populated only during
+ * boot and is used to implement deferred initialization of page structures.
  */
-#define	VM_NFREEPOOL		2
-#define	VM_FREEPOOL_DEFAULT	0
-#define	VM_FREEPOOL_DIRECT	1
+#define	VM_NFREEPOOL		3
+#define	VM_FREEPOOL_LAZYINIT	0
+#define	VM_FREEPOOL_DEFAULT	1
+#define	VM_FREEPOOL_DIRECT	2
 
 /*
  * Create two free page lists: VM_FREELIST_DMA32 is for physical pages that have
@@ -112,24 +114,33 @@
 #endif
 
 /*
- * Enable superpage reservations: 1 level.
+ * Enable superpage reservations: 2 levels.
  */
 #ifndef	VM_NRESERVLEVEL
-#define	VM_NRESERVLEVEL		1
+#define	VM_NRESERVLEVEL		2
 #endif
 
 /*
- * Level 0 reservations consist of 512 pages when PAGE_SIZE is 4KB, and
- * 2048 pages when PAGE_SIZE is 16KB.
+ * Level 0 reservations consist of 16 pages when PAGE_SIZE is 4KB, and 128
+ * pages when PAGE_SIZE is 16KB.  Level 1 reservations consist of 32 64KB
+ * pages when PAGE_SIZE is 4KB, and 16 2M pages when PAGE_SIZE is 16KB.
  */
-#ifndef	VM_LEVEL_0_ORDER
 #if PAGE_SIZE == PAGE_SIZE_4K
-#define	VM_LEVEL_0_ORDER	9
+#ifndef	VM_LEVEL_0_ORDER
+#define	VM_LEVEL_0_ORDER	4
+#endif
+#ifndef	VM_LEVEL_1_ORDER
+#define	VM_LEVEL_1_ORDER	5
+#endif
 #elif PAGE_SIZE == PAGE_SIZE_16K
-#define	VM_LEVEL_0_ORDER	11
+#ifndef	VM_LEVEL_0_ORDER
+#define	VM_LEVEL_0_ORDER	7
+#endif
+#ifndef	VM_LEVEL_1_ORDER
+#define	VM_LEVEL_1_ORDER	4
+#endif
 #else
 #error Unsupported page size
-#endif
 #endif
 
 /**
@@ -223,9 +234,21 @@
 #define	DMAP_MIN_PHYSADDR	(dmap_phys_base)
 #define	DMAP_MAX_PHYSADDR	(dmap_phys_max)
 
-/* True if pa is in the dmap range */
-#define	PHYS_IN_DMAP(pa)	((pa) >= DMAP_MIN_PHYSADDR && \
+/*
+ * Checks to see if a physical address is in the DMAP range.
+ * - PHYS_IN_DMAP_RANGE will return true that may be within the DMAP range
+ *   but not accessible through the DMAP, e.g. device memory between two
+ *   DMAP physical address regions.
+ * - PHYS_IN_DMAP will check if DMAP address is mapped before returning true.
+ *
+ * PHYS_IN_DMAP_RANGE should only be used when a check on the address is
+ * performed, e.g. by checking the physical address is within phys_avail,
+ * or checking the virtual address is mapped.
+ */
+#define	PHYS_IN_DMAP_RANGE(pa)	((pa) >= DMAP_MIN_PHYSADDR && \
     (pa) < DMAP_MAX_PHYSADDR)
+#define	PHYS_IN_DMAP(pa)	(PHYS_IN_DMAP_RANGE(pa) && \
+    pmap_klookup(PHYS_TO_DMAP(pa), NULL))
 /* True if va is in the dmap range */
 #define	VIRT_IN_DMAP(va)	((va) >= DMAP_MIN_ADDRESS && \
     (va) < (dmap_max_addr))
@@ -233,7 +256,7 @@
 #define	PMAP_HAS_DMAP	1
 #define	PHYS_TO_DMAP(pa)						\
 ({									\
-	KASSERT(PHYS_IN_DMAP(pa),					\
+	KASSERT(PHYS_IN_DMAP_RANGE(pa),					\
 	    ("%s: PA out of range, PA: 0x%lx", __func__,		\
 	    (vm_paddr_t)(pa)));						\
 	((pa) - dmap_phys_base) + DMAP_MIN_ADDRESS;			\
@@ -281,7 +304,7 @@
 #endif
 
 #if !defined(KASAN) && !defined(KMSAN)
-#define	UMA_MD_SMALL_ALLOC
+#define UMA_USE_DMAP
 #endif
 
 #ifndef LOCORE
@@ -289,7 +312,6 @@
 extern vm_paddr_t dmap_phys_base;
 extern vm_paddr_t dmap_phys_max;
 extern vm_offset_t dmap_max_addr;
-extern vm_offset_t vm_max_kernel_address;
 
 #endif
 
@@ -306,6 +328,7 @@ extern vm_offset_t vm_max_kernel_address;
  * Need a page dump array for minidump.
  */
 #define MINIDUMP_PAGE_TRACKING	1
+#define MINIDUMP_STARTUP_PAGE_TRACKING 1
 
 #endif /* !_MACHINE_VMPARAM_H_ */
 

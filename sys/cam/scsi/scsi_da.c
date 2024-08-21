@@ -2804,13 +2804,6 @@ daregister(struct cam_periph *periph, void *arg)
 		return(CAM_REQ_CMP_ERR);
 	}
 
-	if (cam_iosched_init(&softc->cam_iosched, periph) != 0) {
-		printf("daregister: Unable to probe new device. "
-		       "Unable to allocate iosched memory\n");
-		free(softc, M_DEVBUF);
-		return(CAM_REQ_CMP_ERR);
-	}
-
 	LIST_INIT(&softc->pending_ccbs);
 	softc->state = DA_STATE_PROBE_WP;
 	bioq_init(&softc->delete_run_queue);
@@ -2979,7 +2972,14 @@ daregister(struct cam_periph *periph, void *arg)
 	softc->disk->d_hba_subdevice = cpi.hba_subdevice;
 	snprintf(softc->disk->d_attachment, sizeof(softc->disk->d_attachment),
 	    "%s%d", cpi.dev_name, cpi.unit_number);
-	cam_periph_lock(periph);
+
+	if (cam_iosched_init(&softc->cam_iosched, periph, softc->disk,
+	    daschedule) != 0) {
+		printf("daregister: Unable to probe new device. "
+		       "Unable to allocate iosched memory\n");
+		free(softc, M_DEVBUF);
+		return(CAM_REQ_CMP_ERR);
+	}
 
 	/*
 	 * Add async callbacks for events of interest.
@@ -2988,6 +2988,7 @@ daregister(struct cam_periph *periph, void *arg)
 	 * fine without them and the only alternative
 	 * would be to not attach the device on failure.
 	 */
+	cam_periph_lock(periph);
 	xpt_register_async(AC_SENT_BDR | AC_BUS_RESET | AC_LOST_DEVICE |
 	    AC_ADVINFO_CHANGED | AC_SCSI_AEN | AC_UNIT_ATTENTION |
 	    AC_INQ_CHANGED, daasync, periph, periph->path);
@@ -3455,10 +3456,19 @@ more:
 
 			queue_ccb = 0;
 
-			error = da_zone_cmd(periph, start_ccb, bp,&queue_ccb);
+			error = da_zone_cmd(periph, start_ccb, bp, &queue_ccb);
 			if ((error != 0)
 			 || (queue_ccb == 0)) {
+				/*
+				 * g_io_deliver will recurisvely call start
+				 * routine for ENOMEM, so drop the periph
+				 * lock to allow that recursion.
+				 */
+				if (error == ENOMEM)
+					cam_periph_unlock(periph);
 				biofinish(bp, NULL, error);
+				if (error == ENOMEM)
+					cam_periph_lock(periph);
 				xpt_release_ccb(start_ccb);
 				return;
 			}
@@ -4208,6 +4218,9 @@ da_delete_trim(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 		      da_default_timeout * 1000);
 	ccb->ccb_h.ccb_state = DA_CCB_DELETE;
 	ccb->ccb_h.flags |= CAM_UNLOCKED;
+	softc->trim_count++;
+	softc->trim_ranges += ranges;
+	softc->trim_lbas += block_count;
 	cam_iosched_submit_trim(softc->cam_iosched);
 }
 
@@ -4268,6 +4281,9 @@ da_delete_ws(struct cam_periph *periph, union ccb *ccb, struct bio *bp)
 			da_default_timeout * 1000);
 	ccb->ccb_h.ccb_state = DA_CCB_DELETE;
 	ccb->ccb_h.flags |= CAM_UNLOCKED;
+	softc->trim_count++;
+	softc->trim_ranges++;
+	softc->trim_lbas += count;
 	cam_iosched_submit_trim(softc->cam_iosched);
 }
 

@@ -497,7 +497,7 @@
 		    int flags
 		);
 	}
-66	AUE_VFORK	STD {
+66	AUE_VFORK	STD|CAPENABLED {
 		int vfork(void);
 	}
 67	AUE_NULL	OBSOL	vread
@@ -782,14 +782,14 @@
 	}
 119	AUE_NULL	RESERVED
 120	AUE_READV	STD|CAPENABLED {
-		int readv(
+		ssize_t readv(
 		    int fd,
 		    _In_reads_(iovcnt) _Contains_long_ptr_ const struct iovec *iovp,
 		    u_int iovcnt
 		);
 	}
 121	AUE_WRITEV	STD|CAPENABLED {
-		int writev(
+		ssize_t writev(
 		    int fd,
 		    _In_reads_(iovcnt) _Contains_long_ptr_ const struct iovec *iovp,
 		    u_int iovcnt
@@ -1455,7 +1455,7 @@
 		    int inherit
 		);
 	}
-251	AUE_RFORK	STD {
+251	AUE_RFORK	STD|CAPENABLED {
 		int rfork(
 		    int flags
 		);

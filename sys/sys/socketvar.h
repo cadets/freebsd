@@ -310,12 +310,14 @@ soeventmtx(struct socket *so, const sb_which which)
 	soiolock((so), &(so)->so_snd_sx, (flags))
 #define	SOCK_IO_SEND_UNLOCK(so)						\
 	soiounlock(&(so)->so_snd_sx)
-#define	SOCK_IO_SEND_OWNED(so)	sx_xlocked(&(so)->so_snd_sx)
+#define	SOCK_IO_SEND_ASSERT_LOCKED(so)					\
+	sx_assert(&(so)->so_snd_sx, SA_LOCKED)
 #define	SOCK_IO_RECV_LOCK(so, flags)					\
 	soiolock((so), &(so)->so_rcv_sx, (flags))
 #define	SOCK_IO_RECV_UNLOCK(so)						\
 	soiounlock(&(so)->so_rcv_sx)
-#define	SOCK_IO_RECV_OWNED(so)	sx_xlocked(&(so)->so_rcv_sx)
+#define	SOCK_IO_RECV_ASSERT_LOCKED(so)					\
+	sx_assert(&(so)->so_rcv_sx, SA_LOCKED)
 
 /* do we have to send all at once on a socket? */
 #define	sosendallatonce(so) \
@@ -414,7 +416,8 @@ MALLOC_DECLARE(M_SONAME);
 #define HHOOK_FILT_SOREAD		4
 #define HHOOK_FILT_SOWRITE		5
 #define HHOOK_SOCKET_CLOSE		6
-#define HHOOK_SOCKET_LAST		HHOOK_SOCKET_CLOSE
+#define HHOOK_SOCKET_NEWCONN		7
+#define HHOOK_SOCKET_LAST		HHOOK_SOCKET_NEWCONN
 
 struct socket_hhook_data {
 	struct socket	*so;

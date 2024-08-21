@@ -2888,9 +2888,7 @@ bpfdetach(struct ifnet *ifp)
 bool
 bpf_peers_present_if(struct ifnet *ifp)
 {
-	struct bpf_if *bp = ifp->if_bpf;
-
-	return (bpf_peers_present(bp) > 0);
+	return (bpf_peers_present(ifp->if_bpf));
 }
 
 /*

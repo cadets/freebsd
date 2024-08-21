@@ -76,6 +76,7 @@ typedef u_char vm_prot_t;	/* protection codes */
 #define	VM_PROT_COPY		((vm_prot_t) 0x08)	/* copy-on-read */
 #define	VM_PROT_PRIV_FLAG	((vm_prot_t) 0x10)
 #define	VM_PROT_FAULT_LOOKUP	VM_PROT_PRIV_FLAG
+#define	VM_PROT_NO_PROMOTE	VM_PROT_PRIV_FLAG
 #define	VM_PROT_QUICK_NOFAULT	VM_PROT_PRIV_FLAG	/* same to save bits */
 
 #define	VM_PROT_ALL		(VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXECUTE)
@@ -154,6 +155,12 @@ struct kva_md_info {
 #define	SWAP_RESERVE_RLIMIT_ON		(1 << 1)
 #define	SWAP_RESERVE_ALLOW_NONWIRED	(1 << 2)
 
+#ifdef NUMA
+#define	__numa_used
+#else
+#define	__numa_used	__unused
+#endif
+
 #ifdef _KERNEL
 struct ucred;
 
@@ -163,7 +170,6 @@ bool swap_reserve_by_cred(vm_ooffset_t incr, struct ucred *cred);
 void swap_reserve_force(vm_ooffset_t incr);
 void swap_release(vm_ooffset_t decr);
 void swap_release_by_cred(vm_ooffset_t decr, struct ucred *cred);
-void swapper(void);
 
 extern struct kva_md_info	kmi;
 #define VA_IS_CLEANMAP(va)					\

@@ -1,11 +1,11 @@
 dnl
 dnl RCSid:
-dnl	$Id: configure.in,v 1.103 2024/02/16 17:54:38 sjg Exp $
+dnl	$Id: configure.in,v 1.108 2024/07/13 15:27:00 sjg Exp $
 dnl
 dnl Process this file with autoconf to produce a configure script
 dnl
 AC_PREREQ([2.71])
-AC_INIT([bmake],[20240212],[sjg@NetBSD.org])
+AC_INIT([bmake],[20240711],[sjg@NetBSD.org])
 AC_CONFIG_HEADERS(config.h)
 
 dnl make srcdir absolute
@@ -27,7 +27,7 @@ use_defshell() {
 	case "$1" in
 	*csh) # we must be desperate
 		DEFSHELL_INDEX=DEFSHELL_INDEX_CSH;;
-	*ksh)
+	*ksh*)
 		DEFSHELL_INDEX=DEFSHELL_INDEX_KSH;;
 	sh|/bin/sh|*/bsh)
 		DEFSHELL_INDEX=DEFSHELL_INDEX_SH;;
@@ -61,10 +61,22 @@ no)    ;;
 *)     use_defshell $with_defshell;;
 esac])
 dnl
+dnl sometimes uname -s output is not useful
+FORCE_MAKE_OS=
+make_os=
 case "$OS" in
-CYGWIN*|Darwin|MINGW*) use_makefile=no;;
+CYGWIN*)
+	use_makefile=no
+	OS=Cygwin
+	FORCE_MAKE_OS=$OS
+	;;
+Darwin|MINGW*) use_makefile=no;;
 *) use_makefile=yes;;
 esac
+if test "x$FORCE_MAKE_OS" != x; then
+	force_make_os=FORCE_
+	make_os=${FORCE_MAKE_OS}
+fi
 AC_ARG_WITH(makefile,
 [  --without-makefile disable use of generated makefile],
 [case "${withval}" in
@@ -141,21 +153,26 @@ Minix)	CPPFLAGS="${CPPFLAGS} -D_NETBSD_SOURCE"
 	;;
 SCO_SV)	# /bin/sh is not usable
 	ALT_DEF_SHELLS="/bin/lsh /usr/bin/bash /bin/ksh"
-	CPPFLAGS="${CPPFLAGS} -DFORCE_USE_SHELL"
+	FORCE_USE_SHELL=1
 	;;
 esac
+if test "x$FORCE_USE_SHELL" != x; then
+	CPPFLAGS="${CPPFLAGS} -DFORCE_USE_SHELL"
+fi
 dnl
 # Not everyone groks TZ=Europe/Berlin
 # which is used by the localtime tests
 echo $ECHO_N "checking whether system has timezone Europe/Berlin... $ECHO_C" >&6
 eval `TZ=UTC date '+utc_H=%H utc_d=%d' 2> /dev/null`
 eval `TZ=Europe/Berlin date '+utc1_H=%H utc1_d=%d' 2> /dev/null`
-if test ${utc_d-0} -lt ${utc1_d-0} -o ${utc_H-0} -lt ${utc1_H-0}; then
+if test ${utc1_d-0} = 01 -a ${utc_d-0} -gt ${utc1_d-0} ||
+   test ${utc_d-0} -lt ${utc1_d-0} -o ${utc_H-0} -lt ${utc1_H-0}; then
 	echo yes  >&6
 	UTC_1=Europe/Berlin
 else
 	eval `TZ=UTC-1 date '+utc1_H=%H utc1_d=%d' 2> /dev/null`
-	if test ${utc_d-0} -lt ${utc1_d-0} -o ${utc_H-0} -lt ${utc1_H-0}; then
+	if test ${utc1_d-0} = 01 -a ${utc_d-0} -gt ${utc1_d-0} ||
+	   test ${utc_d-0} -lt ${utc1_d-0} -o ${utc_H-0} -lt ${utc1_H-0}; then
 		UTC_1=UTC-1
 		echo no, using UTC-1 >&6
 	fi
@@ -309,7 +326,6 @@ AC_CHECK_FUNCS( \
 	getenv \
 	getwd \
 	killpg \
-	mmap \
 	putenv \
 	select \
 	setenv \
@@ -549,6 +565,8 @@ bmake) egrep=egrep;;
 esac
 dnl
 AC_SUBST(egrep)
+AC_SUBST(make_os)
+AC_SUBST(force_make_os)
 AC_SUBST(machine)
 AC_SUBST(force_machine)
 AC_SUBST(machine_arch)

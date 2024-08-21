@@ -254,6 +254,9 @@ acpi_iicbus_space_handler(UINT32 Function, ACPI_PHYSICAL_ADDRESS Address,
 	sc = __containerof(info, struct acpi_iicbus_softc, space_handler_info);
 	dev = sc->super_sc.dev;
 
+	/* the address is expected to need shifting */
+	sb->SlaveAddress <<= 1;
+
 	switch (Function) {
 	case AML_FIELD_ATTRIO(AML_FIELD_ATTRIB_SEND_RECEIVE, ACPI_READ):
 		val = acpi_iicbus_recvb(dev, sb->SlaveAddress, gsb->data);
@@ -509,7 +512,7 @@ acpi_iicbus_enumerate_child(ACPI_HANDLE handle, UINT32 level,
 			return (AE_OK);
 	}
 
-	child = BUS_ADD_CHILD(iicbus, 0, NULL, -1);
+	child = BUS_ADD_CHILD(iicbus, 0, NULL, DEVICE_UNIT_ANY);
 	if (child == NULL) {
 		device_printf(iicbus, "add child failed\n");
 		return (AE_OK);

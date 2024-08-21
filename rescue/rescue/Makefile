@@ -1,4 +1,3 @@
-
 .include <src.opts.mk>
 .include <bsd.linker.mk>
 
@@ -92,7 +91,7 @@ CRUNCH_SRCDIRS+= sbin
 CRUNCH_PROGS_sbin= 						\
 	camcontrol clri devfs dmesg dump			\
 	dumpfs dumpon fsck fsck_ffs fsck_msdosfs fsdb		\
-	fsirand gbde geom ifconfig init 			\
+	fsirand geom ifconfig init 				\
 	kldconfig kldload kldstat kldunload ldconfig 		\
 	md5 mdconfig mdmfs mknod mount mount_cd9660		\
 	mount_msdosfs mount_nfs mount_nullfs			\
@@ -119,6 +118,15 @@ CRUNCH_PROGS_sbin+= ipf
 CRUNCH_LIBS_ipf+=	${LIBIPF}
 .endif
 
+.if ${MK_IPFW} != "no"
+CRUNCH_PROGS_sbin+= ipfw
+.endif
+
+.if ${MK_PF} != "no"
+CRUNCH_PROGS_sbin+= pfctl
+CRUNCH_LIBS_pfctl+= ${LIBPFCTL} ${LIBNV}
+.endif
+
 .if ${MK_ROUTED} != "no"
 CRUNCH_PROGS_sbin+= routed rtquery
 .endif
@@ -135,6 +143,7 @@ CRUNCH_PROGS_usr.sbin+= zdb
 # CRUNCH_PROGS+= devd
 
 CRUNCH_LIBS+= -l80211 -lalias -lcam -lncursesw -ldevstat -lipsec -llzma
+CRUNCH_LIBS_camcontrol+= ${LIBNVMF}
 .if ${MK_ZFS} != "no"
 CRUNCH_LIBS+= -lavl -lpthread -luutil -lumem -ltpool -lspl -lrt
 CRUNCH_LIBS_zfs+=	${LIBBE} \

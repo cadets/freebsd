@@ -57,6 +57,7 @@
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/queue.h>
+#include <sys/prng.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
@@ -294,7 +295,7 @@ cdg_cb_init(struct cc_var *ccv, void *ptr)
 {
 	struct cdg *cdg_data;
 
-	INP_WLOCK_ASSERT(tptoinpcb(ccv->ccvc.tcp));
+	INP_WLOCK_ASSERT(tptoinpcb(ccv->tp));
 	if (ptr == NULL) {
 		cdg_data = malloc(sizeof(struct cdg), M_CC_MEM, M_NOWAIT);
 		if (cdg_data == NULL)
@@ -507,7 +508,8 @@ cdg_cong_signal(struct cc_var *ccv, ccsignal_t signal_type)
 static inline int
 prob_backoff(long qtrend)
 {
-	int backoff, idx, p;
+	int backoff, idx;
+	uint32_t p;
 
 	backoff = (qtrend > ((MAXGRAD * V_cdg_exp_backoff_scale) << D_P_E));
 
@@ -519,8 +521,8 @@ prob_backoff(long qtrend)
 			idx = qtrend;
 
 		/* Backoff probability proportional to rate of queue growth. */
-		p = (INT_MAX / (1 << EXP_PREC)) * probexp[idx];
-		backoff = (random() < p);
+		p = (UINT32_MAX / (1 << EXP_PREC)) * probexp[idx];
+		backoff = (prng32() < p);
 	}
 
 	return (backoff);

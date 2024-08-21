@@ -1,4 +1,3 @@
-
 .include <src.opts.mk>
 
 #MISSING: eqnchar.7 ms.7 term.7
@@ -11,7 +10,6 @@ MAN=	arch.7 \
 	crypto.7 \
 	development.7 \
 	environ.7 \
-	ffs.7 \
 	firewall.7 \
 	growfs.7 \
 	hier.7 \
@@ -45,6 +43,11 @@ MLINKS+= c.7 c99.7
 MLINKS+= c.7 c11.7
 MLINKS+= c.7 c17.7
 MLINKS+= c.7 c2x.7
+
+.if ${MK_INET} != "no"
+MAN+=	networking.7
+MLINKS+= networking.7 wifi.7
+.endif
 
 .if ${MK_TESTS} != "no"
 ATF=	${SRCTOP}/contrib/atf

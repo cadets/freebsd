@@ -300,7 +300,7 @@ void
 abd_init(void)
 {
 	abd_chunk_cache = kmem_cache_create("abd_chunk", PAGE_SIZE, 0,
-	    NULL, NULL, NULL, NULL, 0, KMC_NODEBUG);
+	    NULL, NULL, NULL, NULL, 0, KMC_NODEBUG | KMC_RECLAIMABLE);
 
 	wmsum_init(&abd_sums.abdstat_struct_size, 0);
 	wmsum_init(&abd_sums.abdstat_scatter_cnt, 0);
@@ -417,10 +417,8 @@ abd_iter_init(struct abd_iter *aiter, abd_t *abd)
 {
 	ASSERT(!abd_is_gang(abd));
 	abd_verify(abd);
+	memset(aiter, 0, sizeof (struct abd_iter));
 	aiter->iter_abd = abd;
-	aiter->iter_pos = 0;
-	aiter->iter_mapaddr = NULL;
-	aiter->iter_mapsize = 0;
 }
 
 /*

@@ -29,6 +29,11 @@ BOOTMODEOPT=	--uefi
 .if ${AMIBOOTMETHOD} == "UEFI-PREFERRED" && ${TARGET_ARCH} == "amd64"
 BOOTMODEOPT=	--uefi-preferred
 .endif
+.if ${AMIBOOTMETHOD} == "UEFI-PREFERRED"
+AMIBASENAME=${TYPE} ${REVISION}-${BRANCH}-${TARGET}${AMINAMESUFFIX}
+.else
+AMIBASENAME=${TYPE} ${REVISION}-${BRANCH}-${TARGET}${AMINAMESUFFIX} ${AMIBOOTMETHOD}
+.endif
 
 CLEANFILES+=		ec2ami
 
@@ -40,13 +45,17 @@ CW_EC2_PORTINSTALL=
 .endif
 
 cw-ec2-portinstall:
-.if exists(${PORTSDIR}/net/bsdec2-image-upload/Makefile)
-	env - UNAME_r=${UNAME_r} PATH=$$PATH make -C ${PORTSDIR}/net/bsdec2-image-upload BATCH=1 all install clean
-.else
-. if !exists(/usr/local/sbin/pkg-static)
-	env ASSUME_ALWAYS_YES=yes pkg bootstrap -y
-. endif
+.if !exists(/usr/local/bin/bsdec2-image-upload)
+. if !exists(${PORTSDIR}/net/bsdec2-image-upload/Makefile)
+.  if !exists(/usr/local/sbin/pkg-static)
+	env ASSUME_ALWAYS_YES=yes pkg bootstrap -yf
+.  endif
 	env ASSUME_ALWAYS_YES=yes pkg install -y net/bsdec2-image-upload
+. else
+	env UNAME_r=${UNAME_r} make -C ${PORTSDIR}/net/bsdec2-image-upload \
+	    BATCH=1 WRKDIRPREFIX=/tmp/ports DISTDIR=/tmp/distfiles \
+	    all install clean
+. endif
 .endif
 	@touch ${.TARGET}
 
@@ -56,6 +65,7 @@ cw-ec2-portinstall:
 SSMOPTS_${_FL}_${_FS}=	--ssm-name ${SSMPREFIX}/${TARGET_ARCH:S/aarch64/arm64/}/${_FL}/${_FS}/${REVISION}/${BRANCH}
 .endif
 EC2AMILIST+=	ec2ami-${_FL}-${_FS}
+CLEANFILES+=	ec2ami-${_FL}-${_FS}
 ec2ami-${_FL}-${_FS}: cw-ec2-${_FL}-${_FS} ${CW_EC2_PORTINSTALL}
 .if !defined(AWSKEYFILE) || !exists(${AWSKEYFILE})
 	@echo "--------------------------------------------------------------"
@@ -78,7 +88,7 @@ ec2ami-${_FL}-${_FS}: cw-ec2-${_FL}-${_FS} ${CW_EC2_PORTINSTALL}
 	/usr/local/bin/bsdec2-image-upload ${PUBLISH} ${PUBLICSNAP} \
 	    ${EC2ARCH} ${SSMOPTS_${_FL}_${_FS}} ${BOOTMODEOPT} --sriov --ena \
 	    ${.OBJDIR}/${EC2-${_FL:tu}${_FS:tu}IMAGE} \
-	    "${TYPE} ${REVISION}-${BRANCH}-${TARGET}${AMINAMESUFFIX} ${AMIBOOTMETHOD} ${_FL} ${_FS:tu}" \
+	    "${AMIBASENAME} ${_FL} ${_FS:tu}" \
 	    "${TYPE}/${TARGET} ${GITBRANCH}@${GITREV}" \
 	    ${AWSREGION} ${AWSBUCKET} ${AWSKEYFILE} \
 	    ${EC2SNSTOPIC} ${EC2SNSREL} ${EC2SNSVERS}

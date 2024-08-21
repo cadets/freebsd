@@ -146,6 +146,9 @@ enum x2apic_state {
 #ifdef _KERNEL
 
 #define	HV_MAX_NAMELEN  VM_MAX_NAMELEN
+#include <sys/kassert.h>
+
+CTASSERT(VM_MAX_NAMELEN >= VM_MIN_NAMELEN);
 
 struct vm;
 struct vm_exception;
@@ -457,7 +460,7 @@ int vm_get_intinfo(struct vcpu *vcpu, uint64_t *info1, uint64_t *info2);
 
 /*
  * Function used to keep track of the guest's TSC offset. The
- * offset is used by the virutalization extensions to provide a consistent
+ * offset is used by the virtualization extensions to provide a consistent
  * value for the Time Stamp Counter to the guest.
  */
 void vm_set_tsc_offset(struct vcpu *vcpu, uint64_t offset);

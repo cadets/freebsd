@@ -665,13 +665,13 @@ zfs_log_write(zilog_t *zilog, dmu_tx_t *tx, int txtype,
 			DB_DNODE_ENTER(db);
 			err = dmu_read_by_dnode(DB_DNODE(db), off, len, lr + 1,
 			    DMU_READ_NO_PREFETCH);
+			DB_DNODE_EXIT(db);
 			if (err != 0) {
 				zil_itx_destroy(itx);
 				itx = zil_itx_create(txtype, sizeof (*lr));
 				lr = (lr_write_t *)&itx->itx_lr;
 				wr_state = WR_NEED_COPY;
 			}
-			DB_DNODE_EXIT(db);
 		}
 
 		itx->itx_wr_state = wr_state;
@@ -895,7 +895,7 @@ zfs_log_clone_range(zilog_t *zilog, dmu_tx_t *tx, int txtype, znode_t *zp,
 	itx_t *itx;
 	lr_clone_range_t *lr;
 	uint64_t partlen, max_log_data;
-	size_t i, partnbps;
+	size_t partnbps;
 
 	if (zil_replaying(zilog, tx) || zp->z_unlinked)
 		return;
@@ -904,10 +904,8 @@ zfs_log_clone_range(zilog_t *zilog, dmu_tx_t *tx, int txtype, znode_t *zp,
 
 	while (nbps > 0) {
 		partnbps = MIN(nbps, max_log_data / sizeof (bps[0]));
-		partlen = 0;
-		for (i = 0; i < partnbps; i++) {
-			partlen += BP_GET_LSIZE(&bps[i]);
-		}
+		partlen = partnbps * blksz;
+		ASSERT3U(partlen, <, len + blksz);
 		partlen = MIN(partlen, len);
 
 		itx = zil_itx_create(txtype,

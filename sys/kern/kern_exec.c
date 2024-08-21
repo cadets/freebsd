@@ -454,6 +454,8 @@ do_execve(struct thread *td, struct image_args *args, struct mac *mac_p,
 interpret:
 	if (args->fname != NULL) {
 #ifdef CAPABILITY_MODE
+		if (CAP_TRACING(td))
+			ktrcapfail(CAPFAIL_NAMEI, args->fname);
 		/*
 		 * While capability mode can't reach this point via direct
 		 * path arguments to execve(), we also don't allow
@@ -1950,6 +1952,7 @@ compress_chunk(struct coredump_params *cp, char *base, char *buf, size_t len)
 	size_t chunk_len;
 	int error;
 
+	error = 0;
 	while (len > 0) {
 		chunk_len = MIN(len, CORE_BUF_SIZE);
 
@@ -1995,6 +1998,7 @@ core_output(char *base, size_t len, off_t offset, struct coredump_params *cp,
 	if (cp->comp != NULL)
 		return (compress_chunk(cp, base, tmpbuf, len));
 
+	error = 0;
 	map = &cp->td->td_proc->p_vmspace->vm_map;
 	for (; len > 0; base += runlen, offset += runlen, len -= runlen) {
 		/*

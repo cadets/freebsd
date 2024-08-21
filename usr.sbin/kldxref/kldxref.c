@@ -230,7 +230,7 @@ typedef TAILQ_HEAD(pnp_head, pnp_elt) pnp_list;
 
 /*
  * this function finds the data from the pnp table, as described by the
- * the description and creates a new output (new_desc). This output table
+ * description and creates a new output (new_desc). This output table
  * is a form that's easier for the agent that's automatically loading the
  * modules.
  *
@@ -745,7 +745,7 @@ usage(void)
 }
 
 static int
-#if defined(__GLIBC__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__)
 compare(const FTSENT **a, const FTSENT **b)
 #else
 compare(const FTSENT *const *a, const FTSENT *const *b)
@@ -839,8 +839,8 @@ main(int argc, char *argv[])
 			continue;
 		/*
 		 * Skip files that generate errors like .debug, .symbol and .pkgsave
-		 * by generally skipping all files not ending with ".ko" or that have
-		 * no dots in the name (like kernel).
+		 * by generally skipping all files which neither end with ".ko"
+		 * nor have no dots in the name (like kernel).
 		 */
 		dot = strrchr(p->fts_name, '.');
 		if (dot != NULL && strcmp(dot, ".ko") != 0)

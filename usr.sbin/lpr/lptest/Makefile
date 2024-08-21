@@ -1,4 +1,4 @@
-
+PACKAGE=lp
 PROG=	lptest
 
 CFLAGS+= -I${.CURDIR:H}/common_source

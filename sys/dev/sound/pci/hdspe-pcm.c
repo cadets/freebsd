@@ -34,7 +34,6 @@
 
 #include <dev/sound/pcm/sound.h>
 #include <dev/sound/pci/hdspe.h>
-#include <dev/sound/chip.h>
 
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
@@ -540,7 +539,8 @@ buffer_copy(struct sc_chinfo *ch)
 	struct sc_pcminfo *scp;
 	struct sc_info *sc;
 	uint32_t row, ports;
-	unsigned int pos;
+	uint32_t dma_pos;
+	unsigned int pos, length, offset;
 	unsigned int n;
 	unsigned int adat_width, pcm_width;
 
@@ -558,13 +558,35 @@ buffer_copy(struct sc_chinfo *ch)
 	else
 		pcm_width = 8;
 
-	if (ch->dir == PCMDIR_PLAY)
-		pos = sndbuf_getreadyptr(ch->buffer);
-	else
-		pos = sndbuf_getfreeptr(ch->buffer);
+	/* Derive buffer position and length to be copied. */
+	if (ch->dir == PCMDIR_PLAY) {
+		/* Position per channel is n times smaller than PCM. */
+		pos = sndbuf_getreadyptr(ch->buffer) / n;
+		length = sndbuf_getready(ch->buffer) / n;
+		/* Copy no more than 2 periods in advance. */
+		if (length > (sc->period * 4 * 2))
+			length = (sc->period * 4 * 2);
+		/* Skip what was already copied last time. */
+		offset = (ch->position + HDSPE_CHANBUF_SIZE) - pos;
+		offset %= HDSPE_CHANBUF_SIZE;
+		if (offset <= length) {
+			pos = (pos + offset) % HDSPE_CHANBUF_SIZE;
+			length -= offset;
+		}
+	} else {
+		/* Position per channel is n times smaller than PCM. */
+		pos = sndbuf_getfreeptr(ch->buffer) / n;
+		/* Get DMA buffer write position. */
+		dma_pos = hdspe_read_2(sc, HDSPE_STATUS_REG);
+		dma_pos &= HDSPE_BUF_POSITION_MASK;
+		/* Copy what is newly available. */
+		length = (dma_pos + HDSPE_CHANBUF_SIZE) - pos;
+		length %= HDSPE_CHANBUF_SIZE;
+	}
 
-	pos /= 4; /* Bytes per sample. */
-	pos /= n; /* Destination buffer n-times smaller. */
+	/* Position and length in samples (4 bytes). */
+	pos /= 4;
+	length /= 4;
 
 	/* Iterate through rows of ports with contiguous slots. */
 	ports = ch->ports;
@@ -576,10 +598,10 @@ buffer_copy(struct sc_chinfo *ch)
 	while (row != 0) {
 		if (ch->dir == PCMDIR_PLAY)
 			buffer_mux_port(sc->pbuf, ch->data, row, ch->ports, pos,
-			    sc->period * 2, adat_width, pcm_width);
+			    length, adat_width, pcm_width);
 		else
 			buffer_demux_port(sc->rbuf, ch->data, row, ch->ports,
-			    pos, sc->period * 2, adat_width, pcm_width);
+			    pos, length, adat_width, pcm_width);
 
 		ports &= ~row;
 		if (pcm_width == adat_width)
@@ -587,6 +609,8 @@ buffer_copy(struct sc_chinfo *ch)
 		else
 			row = hdspe_port_first(ports);
 	}
+
+	ch->position = ((pos + length) * 4) % HDSPE_CHANBUF_SIZE;
 }
 
 static int
@@ -620,10 +644,41 @@ clean(struct sc_chinfo *ch)
 		row = hdspe_port_first_row(ports);
 	}
 
+	ch->position = 0;
+
 	return (0);
 }
 
 /* Channel interface. */
+static int
+hdspechan_free(kobj_t obj, void *data)
+{
+	struct sc_pcminfo *scp;
+	struct sc_chinfo *ch;
+	struct sc_info *sc;
+
+	ch = data;
+	scp = ch->parent;
+	sc = scp->sc;
+
+#if 0
+	device_printf(scp->dev, "hdspechan_free()\n");
+#endif
+
+	snd_mtxlock(sc->lock);
+	if (ch->data != NULL) {
+		free(ch->data, M_HDSPE);
+		ch->data = NULL;
+	}
+	if (ch->caps != NULL) {
+		free(ch->caps, M_HDSPE);
+		ch->caps = NULL;
+	}
+	snd_mtxunlock(sc->lock);
+
+	return (0);
+}
+
 static void *
 hdspechan_init(kobj_t obj, void *devinfo, struct snd_dbuf *b,
     struct pcm_channel *c, int dir)
@@ -664,6 +719,7 @@ hdspechan_init(kobj_t obj, void *devinfo, struct snd_dbuf *b,
 	/* Allocate maximum buffer size. */
 	ch->size = HDSPE_CHANBUF_SIZE * hdspe_channel_count(ch->ports, 8);
 	ch->data = malloc(ch->size, M_HDSPE, M_NOWAIT);
+	ch->position = 0;
 
 	ch->buffer = b;
 	ch->channel = c;
@@ -675,6 +731,7 @@ hdspechan_init(kobj_t obj, void *devinfo, struct snd_dbuf *b,
 
 	if (sndbuf_setup(ch->buffer, ch->data, ch->size) != 0) {
 		device_printf(scp->dev, "Can't setup sndbuf.\n");
+		hdspechan_free(obj, ch);
 		return (NULL);
 	}
 
@@ -745,35 +802,6 @@ hdspechan_getptr(kobj_t obj, void *data)
 	pos *= AFMT_CHANNEL(ch->format); /* Hardbuf with multiple channels. */
 
 	return (pos);
-}
-
-static int
-hdspechan_free(kobj_t obj, void *data)
-{
-	struct sc_pcminfo *scp;
-	struct sc_chinfo *ch;
-	struct sc_info *sc;
-
-	ch = data;
-	scp = ch->parent;
-	sc = scp->sc;
-
-#if 0
-	device_printf(scp->dev, "hdspechan_free()\n");
-#endif
-
-	snd_mtxlock(sc->lock);
-	if (ch->data != NULL) {
-		free(ch->data, M_HDSPE);
-		ch->data = NULL;
-	}
-	if (ch->caps != NULL) {
-		free(ch->caps, M_HDSPE);
-		ch->caps = NULL;
-	}
-	snd_mtxunlock(sc->lock);
-
-	return (0);
 }
 
 static int

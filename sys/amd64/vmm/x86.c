@@ -100,14 +100,13 @@ cpuid_dispatcher_t cpuid_dispatcher[VMM_MAX_MODES][CPUID_HV_SPECIFIC_NUM] = {
 };
 
 /*
- * Round up to the next power of two, if necessary, and then take log2.
- * Returns -1 if argument is zero.
+ * Compute ceil(log2(x)).  Returns -1 if x is zero.
  */
 static __inline int
 log2(u_int x)
 {
 
-	return (fls(x << (1 - powerof2(x))) - 1);
+	return (x == 0 ? -1 : order_base_2(x));
 }
 
 static __inline void
@@ -294,7 +293,7 @@ x86_emulate_cpuid(struct vcpu *vcpu, uint64_t *rax, uint64_t *rbx,
 				goto default_leaf;
 
 			/*
-			 * Similar to Intel, generate a ficticious cache
+			 * Similar to Intel, generate a fictitious cache
 			 * topology for the guest with L3 shared by the
 			 * package, and L1 and L2 local to a core.
 			 */

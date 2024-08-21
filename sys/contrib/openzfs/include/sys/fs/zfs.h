@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011, 2020 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2024 by Delphix. All rights reserved.
  * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2013, 2017 Joyent, Inc. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
@@ -258,6 +258,9 @@ typedef enum {
 	ZPOOL_PROP_BCLONEUSED,
 	ZPOOL_PROP_BCLONESAVED,
 	ZPOOL_PROP_BCLONERATIO,
+	ZPOOL_PROP_DEDUP_TABLE_SIZE,
+	ZPOOL_PROP_DEDUP_TABLE_QUOTA,
+	ZPOOL_PROP_DEDUPCACHED,
 	ZPOOL_NUM_PROPS
 } zpool_prop_t;
 
@@ -368,6 +371,9 @@ typedef enum {
 	VDEV_PROP_RAIDZ_EXPANDING,
 	VDEV_PROP_SLOW_IO_N,
 	VDEV_PROP_SLOW_IO_T,
+	VDEV_PROP_TRIM_SUPPORT,
+	VDEV_PROP_TRIM_ERRORS,
+	VDEV_PROP_SLOW_IOS,
 	VDEV_NUM_PROPS
 } vdev_prop_t;
 
@@ -1094,10 +1100,16 @@ typedef enum zio_type {
 	ZIO_TYPE_WRITE,
 	ZIO_TYPE_FREE,
 	ZIO_TYPE_CLAIM,
-	ZIO_TYPE_IOCTL,
+	ZIO_TYPE_FLUSH,
 	ZIO_TYPE_TRIM,
 	ZIO_TYPES
 } zio_type_t;
+
+/*
+ * Compatibility: _IOCTL was renamed to _FLUSH; keep the old name available to
+ * user programs.
+ */
+#define	ZIO_TYPE_IOCTL	ZIO_TYPE_FLUSH
 
 /*
  * Pool statistics.  Note: all fields should be 64-bit because this
@@ -1506,6 +1518,7 @@ typedef enum zfs_ioc {
 	ZFS_IOC_VDEV_GET_PROPS,			/* 0x5a55 */
 	ZFS_IOC_VDEV_SET_PROPS,			/* 0x5a56 */
 	ZFS_IOC_POOL_SCRUB,			/* 0x5a57 */
+	ZFS_IOC_POOL_PREFETCH,			/* 0x5a58 */
 
 	/*
 	 * Per-platform (Optional) - 8/128 numbers reserved.
@@ -1603,6 +1616,7 @@ typedef enum {
 	ZFS_ERR_RESUME_EXISTS,
 	ZFS_ERR_CRYPTO_NOTSUP,
 	ZFS_ERR_RAIDZ_EXPAND_IN_PROGRESS,
+	ZFS_ERR_ASHIFT_MISMATCH,
 } zfs_errno_t;
 
 /*
@@ -1635,6 +1649,11 @@ typedef enum {
 	ZFS_WAIT_DELETEQ,
 	ZFS_WAIT_NUM_ACTIVITIES
 } zfs_wait_activity_t;
+
+typedef enum {
+	ZPOOL_PREFETCH_NONE = 0,
+	ZPOOL_PREFETCH_DDT
+} zpool_prefetch_type_t;
 
 /*
  * Bookmark name values.
@@ -1675,6 +1694,17 @@ typedef enum {
 #define	ZPOOL_HIDDEN_ARGS	"hidden_args"
 
 /*
+ * The following is used when invoking ZFS_IOC_POOL_GET_PROPS.
+ */
+#define	ZPOOL_GET_PROPS_NAMES		"get_props_names"
+
+/*
+ * Opt-in property names used with ZPOOL_GET_PROPS_NAMES.
+ * For example, properties that are hidden or expensive to compute.
+ */
+#define	ZPOOL_DEDUPCACHED_PROP_NAME	"dedupcached"
+
+/*
  * The following are names used when invoking ZFS_IOC_POOL_INITIALIZE.
  */
 #define	ZPOOL_INITIALIZE_COMMAND	"initialize_command"
@@ -1712,6 +1742,11 @@ typedef enum {
  */
 #define	ZFS_WAIT_ACTIVITY		"wait_activity"
 #define	ZFS_WAIT_WAITED			"wait_waited"
+
+/*
+ * The following are names used when invoking ZFS_IOC_POOL_PREFETCH.
+ */
+#define	ZPOOL_PREFETCH_TYPE		"prefetch_type"
 
 /*
  * Flags for ZFS_IOC_VDEV_SET_STATE

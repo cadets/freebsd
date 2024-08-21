@@ -129,7 +129,6 @@ static void		 pf_hash_rule_addr(MD5_CTX *, struct pf_rule_addr *);
 static int		 pf_commit_rules(u_int32_t, int, char *);
 static int		 pf_addr_setup(struct pf_kruleset *,
 			    struct pf_addr_wrap *, sa_family_t);
-static void		 pf_addr_copyout(struct pf_addr_wrap *);
 static void		 pf_src_node_copy(const struct pf_ksrc_node *,
 			    struct pf_src_node *);
 #ifdef ALTQ
@@ -1408,15 +1407,15 @@ pf_commit_rules(u_int32_t ticket, int rs_num, char *anchor)
 				continue;
 			}
 			pf_counter_u64_critical_enter();
-			pf_counter_u64_add_protected(&rule->evaluations,
+			pf_counter_u64_rollup_protected(&rule->evaluations,
 			    pf_counter_u64_fetch(&old_rule->evaluations));
-			pf_counter_u64_add_protected(&rule->packets[0],
+			pf_counter_u64_rollup_protected(&rule->packets[0],
 			    pf_counter_u64_fetch(&old_rule->packets[0]));
-			pf_counter_u64_add_protected(&rule->packets[1],
+			pf_counter_u64_rollup_protected(&rule->packets[1],
 			    pf_counter_u64_fetch(&old_rule->packets[1]));
-			pf_counter_u64_add_protected(&rule->bytes[0],
+			pf_counter_u64_rollup_protected(&rule->bytes[0],
 			    pf_counter_u64_fetch(&old_rule->bytes[0]));
-			pf_counter_u64_add_protected(&rule->bytes[1],
+			pf_counter_u64_rollup_protected(&rule->bytes[1],
 			    pf_counter_u64_fetch(&old_rule->bytes[1]));
 			pf_counter_u64_critical_exit();
 		}
@@ -1525,7 +1524,7 @@ pf_addr_setup(struct pf_kruleset *ruleset, struct pf_addr_wrap *addr,
 	return (error);
 }
 
-static void
+void
 pf_addr_copyout(struct pf_addr_wrap *addr)
 {
 
@@ -1972,7 +1971,8 @@ pf_rule_to_krule(const struct pf_rule *rule, struct pf_krule *krule)
 	krule->os_fingerprint = rule->os_fingerprint;
 
 	krule->rtableid = rule->rtableid;
-	bcopy(rule->timeout, krule->timeout, sizeof(krule->timeout));
+	/* pf_rule->timeout is smaller than pf_krule->timeout */
+	bcopy(rule->timeout, krule->timeout, sizeof(rule->timeout));
 	krule->max_states = rule->max_states;
 	krule->max_src_nodes = rule->max_src_nodes;
 	krule->max_src_states = rule->max_src_states;
@@ -2207,6 +2207,11 @@ pf_ioctl_addrule(struct pf_krule *rule, uint32_t ticket,
 	    (TAILQ_FIRST(&rule->rpool.list) == NULL))
 		error = EINVAL;
 
+	if (rule->action == PF_PASS && rule->rpool.opts & PF_POOL_STICKYADDR &&
+	    !rule->keep_state) {
+		error = EINVAL;
+	}
+
 	if (error) {
 		pf_free_rule(rule);
 		rule = NULL;
@@ -2422,6 +2427,229 @@ pf_stop(void)
 	sx_xunlock(&V_pf_ioctl_lock);
 
 	return (error);
+}
+
+void
+pf_ioctl_clear_status(void)
+{
+	PF_RULES_WLOCK();
+	for (int i = 0; i < PFRES_MAX; i++)
+		counter_u64_zero(V_pf_status.counters[i]);
+	for (int i = 0; i < FCNT_MAX; i++)
+		pf_counter_u64_zero(&V_pf_status.fcounters[i]);
+	for (int i = 0; i < SCNT_MAX; i++)
+		counter_u64_zero(V_pf_status.scounters[i]);
+	for (int i = 0; i < KLCNT_MAX; i++)
+		counter_u64_zero(V_pf_status.lcounters[i]);
+	V_pf_status.since = time_second;
+	if (*V_pf_status.ifname)
+		pfi_update_status(V_pf_status.ifname, NULL);
+	PF_RULES_WUNLOCK();
+}
+
+int
+pf_ioctl_set_timeout(int timeout, int seconds, int *prev_seconds)
+{
+	uint32_t old;
+
+	if (timeout < 0 || timeout >= PFTM_MAX ||
+	    seconds < 0)
+		return (EINVAL);
+
+	PF_RULES_WLOCK();
+	old = V_pf_default_rule.timeout[timeout];
+	if (timeout == PFTM_INTERVAL && seconds == 0)
+		seconds = 1;
+	V_pf_default_rule.timeout[timeout] = seconds;
+	if (timeout == PFTM_INTERVAL && seconds < old)
+		wakeup(pf_purge_thread);
+
+	if (prev_seconds != NULL)
+		*prev_seconds = old;
+
+	PF_RULES_WUNLOCK();
+
+	return (0);
+}
+
+int
+pf_ioctl_get_timeout(int timeout, int *seconds)
+{
+	PF_RULES_RLOCK_TRACKER;
+
+	if (timeout < 0 || timeout >= PFTM_MAX)
+		return (EINVAL);
+
+	PF_RULES_RLOCK();
+	*seconds = V_pf_default_rule.timeout[timeout];
+	PF_RULES_RUNLOCK();
+
+	return (0);
+}
+
+int
+pf_ioctl_set_limit(int index, unsigned int limit, unsigned int *old_limit)
+{
+
+	PF_RULES_WLOCK();
+	if (index < 0 || index >= PF_LIMIT_MAX ||
+	    V_pf_limits[index].zone == NULL) {
+		PF_RULES_WUNLOCK();
+		return (EINVAL);
+	}
+	uma_zone_set_max(V_pf_limits[index].zone, limit);
+	if (old_limit != NULL)
+		*old_limit = V_pf_limits[index].limit;
+	V_pf_limits[index].limit = limit;
+	PF_RULES_WUNLOCK();
+
+	return (0);
+}
+
+int
+pf_ioctl_get_limit(int index, unsigned int *limit)
+{
+	PF_RULES_RLOCK_TRACKER;
+
+	if (index < 0 || index >= PF_LIMIT_MAX)
+		return (EINVAL);
+
+	PF_RULES_RLOCK();
+	*limit = V_pf_limits[index].limit;
+	PF_RULES_RUNLOCK();
+
+	return (0);
+}
+
+int
+pf_ioctl_begin_addrs(uint32_t *ticket)
+{
+	PF_RULES_WLOCK();
+	pf_empty_kpool(&V_pf_pabuf);
+	*ticket = ++V_ticket_pabuf;
+	PF_RULES_WUNLOCK();
+
+	return (0);
+}
+
+int
+pf_ioctl_add_addr(struct pfioc_pooladdr *pp)
+{
+	struct pf_kpooladdr	*pa = NULL;
+	struct pfi_kkif		*kif = NULL;
+	int error;
+
+#ifndef INET
+	if (pp->af == AF_INET)
+		return (EAFNOSUPPORT);
+#endif /* INET */
+#ifndef INET6
+	if (pp->af == AF_INET6)
+		return (EAFNOSUPPORT);
+#endif /* INET6 */
+
+	if (pp->addr.addr.type != PF_ADDR_ADDRMASK &&
+	    pp->addr.addr.type != PF_ADDR_DYNIFTL &&
+	    pp->addr.addr.type != PF_ADDR_TABLE)
+		return (EINVAL);
+
+	if (pp->addr.addr.p.dyn != NULL)
+		return (EINVAL);
+
+	pa = malloc(sizeof(*pa), M_PFRULE, M_WAITOK);
+	error = pf_pooladdr_to_kpooladdr(&pp->addr, pa);
+	if (error != 0)
+		goto out;
+	if (pa->ifname[0])
+		kif = pf_kkif_create(M_WAITOK);
+	PF_RULES_WLOCK();
+	if (pp->ticket != V_ticket_pabuf) {
+		PF_RULES_WUNLOCK();
+		if (pa->ifname[0])
+			pf_kkif_free(kif);
+		error = EBUSY;
+		goto out;
+	}
+	if (pa->ifname[0]) {
+		pa->kif = pfi_kkif_attach(kif, pa->ifname);
+		kif = NULL;
+		pfi_kkif_ref(pa->kif);
+	} else
+		pa->kif = NULL;
+	if (pa->addr.type == PF_ADDR_DYNIFTL && ((error =
+	    pfi_dynaddr_setup(&pa->addr, pp->af)) != 0)) {
+		if (pa->ifname[0])
+			pfi_kkif_unref(pa->kif);
+		PF_RULES_WUNLOCK();
+		goto out;
+	}
+	TAILQ_INSERT_TAIL(&V_pf_pabuf, pa, entries);
+	PF_RULES_WUNLOCK();
+
+	return (0);
+
+out:
+	free(pa, M_PFRULE);
+	return (error);
+}
+
+int
+pf_ioctl_get_addrs(struct pfioc_pooladdr *pp)
+{
+	struct pf_kpool		*pool;
+	struct pf_kpooladdr	*pa;
+
+	PF_RULES_RLOCK_TRACKER;
+
+	pp->anchor[sizeof(pp->anchor) - 1] = 0;
+	pp->nr = 0;
+
+	PF_RULES_RLOCK();
+	pool = pf_get_kpool(pp->anchor, pp->ticket, pp->r_action,
+	    pp->r_num, 0, 1, 0);
+	if (pool == NULL) {
+		PF_RULES_RUNLOCK();
+		return (EBUSY);
+	}
+	TAILQ_FOREACH(pa, &pool->list, entries)
+		pp->nr++;
+	PF_RULES_RUNLOCK();
+
+	return (0);
+}
+
+int
+pf_ioctl_get_addr(struct pfioc_pooladdr *pp)
+{
+	struct pf_kpool		*pool;
+	struct pf_kpooladdr	*pa;
+	u_int32_t		 nr = 0;
+
+	PF_RULES_RLOCK_TRACKER;
+
+	pp->anchor[sizeof(pp->anchor) - 1] = 0;
+
+	PF_RULES_RLOCK();
+	pool = pf_get_kpool(pp->anchor, pp->ticket, pp->r_action,
+	    pp->r_num, 0, 1, 1);
+	if (pool == NULL) {
+		PF_RULES_RUNLOCK();
+		return (EBUSY);
+	}
+	pa = TAILQ_FIRST(&pool->list);
+	while ((pa != NULL) && (nr < pp->nr)) {
+		pa = TAILQ_NEXT(pa, entries);
+		nr++;
+	}
+	if (pa == NULL) {
+		PF_RULES_RUNLOCK();
+		return (EBUSY);
+	}
+	pf_kpooladdr_to_pooladdr(pa, &pp->addr);
+	pf_addr_copyout(&pp->addr.addr);
+	PF_RULES_RUNLOCK();
+
+	return (0);
 }
 
 static int
@@ -3613,7 +3841,7 @@ DIOCCHANGERULE_error:
 		    sizeof(struct pfsync_state_1301), M_TEMP, M_WAITOK | M_ZERO);
 		nr = 0;
 
-		for (i = 0; i <= pf_hashmask; i++) {
+		for (i = 0; i <= V_pf_hashmask; i++) {
 			struct pf_idhash *ih = &V_pf_idhash[i];
 
 DIOCGETSTATES_retry:
@@ -3692,7 +3920,7 @@ DIOCGETSTATES_full:
 		    sizeof(struct pf_state_export), M_TEMP, M_WAITOK | M_ZERO);
 		nr = 0;
 
-		for (i = 0; i <= pf_hashmask; i++) {
+		for (i = 0; i <= V_pf_hashmask; i++) {
 			struct pf_idhash *ih = &V_pf_idhash[i];
 
 DIOCGETSTATESV2_retry:
@@ -3765,19 +3993,7 @@ DIOCGETSTATESV2_full:
 	}
 
 	case DIOCCLRSTATUS: {
-		PF_RULES_WLOCK();
-		for (int i = 0; i < PFRES_MAX; i++)
-			counter_u64_zero(V_pf_status.counters[i]);
-		for (int i = 0; i < FCNT_MAX; i++)
-			pf_counter_u64_zero(&V_pf_status.fcounters[i]);
-		for (int i = 0; i < SCNT_MAX; i++)
-			counter_u64_zero(V_pf_status.scounters[i]);
-		for (int i = 0; i < KLCNT_MAX; i++)
-			counter_u64_zero(V_pf_status.lcounters[i]);
-		V_pf_status.since = time_second;
-		if (*V_pf_status.ifname)
-			pfi_update_status(V_pf_status.ifname, NULL);
-		PF_RULES_WUNLOCK();
+		pf_ioctl_clear_status();
 		break;
 	}
 
@@ -3831,67 +4047,32 @@ DIOCGETSTATESV2_full:
 
 	case DIOCSETTIMEOUT: {
 		struct pfioc_tm	*pt = (struct pfioc_tm *)addr;
-		int		 old;
 
-		if (pt->timeout < 0 || pt->timeout >= PFTM_MAX ||
-		    pt->seconds < 0) {
-			error = EINVAL;
-			break;
-		}
-		PF_RULES_WLOCK();
-		old = V_pf_default_rule.timeout[pt->timeout];
-		if (pt->timeout == PFTM_INTERVAL && pt->seconds == 0)
-			pt->seconds = 1;
-		V_pf_default_rule.timeout[pt->timeout] = pt->seconds;
-		if (pt->timeout == PFTM_INTERVAL && pt->seconds < old)
-			wakeup(pf_purge_thread);
-		pt->seconds = old;
-		PF_RULES_WUNLOCK();
+		error = pf_ioctl_set_timeout(pt->timeout, pt->seconds,
+		    &pt->seconds);
 		break;
 	}
 
 	case DIOCGETTIMEOUT: {
 		struct pfioc_tm	*pt = (struct pfioc_tm *)addr;
 
-		if (pt->timeout < 0 || pt->timeout >= PFTM_MAX) {
-			error = EINVAL;
-			break;
-		}
-		PF_RULES_RLOCK();
-		pt->seconds = V_pf_default_rule.timeout[pt->timeout];
-		PF_RULES_RUNLOCK();
+		error = pf_ioctl_get_timeout(pt->timeout, &pt->seconds);
 		break;
 	}
 
 	case DIOCGETLIMIT: {
 		struct pfioc_limit	*pl = (struct pfioc_limit *)addr;
 
-		if (pl->index < 0 || pl->index >= PF_LIMIT_MAX) {
-			error = EINVAL;
-			break;
-		}
-		PF_RULES_RLOCK();
-		pl->limit = V_pf_limits[pl->index].limit;
-		PF_RULES_RUNLOCK();
+		error = pf_ioctl_get_limit(pl->index, &pl->limit);
 		break;
 	}
 
 	case DIOCSETLIMIT: {
 		struct pfioc_limit	*pl = (struct pfioc_limit *)addr;
-		int			 old_limit;
+		unsigned int old_limit;
 
-		PF_RULES_WLOCK();
-		if (pl->index < 0 || pl->index >= PF_LIMIT_MAX ||
-		    V_pf_limits[pl->index].zone == NULL) {
-			PF_RULES_WUNLOCK();
-			error = EINVAL;
-			break;
-		}
-		uma_zone_set_max(V_pf_limits[pl->index].zone, pl->limit);
-		old_limit = V_pf_limits[pl->index].limit;
-		V_pf_limits[pl->index].limit = pl->limit;
+		error = pf_ioctl_set_limit(pl->index, pl->limit, &old_limit);
 		pl->limit = old_limit;
-		PF_RULES_WUNLOCK();
 		break;
 	}
 
@@ -4136,125 +4317,28 @@ DIOCGETSTATESV2_full:
 	case DIOCBEGINADDRS: {
 		struct pfioc_pooladdr	*pp = (struct pfioc_pooladdr *)addr;
 
-		PF_RULES_WLOCK();
-		pf_empty_kpool(&V_pf_pabuf);
-		pp->ticket = ++V_ticket_pabuf;
-		PF_RULES_WUNLOCK();
+		error = pf_ioctl_begin_addrs(&pp->ticket);
 		break;
 	}
 
 	case DIOCADDADDR: {
 		struct pfioc_pooladdr	*pp = (struct pfioc_pooladdr *)addr;
-		struct pf_kpooladdr	*pa;
-		struct pfi_kkif		*kif = NULL;
 
-#ifndef INET
-		if (pp->af == AF_INET) {
-			error = EAFNOSUPPORT;
-			break;
-		}
-#endif /* INET */
-#ifndef INET6
-		if (pp->af == AF_INET6) {
-			error = EAFNOSUPPORT;
-			break;
-		}
-#endif /* INET6 */
-		if (pp->addr.addr.type != PF_ADDR_ADDRMASK &&
-		    pp->addr.addr.type != PF_ADDR_DYNIFTL &&
-		    pp->addr.addr.type != PF_ADDR_TABLE) {
-			error = EINVAL;
-			break;
-		}
-		if (pp->addr.addr.p.dyn != NULL) {
-			error = EINVAL;
-			break;
-		}
-		pa = malloc(sizeof(*pa), M_PFRULE, M_WAITOK);
-		error = pf_pooladdr_to_kpooladdr(&pp->addr, pa);
-		if (error != 0)
-			break;
-		if (pa->ifname[0])
-			kif = pf_kkif_create(M_WAITOK);
-		PF_RULES_WLOCK();
-		if (pp->ticket != V_ticket_pabuf) {
-			PF_RULES_WUNLOCK();
-			if (pa->ifname[0])
-				pf_kkif_free(kif);
-			free(pa, M_PFRULE);
-			error = EBUSY;
-			break;
-		}
-		if (pa->ifname[0]) {
-			pa->kif = pfi_kkif_attach(kif, pa->ifname);
-			kif = NULL;
-			pfi_kkif_ref(pa->kif);
-		} else
-			pa->kif = NULL;
-		if (pa->addr.type == PF_ADDR_DYNIFTL && ((error =
-		    pfi_dynaddr_setup(&pa->addr, pp->af)) != 0)) {
-			if (pa->ifname[0])
-				pfi_kkif_unref(pa->kif);
-			PF_RULES_WUNLOCK();
-			free(pa, M_PFRULE);
-			break;
-		}
-		TAILQ_INSERT_TAIL(&V_pf_pabuf, pa, entries);
-		PF_RULES_WUNLOCK();
+		error = pf_ioctl_add_addr(pp);
 		break;
 	}
 
 	case DIOCGETADDRS: {
 		struct pfioc_pooladdr	*pp = (struct pfioc_pooladdr *)addr;
-		struct pf_kpool		*pool;
-		struct pf_kpooladdr	*pa;
 
-		pp->anchor[sizeof(pp->anchor) - 1] = 0;
-		pp->nr = 0;
-
-		PF_RULES_RLOCK();
-		pool = pf_get_kpool(pp->anchor, pp->ticket, pp->r_action,
-		    pp->r_num, 0, 1, 0);
-		if (pool == NULL) {
-			PF_RULES_RUNLOCK();
-			error = EBUSY;
-			break;
-		}
-		TAILQ_FOREACH(pa, &pool->list, entries)
-			pp->nr++;
-		PF_RULES_RUNLOCK();
+		error = pf_ioctl_get_addrs(pp);
 		break;
 	}
 
 	case DIOCGETADDR: {
 		struct pfioc_pooladdr	*pp = (struct pfioc_pooladdr *)addr;
-		struct pf_kpool		*pool;
-		struct pf_kpooladdr	*pa;
-		u_int32_t		 nr = 0;
 
-		pp->anchor[sizeof(pp->anchor) - 1] = 0;
-
-		PF_RULES_RLOCK();
-		pool = pf_get_kpool(pp->anchor, pp->ticket, pp->r_action,
-		    pp->r_num, 0, 1, 1);
-		if (pool == NULL) {
-			PF_RULES_RUNLOCK();
-			error = EBUSY;
-			break;
-		}
-		pa = TAILQ_FIRST(&pool->list);
-		while ((pa != NULL) && (nr < pp->nr)) {
-			pa = TAILQ_NEXT(pa, entries);
-			nr++;
-		}
-		if (pa == NULL) {
-			PF_RULES_RUNLOCK();
-			error = EBUSY;
-			break;
-		}
-		pf_kpooladdr_to_pooladdr(pa, &pp->addr);
-		pf_addr_copyout(&pp->addr.addr);
-		PF_RULES_RUNLOCK();
+		error = pf_ioctl_get_addr(pp);
 		break;
 	}
 
@@ -5302,7 +5386,7 @@ DIOCCHANGEADDR_error:
 		struct pf_src_node	*p, *pstore;
 		uint32_t		 i, nr = 0;
 
-		for (i = 0, sh = V_pf_srchash; i <= pf_srchashmask;
+		for (i = 0, sh = V_pf_srchash; i <= V_pf_srchashmask;
 				i++, sh++) {
 			PF_HASHROW_LOCK(sh);
 			LIST_FOREACH(n, &sh->nodes, entry)
@@ -5321,7 +5405,7 @@ DIOCCHANGEADDR_error:
 		nr = 0;
 
 		p = pstore = malloc(psn->psn_len, M_TEMP, M_WAITOK | M_ZERO);
-		for (i = 0, sh = V_pf_srchash; i <= pf_srchashmask;
+		for (i = 0, sh = V_pf_srchash; i <= V_pf_srchashmask;
 		    i++, sh++) {
 		    PF_HASHROW_LOCK(sh);
 		    LIST_FOREACH(n, &sh->nodes, entry) {
@@ -5793,7 +5877,7 @@ pf_clear_all_states(void)
 	u_int i;
 
 	NET_EPOCH_ENTER(et);
-	for (i = 0; i <= pf_hashmask; i++) {
+	for (i = 0; i <= V_pf_hashmask; i++) {
 		struct pf_idhash *ih = &V_pf_idhash[i];
 relock:
 		PF_HASHROW_LOCK(ih);
@@ -5830,7 +5914,7 @@ pf_clear_srcnodes(struct pf_ksrc_node *n)
 	struct pf_kstate *s;
 	int i;
 
-	for (i = 0; i <= pf_hashmask; i++) {
+	for (i = 0; i <= V_pf_hashmask; i++) {
 		struct pf_idhash *ih = &V_pf_idhash[i];
 
 		PF_HASHROW_LOCK(ih);
@@ -5846,7 +5930,7 @@ pf_clear_srcnodes(struct pf_ksrc_node *n)
 	if (n == NULL) {
 		struct pf_srchash *sh;
 
-		for (i = 0, sh = V_pf_srchash; i <= pf_srchashmask;
+		for (i = 0, sh = V_pf_srchash; i <= V_pf_srchashmask;
 		    i++, sh++) {
 			PF_HASHROW_LOCK(sh);
 			LIST_FOREACH(n, &sh->nodes, entry) {
@@ -5868,7 +5952,7 @@ pf_kill_srcnodes(struct pfioc_src_node_kill *psnk)
 	struct pf_ksrc_node_list	 kill;
 
 	LIST_INIT(&kill);
-	for (int i = 0; i <= pf_srchashmask; i++) {
+	for (int i = 0; i <= V_pf_srchashmask; i++) {
 		struct pf_srchash *sh = &V_pf_srchash[i];
 		struct pf_ksrc_node *sn, *tmp;
 
@@ -5889,7 +5973,7 @@ pf_kill_srcnodes(struct pfioc_src_node_kill *psnk)
 		PF_HASHROW_UNLOCK(sh);
 	}
 
-	for (int i = 0; i <= pf_hashmask; i++) {
+	for (int i = 0; i <= V_pf_hashmask; i++) {
 		struct pf_idhash *ih = &V_pf_idhash[i];
 		struct pf_kstate *s;
 
@@ -5952,7 +6036,7 @@ pf_clear_states(const struct pf_kstate_kill *kill)
 
 	NET_EPOCH_ASSERT();
 
-	for (unsigned int i = 0; i <= pf_hashmask; i++) {
+	for (unsigned int i = 0; i <= V_pf_hashmask; i++) {
 		struct pf_idhash *ih = &V_pf_idhash[i];
 
 relock_DIOCCLRSTATES:
@@ -6027,7 +6111,7 @@ pf_killstates(struct pf_kstate_kill *kill, unsigned int *killed)
 		return;
 	}
 
-	for (unsigned int i = 0; i <= pf_hashmask; i++)
+	for (unsigned int i = 0; i <= V_pf_hashmask; i++)
 		*killed += pf_killstates_row(kill, &V_pf_idhash[i]);
 }
 

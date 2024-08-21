@@ -1,4 +1,3 @@
-
 LOADER_MSDOS_SUPPORT?=	yes
 LOADER_UFS_SUPPORT?=	yes
 LOADER_CD9660_SUPPORT?=	no
@@ -44,7 +43,7 @@ CFLAGS.main.c+=	-I${SYSDIR}/contrib/openzfs/include/os/freebsd/zfs
 CWARNFLAGS.main.c += -Wno-implicit-function-declaration
 
 NEWVERSWHAT=	"User boot ${LOADER_INTERP}" ${MACHINE_CPUARCH}
-VERSION_FILE=	${.CURDIR}/../userboot/version
+VERSION_FILE?=	${.CURDIR}/../userboot/version
 
 .if ${LOADER_INTERP} == ${LOADER_DEFAULT_INTERP}
 LINKS+=		${BINDIR}/${SHLIB_NAME} ${BINDIR}/userboot.so

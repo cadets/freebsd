@@ -72,6 +72,7 @@
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <math.h>
 #include <paths.h>
 #include <regex.h>
@@ -166,6 +167,7 @@ struct context_vec {
 
 enum readhash { RH_BINARY, RH_OK, RH_EOF };
 
+static int	 diffreg_stone(char *, char *, int, int);
 static FILE	*opentemp(const char *);
 static void	 output(char *, FILE *, char *, FILE *, int);
 static void	 check(FILE *, FILE *, int);
@@ -201,11 +203,11 @@ static int	 *klist;		/* will be overlaid on file[0] after class */
 static int	 *member;		/* will be overlaid on file[1] */
 static int	 clen;
 static int	 inifdef;		/* whether or not we are in a #ifdef block */
-static int	 len[2];
-static int	 pref, suff;	/* length of prefix and suffix */
-static int	 slen[2];
+static size_t	 len[2];		/* lengths of files in lines */
+static size_t	 pref, suff;		/* lengths of prefix and suffix */
+static size_t	 slen[2];		/* lengths of files minus pref / suff */
 static int	 anychange;
-static int	 hw, lpad, rpad;	/* half width and padding */
+static int	 hw, lpad,rpad;		/* half width and padding */
 static int	 edoffset;
 static long	*ixnew;		/* will be overlaid on file[1] */
 static long	*ixold;		/* will be overlaid on klist */
@@ -222,6 +224,32 @@ static char lastbuf[FUNCTION_CONTEXT_SIZE];
 static int lastline;
 static int lastmatchline;
 
+int
+diffreg(char *file1, char *file2, int flags, int capsicum)
+{
+	/*
+	 * If we have set the algorithm with -A or --algorithm use that if we
+	 * can and if not print an error.
+	 */
+	if (diff_algorithm_set) {
+		if (diff_algorithm == D_DIFFMYERS ||
+		    diff_algorithm == D_DIFFPATIENCE) {
+			if (can_libdiff(flags))
+				return diffreg_new(file1, file2, flags, capsicum);
+			else
+				errx(2, "cannot use Myers algorithm with selected options");
+		} else {
+			/* Fallback to using stone. */
+			return diffreg_stone(file1, file2, flags, capsicum);
+		}
+	} else {
+		if (can_libdiff(flags))
+			return diffreg_new(file1, file2, flags, capsicum);
+		else
+			return diffreg_stone(file1, file2, flags, capsicum);
+	}
+}
+
 static int
 clow2low(int c)
 {
@@ -237,7 +265,7 @@ cup2low(int c)
 }
 
 int
-diffreg(char *file1, char *file2, int flags, int capsicum)
+diffreg_stone(char *file1, char *file2, int flags, int capsicum)
 {
 	FILE *f1, *f2;
 	int i, rval;
@@ -380,7 +408,8 @@ diffreg(char *file1, char *file2, int flags, int capsicum)
 	}
 
 	if (diff_format == D_BRIEF && ignore_pats == NULL &&
-	    (flags & (D_FOLDBLANKS|D_IGNOREBLANKS|D_IGNORECASE|D_STRIPCR)) == 0)
+	    (flags & (D_FOLDBLANKS|D_IGNOREBLANKS|D_IGNORECASE|
+	    D_SKIPBLANKLINES|D_STRIPCR)) == 0)
 	{
 		rval = D_DIFFER;
 		status |= 1;
@@ -396,6 +425,10 @@ diffreg(char *file1, char *file2, int flags, int capsicum)
 		status |= 1;
 		goto closem;
 	}
+	if (len[0] > INT_MAX - 2)
+		errc(1, EFBIG, "%s", file1);
+	if (len[1] > INT_MAX - 2)
+		errc(1, EFBIG, "%s", file2);
 
 	prune();
 	sort(sfile[0], slen[0]);
@@ -521,18 +554,17 @@ prepare(int i, FILE *fd, size_t filesize, int flags)
 		sz = 100;
 
 	p = xcalloc(sz + 3, sizeof(*p));
-	while ((r = readhash(fd, flags, &h)) != RH_EOF)
-		switch (r) {
-		case RH_EOF: /* otherwise clang complains */
-		case RH_BINARY:
+	while ((r = readhash(fd, flags, &h)) != RH_EOF) {
+		if (r == RH_BINARY)
 			return (false);
-		case RH_OK:
-			if (j == sz) {
-				sz = sz * 3 / 2;
-				p = xreallocarray(p, sz + 3, sizeof(*p));
-			}
-			p[++j].value = h;
+		if (j == SIZE_MAX)
+			break;
+		if (j == sz) {
+			sz = sz * 3 / 2;
+			p = xreallocarray(p, sz + 3, sizeof(*p));
 		}
+		p[++j].value = h;
+	}
 
 	len[i] = j;
 	file[i] = p;
@@ -543,7 +575,7 @@ prepare(int i, FILE *fd, size_t filesize, int flags)
 static void
 prune(void)
 {
-	int i, j;
+	size_t i, j;
 
 	for (pref = 0; pref < len[0] && pref < len[1] &&
 	    file[0][pref + 1].value == file[1][pref + 1].value;
@@ -681,7 +713,7 @@ static void
 unravel(int p)
 {
 	struct cand *q;
-	int i;
+	size_t i;
 
 	for (i = 0; i <= len[0]; i++)
 		J[i] = i <= pref ? i :
@@ -708,7 +740,7 @@ check(FILE *f1, FILE *f2, int flags)
 	ixold[0] = ixnew[0] = 0;
 	/* jackpot = 0; */
 	ctold = ctnew = 0;
-	for (i = 1; i <= len[0]; i++) {
+	for (i = 1; i <= (int)len[0]; i++) {
 		if (J[i] == 0) {
 			ixold[i] = ctold += skipline(f1);
 			continue;
@@ -726,10 +758,10 @@ check(FILE *f1, FILE *f2, int flags)
 				 * in one file for -b or -w.
 				 */
 				if (flags & (D_FOLDBLANKS | D_IGNOREBLANKS)) {
-					if (c == EOF && d == '\n') {
+					if (c == EOF && isspace(d)) {
 						ctnew++;
 						break;
-					} else if (c == '\n' && d == EOF) {
+					} else if (isspace(c) && d == EOF) {
 						ctold++;
 						break;
 					}
@@ -808,7 +840,7 @@ check(FILE *f1, FILE *f2, int flags)
 		ixnew[j] = ctnew;
 		j++;
 	}
-	for (; j <= len[1]; j++) {
+	for (; j <= (int)len[1]; j++) {
 		ixnew[j] = ctnew += skipline(f2);
 	}
 	/*
@@ -1219,6 +1251,7 @@ fetch(long *f, int a, int b, FILE *lb, int ch, int oldfile, int flags)
 
 	edoffset = 0;
 	nc = 0;
+	col = 0;
 	/*
 	 * When doing #ifdef's, copy down to current line
 	 * if this is the first file, so that stuff makes it to output.
@@ -1284,6 +1317,10 @@ fetch(long *f, int a, int b, FILE *lb, int ch, int oldfile, int flags)
 					printf("\n\\ No newline at end of file\n");
 				return (col);
 			}
+			/*
+			 * when using --side-by-side, col needs to be increased
+			 * in any case to keep the columns aligned
+			 */
 			if (c == '\t') {
 				/*
 				 * Calculate where the tab would bring us.
@@ -1470,9 +1507,9 @@ dump_context_vec(FILE *f1, FILE *f2, int flags)
 
 	b = d = 0;		/* gcc */
 	lowa = MAX(1, cvp->a - diff_context);
-	upb = MIN(len[0], context_vec_ptr->b + diff_context);
+	upb = MIN((int)len[0], context_vec_ptr->b + diff_context);
 	lowc = MAX(1, cvp->c - diff_context);
-	upd = MIN(len[1], context_vec_ptr->d + diff_context);
+	upd = MIN((int)len[1], context_vec_ptr->d + diff_context);
 
 	printf("***************");
 	if (flags & (D_PROTOTYPE | D_MATCHLAST)) {
@@ -1573,9 +1610,9 @@ dump_unified_vec(FILE *f1, FILE *f2, int flags)
 
 	b = d = 0;		/* gcc */
 	lowa = MAX(1, cvp->a - diff_context);
-	upb = MIN(len[0], context_vec_ptr->b + diff_context);
+	upb = MIN((int)len[0], context_vec_ptr->b + diff_context);
 	lowc = MAX(1, cvp->c - diff_context);
-	upd = MIN(len[1], context_vec_ptr->d + diff_context);
+	upd = MIN((int)len[1], context_vec_ptr->d + diff_context);
 
 	printf("@@ -");
 	uni_range(lowa, upb);

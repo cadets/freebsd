@@ -655,6 +655,59 @@ fetch_setup_verboselevel () {
 	esac
 }
 
+# Check if there are any kernel modules installed from ports.
+# In that case warn the user that a rebuild from ports (i.e. not from
+# packages) might need necessary for the modules to work in the new release.
+upgrade_check_kmod_ports() {
+	local mod_name
+	local modules
+	local pattern
+	local pkg_name
+	local port_name
+	local report
+	local w
+
+	if ! pkg -N 2>/dev/null; then
+		echo "Skipping kernel modules check. pkg(8) not present."
+		return
+	fi
+
+	# Most modules are in /boot/modules but we should actually look
+	# in every module_path passed to the kernel:
+	pattern=$(sysctl -n kern.module_path | tr ";" "|")
+
+	if [ -z "${pattern}" ]; then
+		echo "Empty kern.module_path sysctl. This should not happen."
+		echo "Aborting check of kernel modules installed from ports."
+		return
+	fi
+
+	# Check the pkg database for modules installed in those directories
+	modules=$(pkg query '%Fp' | grep -E "${pattern}")
+
+	if [ -z "${modules}" ]; then
+		return
+	fi
+
+	echo -e "\n"
+	echo "The following modules have been installed from packages."
+	echo "As a consequence they might not work when performing a major or minor upgrade."
+	echo -e "It is advised to rebuild these ports:\n"
+
+
+	report="Module Package Port\n------ ------- ----\n"
+	for module in ${modules}; do
+		w=$(pkg which "${module}")
+		mod_name=$(echo "${w}" | awk '{print $1;}')
+		pkg_name=$(echo "${w}" | awk '{print $6;}')
+		port_name=$(pkg info -o "${pkg_name}" | awk '{print $2;}')
+		report="${report}${mod_name} ${pkg_name} ${port_name}\n"
+	done
+
+	echo -e "${report}" | column -t
+	echo -e "\n"
+}
+
 # Perform sanity checks and set some final parameters
 # in preparation for fetching files.  Figure out which
 # set of updates should be downloaded: If the user is
@@ -1052,10 +1105,10 @@ IDS_check_params () {
 # a useful answer, use the server name specified by the user.
 # Put another way... look up _http._tcp.${SERVERNAME} and pick a server
 # from that; or if no servers are returned, use ${SERVERNAME}.
-# This allows a user to specify "portsnap.freebsd.org" (in which case
-# portsnap will select one of the mirrors) or "portsnap5.tld.freebsd.org"
-# (in which case portsnap will use that particular server, since there
-# won't be an SRV entry for that name).
+# This allows a user to specify "update.FreeBSD.org" (in which case
+# freebsd-update will select one of the mirrors) or "update1.freebsd.org"
+# (in which case freebsd-update will use that particular server, since
+# there won't be an SRV entry for that name).
 #
 # We ignore the Port field, since we are always going to use port 80.
 
@@ -1254,7 +1307,7 @@ fetch_tag () {
 		return 1
 	fi
 
-	openssl rsautl -pubin -inkey pub.ssl -verify		\
+	openssl pkeyutl -pubin -inkey pub.ssl -verifyrecover	\
 	    < latest.ssl > tag.new 2>${QUIETREDIR} || true
 	rm latest.ssl
 
@@ -2895,7 +2948,7 @@ backup_kernel () {
 	(cd ${BASEDIR}/${KERNELDIR} && find . -type f $FINDFILTER -exec \
 	    cp -pl '{}' ${BASEDIR}/${BACKUPKERNELDIR}/'{}' \;)
 
-	# Re-enable patchname expansion.
+	# Re-enable pathname expansion.
 	set +f
 }
 
@@ -3466,6 +3519,7 @@ cmd_cron () {
 cmd_upgrade () {
 	finalize_components_config ${COMPONENTS}
 	upgrade_check_params
+	upgrade_check_kmod_ports
 	upgrade_run || exit 1
 }
 

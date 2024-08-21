@@ -69,6 +69,7 @@
 #include <sys/zpl.h>
 #include <sys/zil.h>
 #include <sys/sa_impl.h>
+#include <linux/mm_compat.h>
 
 /*
  * Programming rules.
@@ -1788,23 +1789,35 @@ zfs_setattr_dir(znode_t *dzp)
 			    &gid, sizeof (gid));
 		}
 
-		if (zp->z_projid != dzp->z_projid) {
+
+		uint64_t projid = dzp->z_projid;
+		if (zp->z_projid != projid) {
 			if (!(zp->z_pflags & ZFS_PROJID)) {
-				zp->z_pflags |= ZFS_PROJID;
-				SA_ADD_BULK_ATTR(bulk, count,
-				    SA_ZPL_FLAGS(zfsvfs), NULL, &zp->z_pflags,
-				    sizeof (zp->z_pflags));
+				err = sa_add_projid(zp->z_sa_hdl, tx, projid);
+				if (unlikely(err == EEXIST)) {
+					err = 0;
+				} else if (err != 0) {
+					goto sa_add_projid_err;
+				} else {
+					projid = ZFS_INVALID_PROJID;
+				}
 			}
 
-			zp->z_projid = dzp->z_projid;
-			SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_PROJID(zfsvfs),
-			    NULL, &zp->z_projid, sizeof (zp->z_projid));
+			if (projid != ZFS_INVALID_PROJID) {
+				zp->z_projid = projid;
+				SA_ADD_BULK_ATTR(bulk, count,
+				    SA_ZPL_PROJID(zfsvfs), NULL, &zp->z_projid,
+				    sizeof (zp->z_projid));
+			}
 		}
 
+sa_add_projid_err:
 		mutex_exit(&dzp->z_lock);
 
 		if (likely(count > 0)) {
 			err = sa_bulk_update(zp->z_sa_hdl, bulk, count, tx);
+			dmu_tx_commit(tx);
+		} else if (projid == ZFS_INVALID_PROJID) {
 			dmu_tx_commit(tx);
 		} else {
 			dmu_tx_abort(tx);
@@ -3795,11 +3808,8 @@ zfs_putpage(struct inode *ip, struct page *pp, struct writeback_control *wbc,
 	dmu_tx_hold_sa(tx, zp->z_sa_hdl, B_FALSE);
 	zfs_sa_upgrade_txholds(tx, zp);
 
-	err = dmu_tx_assign(tx, TXG_NOWAIT);
+	err = dmu_tx_assign(tx, TXG_WAIT);
 	if (err != 0) {
-		if (err == ERESTART)
-			dmu_tx_wait(tx);
-
 		dmu_tx_abort(tx);
 #ifdef HAVE_VFS_FILEMAP_DIRTY_FOLIO
 		filemap_dirty_folio(page_mapping(pp), page_folio(pp));

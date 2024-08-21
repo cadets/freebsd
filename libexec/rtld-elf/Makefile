@@ -1,4 +1,3 @@
-
 # Use the following command to build local debug version of dynamic
 # linker:
 # make DEBUG_FLAGS=-g WITHOUT_TESTS=yes all
@@ -14,6 +13,10 @@ MK_SSP=		no
 MK_UBSAN=	no
 
 .include <bsd.compat.pre.mk>
+
+# SSP forced off already implies FORTIFY_SOURCE=0, but we must make sure that
+# one cannot turn it back on.
+FORTIFY_SOURCE=	0
 
 .if !defined(NEED_COMPAT)
 CONFS=		libmap.conf

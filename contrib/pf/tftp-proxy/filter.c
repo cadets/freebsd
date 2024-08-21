@@ -61,7 +61,7 @@ static char			pfanchor[PF_ANCHOR_NAME_SIZE];
 static char			pfanchor_call[PF_ANCHOR_NAME_SIZE];
 static struct pfioc_trans	pft;
 static struct pfioc_trans_e	pfte[TRANS_SIZE];
-static int dev, rule_log;
+static int rule_log;
 static struct pfctl_handle *pfh = NULL;
 static char *qname;
 
@@ -108,7 +108,7 @@ add_nat(u_int32_t id, struct sockaddr *src, struct sockaddr *dst,
 		    &satosin6(nat)->sin6_addr.s6_addr, 16);
 		memset(&pfp.addr.addr.v.a.mask.addr8, 255, 16);
 	}
-	if (ioctl(dev, DIOCADDADDR, &pfp) == -1)
+	if (ioctl(pfctl_fd(pfh), DIOCADDADDR, &pfp) == -1)
 		return (-1);
 
 	pfrule.rpool.proxy_port[0] = nat_range_low;
@@ -142,7 +142,7 @@ add_rdr(u_int32_t id, struct sockaddr *src, struct sockaddr *dst,
 		    &satosin6(rdr)->sin6_addr.s6_addr, 16);
 		memset(&pfp.addr.addr.v.a.mask.addr8, 255, 16);
 	}
-	if (ioctl(dev, DIOCADDADDR, &pfp) == -1)
+	if (ioctl(pfctl_fd(pfh), DIOCADDADDR, &pfp) == -1)
 		return (-1);
 
 	pfrule.rpool.proxy_port[0] = rdr_port;
@@ -156,7 +156,7 @@ add_rdr(u_int32_t id, struct sockaddr *src, struct sockaddr *dst,
 int
 do_commit(void)
 {
-	if (ioctl(dev, DIOCXCOMMIT, &pft) == -1)
+	if (ioctl(pfctl_fd(pfh), DIOCXCOMMIT, &pft) == -1)
 		return (-1);
 
 	return (0);
@@ -165,7 +165,7 @@ do_commit(void)
 int
 do_rollback(void)
 {
-	if (ioctl(dev, DIOCXROLLBACK, &pft) == -1)
+	if (ioctl(pfctl_fd(pfh), DIOCXROLLBACK, &pft) == -1)
 		return (-1);
 	
 	return (0);
@@ -183,17 +183,12 @@ init_filter(char *opt_qname, int opt_verbose)
 	else if (opt_verbose == 2)
 		rule_log = PF_LOG_ALL;
 
-	dev = open("/dev/pf", O_RDWR);	
-	if (dev == -1) {
-		syslog(LOG_ERR, "can't open /dev/pf");
-		exit(1);
-	}
 	pfh = pfctl_open(PF_DEVICE);
 	if (pfh == NULL) {
 		syslog(LOG_ERR, "can't pfctl_open()");
 		exit(1);
 	}
-	status = pfctl_get_status(dev);
+	status = pfctl_get_status_h(pfh);
 	if (status == NULL) {
 		syslog(LOG_ERR, "DIOCGETSTATUS");
 		exit(1);
@@ -238,7 +233,7 @@ prepare_commit(u_int32_t id)
 		}
 	}
 
-	if (ioctl(dev, DIOCXBEGIN, &pft) == -1)
+	if (ioctl(pfctl_fd(pfh), DIOCXBEGIN, &pft) == -1)
 		return (-1);
 
 	return (0);
@@ -277,7 +272,7 @@ prepare_rule(u_int32_t id, int rs_num, struct sockaddr *src,
 		errno = EINVAL;
 		return (-1);
 	}
-	if (ioctl(dev, DIOCBEGINADDRS, &pfp) == -1)
+	if (pfctl_begin_addrs(pfh, &pfp.ticket))
 		return (-1);
 	pfpool_ticket = pfp.ticket;
 
@@ -368,26 +363,26 @@ int
 server_lookup4(struct sockaddr_in *client, struct sockaddr_in *proxy,
     struct sockaddr_in *server, u_int8_t proto)
 {
-	struct pfioc_natlook pnl;
+	struct pfctl_natlook_key k = {};
+	struct pfctl_natlook r = {};
 
-	memset(&pnl, 0, sizeof pnl);
-	pnl.direction = PF_OUT;
-	pnl.af = AF_INET;
-	pnl.proto = proto;
-	memcpy(&pnl.saddr.v4, &client->sin_addr.s_addr, sizeof pnl.saddr.v4);
-	memcpy(&pnl.daddr.v4, &proxy->sin_addr.s_addr, sizeof pnl.daddr.v4);
-	pnl.sport = client->sin_port;
-	pnl.dport = proxy->sin_port;
+	k.direction = PF_OUT;
+	k.af = AF_INET;
+	k.proto = proto;
+	memcpy(&k.saddr.v4, &client->sin_addr.s_addr, sizeof(k.saddr.v4));
+	memcpy(&k.daddr.v4, &proxy->sin_addr.s_addr, sizeof(k.daddr.v4));
+	k.sport = client->sin_port;
+	k.dport = proxy->sin_port;
 
-	if (ioctl(dev, DIOCNATLOOK, &pnl) == -1)
+	if (pfctl_natlook(pfh, &k, &r))
 		return (-1);
 
 	memset(server, 0, sizeof(struct sockaddr_in));
 	server->sin_len = sizeof(struct sockaddr_in);
 	server->sin_family = AF_INET;
-	memcpy(&server->sin_addr.s_addr, &pnl.rdaddr.v4,
+	memcpy(&server->sin_addr.s_addr, &r.daddr.v4,
 	    sizeof server->sin_addr.s_addr);
-	server->sin_port = pnl.rdport;
+	server->sin_port = r.dport;
 
 	return (0);
 }
@@ -396,26 +391,26 @@ int
 server_lookup6(struct sockaddr_in6 *client, struct sockaddr_in6 *proxy,
     struct sockaddr_in6 *server, u_int8_t proto)
 {
-	struct pfioc_natlook pnl;
+	struct pfctl_natlook_key k = {};
+	struct pfctl_natlook r = {};
 
-	memset(&pnl, 0, sizeof pnl);
-	pnl.direction = PF_OUT;
-	pnl.af = AF_INET6;
-	pnl.proto = proto;
-	memcpy(&pnl.saddr.v6, &client->sin6_addr.s6_addr, sizeof pnl.saddr.v6);
-	memcpy(&pnl.daddr.v6, &proxy->sin6_addr.s6_addr, sizeof pnl.daddr.v6);
-	pnl.sport = client->sin6_port;
-	pnl.dport = proxy->sin6_port;
-	
-	if (ioctl(dev, DIOCNATLOOK, &pnl) == -1)
+	k.direction = PF_OUT;
+	k.af = AF_INET6;
+	k.proto = proto;
+	memcpy(&k.saddr.v6, &client->sin6_addr.s6_addr, sizeof k.saddr.v6);
+	memcpy(&k.daddr.v6, &proxy->sin6_addr.s6_addr, sizeof k.daddr.v6);
+	k.sport = client->sin6_port;
+	k.dport = proxy->sin6_port;
+
+	if (pfctl_natlook(pfh, &k, &r))
 		return (-1);
 
 	memset(server, 0, sizeof(struct sockaddr_in6));
 	server->sin6_len = sizeof(struct sockaddr_in6);
 	server->sin6_family = AF_INET6;
-	memcpy(&server->sin6_addr.s6_addr, &pnl.rdaddr.v6,
+	memcpy(&server->sin6_addr.s6_addr, &r.daddr.v6,
 	    sizeof server->sin6_addr);
-	server->sin6_port = pnl.rdport;
+	server->sin6_port = r.dport;
 
 	return (0);
 }

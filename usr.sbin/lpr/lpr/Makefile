@@ -1,8 +1,8 @@
-
 .PATH: ${.CURDIR:H}/common_source
 
 BINDIR=	/usr/bin
 
+PACKAGE=lp
 PROG=	lpr
 MAN=	lpr.1 printcap.5
 BINOWN=	root

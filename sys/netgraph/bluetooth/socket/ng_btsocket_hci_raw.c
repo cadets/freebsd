@@ -808,8 +808,7 @@ ng_btsocket_hci_raw_init(void *arg __unused)
 
 	/* Enable all events */
 	memset(&ng_btsocket_hci_raw_sec_filter->events, 0xff,
-		sizeof(ng_btsocket_hci_raw_sec_filter->events)/
-			sizeof(ng_btsocket_hci_raw_sec_filter->events[0]));
+		sizeof(ng_btsocket_hci_raw_sec_filter->events));
 
 	/* Disable some critical events */
 	f = ng_btsocket_hci_raw_sec_filter->events;
@@ -1596,6 +1595,17 @@ ng_btsocket_hci_raw_send(struct socket *so, int flags, struct mbuf *m,
 	if (*mtod(m, u_int8_t *) != NG_HCI_CMD_PKT) {
 		error = ENOTSUP;
 		goto drop;
+	}
+
+	if (sa != NULL) {
+		if (sa->sa_family != AF_BLUETOOTH) {
+			error = EAFNOSUPPORT;
+			goto drop;
+		}
+		if (sa->sa_len != sizeof(struct sockaddr_hci)) {
+			error = EINVAL;
+			goto drop;
+		}
 	}
 
 	mtx_lock(&pcb->pcb_mtx);

@@ -1,6 +1,6 @@
-
 BINDIR=	/usr/bin
 
+PACKAGE=lp
 PROG=	lpq
 BINOWN=	root
 BINGRP=	daemon

@@ -72,7 +72,12 @@ local function adduser(pwd)
 		warnmsg("Argument should be a table")
 		return nil
 	end
-	local f = io.popen("getent passwd "..pwd.name)
+	local root = os.getenv("NUAGE_FAKE_ROOTDIR")
+	local cmd = "pw "
+	if root then
+		cmd = cmd .. "-R " .. root .. " "
+	end
+	local f = io.popen(cmd .. " usershow " ..pwd.name .. " -7 2>/dev/null")
 	local pwdstr = f:read("*a")
 	f:close()
 	if pwdstr:len() ~= 0 then
@@ -81,8 +86,8 @@ local function adduser(pwd)
 	if not pwd.gecos then
 		pwd.gecos = pwd.name .. " User"
 	end
-	if not pwd.home then
-		pwd.home = "/home/" .. pwd.name
+	if not pwd.homedir then
+		pwd.homedir = "/home/" .. pwd.name
 	end
 	local extraargs=""
 	if pwd.groups then
@@ -107,16 +112,15 @@ local function adduser(pwd)
 		postcmd = " -H 0 "
 	elseif pwd.plain_text_passwd then
 		precmd = "echo "..pwd.plain_text_passwd .. "| "
-		postcmd = " -H 0 "
+		postcmd = " -h 0 "
 	end
-	local root = os.getenv("NUAGE_FAKE_ROOTDIR")
-	local cmd = precmd .. "pw "
+	cmd = precmd .. "pw "
 	if root then
 		cmd = cmd .. "-R " .. root .. " "
 	end
 	cmd = cmd .. "useradd -n ".. pwd.name .. " -M 0755 -w none "
 	cmd = cmd .. extraargs .. " -c '".. pwd.gecos
-	cmd = cmd .. "' -d '" .. pwd.home .. "' -s "..pwd.shell .. postcmd
+	cmd = cmd .. "' -d '" .. pwd.homedir .. "' -s "..pwd.shell .. postcmd
 
 	local r = os.execute(cmd)
 	if not r then
@@ -132,7 +136,7 @@ local function adduser(pwd)
 		cmd = cmd .. "lock " .. pwd.name
 		os.execute(cmd)
 	end
-	return pwd.home
+	return pwd.homedir
 end
 
 local function addgroup(grp)
@@ -140,7 +144,12 @@ local function addgroup(grp)
 		warnmsg("Argument should be a table")
 		return false
 	end
-	local f = io.popen("getent group "..grp.name)
+	local root = os.getenv("NUAGE_FAKE_ROOTDIR")
+	local cmd = "pw "
+	if root then
+		cmd = cmd .. "-R " .. root .. " "
+	end
+	local f = io.popen(cmd .. " groupshow " ..grp.name .. " 2>/dev/null")
 	local grpstr = f:read("*a")
 	f:close()
 	if grpstr:len() ~= 0 then
@@ -151,8 +160,7 @@ local function addgroup(grp)
 		local list = splitlist(grp.members)
 		extraargs = " -M " .. table.concat(list, ',')
 	end
-	local root = os.getenv("NUAGE_FAKE_ROOTDIR")
-	local cmd = "pw "
+	cmd = "pw "
 	if root then
 		cmd = cmd .. "-R " .. root .. " "
 	end
@@ -169,6 +177,10 @@ end
 local function addsshkey(homedir, key)
 	local chownak = false
 	local chowndotssh = false
+	local root = os.getenv("NUAGE_FAKE_ROOTDIR")
+	if root then
+		homedir = root .. "/" .. homedir
+	end
 	local ak_path = homedir .. "/.ssh/authorized_keys"
 	local dotssh_path = homedir .. "/.ssh"
 	local dirattrs = lfs.attributes(ak_path)
@@ -176,10 +188,7 @@ local function addsshkey(homedir, key)
 		chownak = true
 		dirattrs = lfs.attributes(dotssh_path)
 		if dirattrs == nil then
-			if not lfs.mkdir(dotssh_path) then
-				warnmsg("nuageinit: impossible to create ".. dotssh_path)
-				return
-			end
+			assert(lfs.mkdir(dotssh_path))
 			chowndotssh = true
 			dirattrs = lfs.attributes(homedir)
 		end
@@ -193,9 +202,11 @@ local function addsshkey(homedir, key)
 	f:write(key .. "\n")
 	f:close()
 	if chownak then
+		os.execute("chmod 0600 " .. ak_path)
 		pu.chown(ak_path, dirattrs.uid, dirattrs.gid)
 	end
 	if chowndotssh then
+		os.execute("chmod 0700 " .. dotssh_path)
 		pu.chown(dotssh_path, dirattrs.uid, dirattrs.gid)
 	end
 end

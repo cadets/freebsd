@@ -20,12 +20,13 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011, 2018 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2024 by Delphix. All rights reserved.
  * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2013 Steven Hartland. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2017 Joyent, Inc.
  * Copyright (c) 2017, Intel Corporation.
+ * Copyright (c) 2023, Klara, Inc.
  */
 
 /*
@@ -136,9 +137,7 @@
 #include <libzutil.h>
 #include <sys/crypto/icp.h>
 #include <sys/zfs_impl.h>
-#if (__GLIBC__ && !__UCLIBC__)
-#include <execinfo.h> /* for backtrace() */
-#endif
+#include <sys/backtrace.h>
 
 static int ztest_fd_data = -1;
 static int ztest_fd_rand = -1;
@@ -446,6 +445,7 @@ ztest_func_t ztest_blake3;
 ztest_func_t ztest_fletcher;
 ztest_func_t ztest_fletcher_incr;
 ztest_func_t ztest_verify_dnode_bt;
+ztest_func_t ztest_pool_prefetch_ddt;
 
 static uint64_t zopt_always = 0ULL * NANOSEC;		/* all the time */
 static uint64_t zopt_incessant = 1ULL * NANOSEC / 10;	/* every 1/10 second */
@@ -501,6 +501,7 @@ static ztest_info_t ztest_info[] = {
 	ZTI_INIT(ztest_fletcher, 1, &zopt_rarely),
 	ZTI_INIT(ztest_fletcher_incr, 1, &zopt_rarely),
 	ZTI_INIT(ztest_verify_dnode_bt, 1, &zopt_sometimes),
+	ZTI_INIT(ztest_pool_prefetch_ddt, 1, &zopt_rarely),
 };
 
 #define	ZTEST_FUNCS	(sizeof (ztest_info) / sizeof (ztest_info_t))
@@ -617,22 +618,15 @@ dump_debug_buffer(void)
 	 * We use write() instead of printf() so that this function
 	 * is safe to call from a signal handler.
 	 */
-	ret = write(STDOUT_FILENO, "\n", 1);
-	zfs_dbgmsg_print("ztest");
+	ret = write(STDERR_FILENO, "\n", 1);
+	zfs_dbgmsg_print(STDERR_FILENO, "ztest");
 }
-
-#define	BACKTRACE_SZ	100
 
 static void sig_handler(int signo)
 {
 	struct sigaction action;
-#if (__GLIBC__ && !__UCLIBC__) /* backtrace() is a GNU extension */
-	int nptrs;
-	void *buffer[BACKTRACE_SZ];
 
-	nptrs = backtrace(buffer, BACKTRACE_SZ);
-	backtrace_symbols_fd(buffer, nptrs, STDERR_FILENO);
-#endif
+	libspl_backtrace(STDERR_FILENO);
 	dump_debug_buffer();
 
 	/*
@@ -2529,7 +2523,7 @@ ztest_get_data(void *arg, uint64_t arg2, lr_write_t *lr, char *buf,
 		ASSERT3P(zio, !=, NULL);
 		size = doi.doi_data_block_size;
 		if (ISP2(size)) {
-			offset = P2ALIGN(offset, size);
+			offset = P2ALIGN_TYPED(offset, size, uint64_t);
 		} else {
 			ASSERT3U(offset, <, size);
 			offset = 0;
@@ -3375,7 +3369,7 @@ ztest_vdev_add_remove(ztest_ds_t *zd, uint64_t id)
 		    "log" : NULL, raidz_children, zs->zs_mirrors,
 		    1);
 
-		error = spa_vdev_add(spa, nvroot);
+		error = spa_vdev_add(spa, nvroot, B_FALSE);
 		fnvlist_free(nvroot);
 
 		switch (error) {
@@ -3438,7 +3432,7 @@ ztest_vdev_class_add(ztest_ds_t *zd, uint64_t id)
 	nvroot = make_vdev_root(NULL, NULL, NULL, ztest_opts.zo_vdev_size, 0,
 	    class, raidz_children, zs->zs_mirrors, 1);
 
-	error = spa_vdev_add(spa, nvroot);
+	error = spa_vdev_add(spa, nvroot, B_FALSE);
 	fnvlist_free(nvroot);
 
 	if (error == ENOSPC)
@@ -3545,7 +3539,7 @@ ztest_vdev_aux_add_remove(ztest_ds_t *zd, uint64_t id)
 		 */
 		nvlist_t *nvroot = make_vdev_root(NULL, aux, NULL,
 		    (ztest_opts.zo_vdev_size * 5) / 4, 0, NULL, 0, 0, 1);
-		error = spa_vdev_add(spa, nvroot);
+		error = spa_vdev_add(spa, nvroot, B_FALSE);
 
 		switch (error) {
 		case 0:
@@ -3978,7 +3972,8 @@ raidz_scratch_verify(void)
 	raidvd = vdev_lookup_top(spa, vre->vre_vdev_id);
 	offset = RRSS_GET_OFFSET(&spa->spa_uberblock);
 	state = RRSS_GET_STATE(&spa->spa_uberblock);
-	write_size = P2ALIGN(VDEV_BOOT_SIZE, 1 << raidvd->vdev_ashift);
+	write_size = P2ALIGN_TYPED(VDEV_BOOT_SIZE, 1 << raidvd->vdev_ashift,
+	    uint64_t);
 	logical_size = write_size * raidvd->vdev_children;
 
 	switch (state) {
@@ -5016,7 +5011,8 @@ ztest_dmu_object_next_chunk(ztest_ds_t *zd, uint64_t id)
 	 */
 	mutex_enter(&os->os_obj_lock);
 	object = ztest_random(os->os_obj_next_chunk);
-	os->os_obj_next_chunk = P2ALIGN(object, dnodes_per_chunk);
+	os->os_obj_next_chunk = P2ALIGN_TYPED(object, dnodes_per_chunk,
+	    uint64_t);
 	mutex_exit(&os->os_obj_lock);
 }
 
@@ -6638,7 +6634,8 @@ ztest_fault_inject(ztest_ds_t *zd, uint64_t id)
 		 * the end of the disk (vdev_psize) is aligned to
 		 * sizeof (vdev_label_t).
 		 */
-		uint64_t psize = P2ALIGN(fsize, sizeof (vdev_label_t));
+		uint64_t psize = P2ALIGN_TYPED(fsize, sizeof (vdev_label_t),
+		    uint64_t);
 		if ((leaf & 1) == 1 &&
 		    offset + sizeof (bad) > psize - VDEV_LABEL_END_SIZE)
 			continue;
@@ -6962,8 +6959,8 @@ ztest_fletcher_incr(ztest_ds_t *zd, uint64_t id)
 				size_t inc = 64 * ztest_random(size / 67);
 				/* sometimes add few bytes to test non-simd */
 				if (ztest_random(100) < 10)
-					inc += P2ALIGN(ztest_random(64),
-					    sizeof (uint32_t));
+					inc += P2ALIGN_TYPED(ztest_random(64),
+					    sizeof (uint32_t), uint64_t);
 
 				if (inc > (size - pos))
 					inc = size - pos;
@@ -6997,6 +6994,21 @@ ztest_fletcher_incr(ztest_ds_t *zd, uint64_t id)
 
 		umem_free(buf, size);
 	}
+}
+
+void
+ztest_pool_prefetch_ddt(ztest_ds_t *zd, uint64_t id)
+{
+	(void) zd, (void) id;
+	spa_t *spa;
+
+	(void) pthread_rwlock_rdlock(&ztest_name_lock);
+	VERIFY0(spa_open(ztest_opts.zo_pool, &spa, FTAG));
+
+	ddt_prefetch_all(spa);
+
+	spa_close(spa, FTAG);
+	(void) pthread_rwlock_unlock(&ztest_name_lock);
 }
 
 static int
@@ -8045,7 +8057,7 @@ ztest_raidz_expand_run(ztest_shared_t *zs, spa_t *spa)
 	ztest_expand_io_t *thread_args;
 
 	ASSERT3U(ztest_opts.zo_raidz_expand_test, !=, RAIDZ_EXPAND_NONE);
-	ASSERT3U(rzvd->vdev_ops, ==, &vdev_raidz_ops);
+	ASSERT3P(rzvd->vdev_ops, ==, &vdev_raidz_ops);
 	ztest_opts.zo_raidz_expand_test = RAIDZ_EXPAND_STARTED;
 
 	/* Setup a 1 MiB buffer of random data */
@@ -8501,17 +8513,24 @@ print_time(hrtime_t t, char *timebuf)
 }
 
 static nvlist_t *
-make_random_props(void)
+make_random_pool_props(void)
 {
 	nvlist_t *props;
 
 	props = fnvlist_alloc();
 
-	if (ztest_random(2) == 0)
-		return (props);
+	/* Twenty percent of the time enable ZPOOL_PROP_DEDUP_TABLE_QUOTA */
+	if (ztest_random(5) == 0) {
+		fnvlist_add_uint64(props,
+		    zpool_prop_to_name(ZPOOL_PROP_DEDUP_TABLE_QUOTA),
+		    2 * 1024 * 1024);
+	}
 
-	fnvlist_add_uint64(props,
-	    zpool_prop_to_name(ZPOOL_PROP_AUTOREPLACE), 1);
+	/* Fifty percent of the time enable ZPOOL_PROP_AUTOREPLACE */
+	if (ztest_random(2) == 0) {
+		fnvlist_add_uint64(props,
+		    zpool_prop_to_name(ZPOOL_PROP_AUTOREPLACE), 1);
+	}
 
 	return (props);
 }
@@ -8543,7 +8562,7 @@ ztest_init(ztest_shared_t *zs)
 	zs->zs_mirrors = ztest_opts.zo_mirrors;
 	nvroot = make_vdev_root(NULL, NULL, NULL, ztest_opts.zo_vdev_size, 0,
 	    NULL, ztest_opts.zo_raid_children, zs->zs_mirrors, 1);
-	props = make_random_props();
+	props = make_random_pool_props();
 
 	/*
 	 * We don't expect the pool to suspend unless maxfaults == 0,

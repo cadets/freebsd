@@ -199,7 +199,6 @@ struct rack_opts_stats {
 	uint64_t tcp_rack_min_pace_seg;
 	uint64_t tcp_rack_pace_rate_ca;
 	uint64_t tcp_rack_rr;
-	uint64_t tcp_rack_do_detection;
 	uint64_t tcp_rack_rrr_no_conf_rate;
 	uint64_t tcp_initial_rate;
 	uint64_t tcp_initial_win;
@@ -458,10 +457,6 @@ struct rack_control {
 	uint16_t rack_per_of_gp_rec; /* 100 = 100%, so from 65536 = 655 x bw, 0=off */
 	uint16_t rack_per_of_gp_probertt; /* 100 = 100%, so from 65536 = 655 x bw, 0=off */
 	uint32_t rc_high_rwnd;
-	uint32_t ack_count;
-	uint32_t sack_count;
-	uint32_t sack_noextra_move;
-	uint32_t sack_moved_extra;
 	struct rack_rtt_sample rack_rs;
 	const struct tcp_hwrate_limit_table *crte;
 	uint32_t rc_agg_early;
@@ -489,12 +484,6 @@ struct rack_control {
 	int32_t rc_rtt_diff;		/* Timely style rtt diff of our gp_srtt */
 	uint64_t last_tmit_time_acked;	/* Holds the last cumack point's last send time */
 	/* Recovery stats */
-	uint64_t time_entered_recovery;
-	uint64_t bytes_acked_in_recovery;
-	/* Policer Detection */
-	uint64_t last_policer_sndbytes;
-	uint64_t last_policer_snd_rxt_bytes;
-	uint64_t policer_bw;
 	uint64_t last_sendtime;
 
 	uint64_t last_gpest;
@@ -507,19 +496,9 @@ struct rack_control {
 	uint32_t gp_rnd_thresh;
 	uint32_t ss_hi_fs;
 	uint32_t gate_to_fs;
-	uint32_t policer_max_seg;
-	uint32_t pol_bw_comp;
-	uint16_t policer_rxt_threshold;
-	uint8_t  policer_avg_threshold;
-	uint8_t  policer_med_threshold;
 	uint32_t pcm_max_seg;
 	uint32_t last_pcm_round;
 	uint32_t pcm_idle_rounds;
-	uint32_t current_policer_bucket;
-	uint32_t policer_bucket_size;
-	uint32_t idle_snd_una;
-	uint32_t ack_for_idle;
-	uint32_t last_amount_before_rec;
 
 	uint32_t rc_gp_srtt;		/* Current GP srtt */
 	uint32_t rc_prev_gp_srtt;	/* Previous RTT */
@@ -558,15 +537,11 @@ struct rack_control {
 	uint32_t rc_last_timeout_snduna;
 	uint32_t last_tlp_acked_start;
 	uint32_t last_tlp_acked_end;
-	uint32_t challenge_ack_ts;
-	uint32_t challenge_ack_cnt;
 	uint32_t rc_min_to;	/* Socket option value Lock(a) */
 	uint32_t rc_pkt_delay;	/* Socket option value Lock(a) */
 	uint32_t persist_lost_ends;
-	uint32_t ack_during_sd;
 	uint32_t input_pkt;
 	uint32_t saved_input_pkt;
-	uint32_t saved_policer_val; 	/* The encoded value we used to setup policer detection */
 	uint32_t cleared_app_ack_seq;
 	uint32_t last_rcv_tstmp_for_rtt;
 	uint32_t last_time_of_arm_rcv;
@@ -586,7 +561,6 @@ struct rack_control {
 	uint16_t rc_cnt_of_retran[RETRAN_CNT_SIZE];
 	uint16_t rc_early_recovery_segs;	/* Socket option value Lock(a) */
 	uint16_t rc_reorder_shift;	/* Socket option value Lock(a) */
-	uint8_t policer_del_mss;	/* How many mss during recovery for policer detection */
 	uint8_t rack_per_upper_bound_ss;
 	uint8_t rack_per_upper_bound_ca;
 	uint8_t cleared_app_ack;
@@ -598,7 +572,6 @@ struct rack_control {
 	uint8_t rc_tlp_cwnd_reduce;	/* Socket option value Lock(a) */
 	uint8_t rc_prr_sendalot;/* Socket option value Lock(a) */
 	uint8_t rc_rate_sample_method;
-	uint8_t policer_alt_median;	/* Alternate median for policer detection */
 	uint8_t full_dgp_in_rec;	/* Flag to say if we do full DGP in recovery */
 	uint8_t client_suggested_maxseg;	/* Not sure what to do with this yet */
 	uint8_t use_gp_not_last;
@@ -790,8 +763,7 @@ struct tcp_rack {
 		set_pacing_done_a_iw : 1,
 		use_rack_rr : 1,
 		alloc_limit_reported : 1,
-		sack_attack_disable : 1,
-		do_detection : 1,
+		rack_avail : 2,
 		rc_force_max_seg : 1;
 	uint8_t r_early : 1,
 		r_late : 1,
@@ -801,12 +773,9 @@ struct tcp_rack {
 		r_collapse_point_valid : 1,
 		dgp_on : 1;
 	uint16_t rto_from_rec: 1,
-		avail_bit: 1,
+		avail_bit: 4,
 		pcm_in_progress: 1,
 		pcm_needed: 1,
-		policer_detect_on: 1,	/* Are we detecting policers? */
-		rc_policer_detected : 1,	/* We are beiing policed */
-		rc_policer_should_pace : 1,	/* The sizing algo thinks we should pace */
 		rc_sendvars_notset : 1,		/* Inside rack_init send variables (snd_max/una etc) were not set */
 		rc_gp_rtt_set : 1,
 		rc_gp_dyn_mul : 1,

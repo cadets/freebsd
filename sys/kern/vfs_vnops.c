@@ -1259,12 +1259,15 @@ vn_io_fault_doio(struct vn_io_fault_args *args, struct uio *uio,
 		    uio, args->cred, args->flags, td);
 		break;
 	case VN_IO_FAULT_VOP:
-		if (uio->uio_rw == UIO_READ) {
+		switch (uio->uio_rw) {
+		case UIO_READ:
 			error = VOP_READ(args->args.vop_args.vp, uio,
 			    args->flags, args->cred);
-		} else if (uio->uio_rw == UIO_WRITE) {
+			break;
+		case UIO_WRITE:
 			error = VOP_WRITE(args->args.vop_args.vp, uio,
 			    args->flags, args->cred);
+			break;
 		}
 		break;
 	default:
@@ -3339,7 +3342,7 @@ vn_generic_copy_file_range(struct vnode *invp, off_t *inoffp,
 	off_t startoff, endoff, xfer, xfer2;
 	u_long blksize;
 	int error, interrupted;
-	bool cantseek, readzeros, eof, lastblock, holetoeof, sparse;
+	bool cantseek, readzeros, eof, first, lastblock, holetoeof, sparse;
 	ssize_t aresid, r = 0;
 	size_t copylen, len, savlen;
 	off_t outsize;
@@ -3480,6 +3483,7 @@ vn_generic_copy_file_range(struct vnode *invp, off_t *inoffp,
 		endts.tv_sec++;
 	} else
 		timespecclear(&endts);
+	first = true;
 	holetoeof = eof = false;
 	while (len > 0 && error == 0 && !eof && interrupted == 0) {
 		endoff = 0;			/* To shut up compilers. */
@@ -3581,10 +3585,17 @@ vn_generic_copy_file_range(struct vnode *invp, off_t *inoffp,
 			 */
 			xfer -= (*inoffp % blksize);
 		}
-		/* Loop copying the data block. */
-		while (copylen > 0 && error == 0 && !eof && interrupted == 0) {
+
+		/*
+		 * Loop copying the data block.  If this was our first attempt
+		 * to copy anything, allow a zero-length block so that the VOPs
+		 * get a chance to update metadata, specifically the atime.
+		 */
+		while (error == 0 && ((copylen > 0 && !eof) || first) &&
+		    interrupted == 0) {
 			if (copylen < xfer)
 				xfer = copylen;
+			first = false;
 			error = vn_lock(invp, LK_SHARED);
 			if (error != 0)
 				goto out;
@@ -3594,7 +3605,7 @@ vn_generic_copy_file_range(struct vnode *invp, off_t *inoffp,
 			    curthread);
 			VOP_UNLOCK(invp);
 			lastblock = false;
-			if (error == 0 && aresid > 0) {
+			if (error == 0 && (xfer == 0 || aresid > 0)) {
 				/* Stop the copy at EOF on the input file. */
 				xfer -= aresid;
 				eof = true;

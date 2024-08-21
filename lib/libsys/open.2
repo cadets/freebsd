@@ -323,7 +323,7 @@ by the descriptor at the time of the call.
 .Pp
 .Dv O_PATH
 returns a file descriptor that can be used as a directory file descriptor for
-.Xr openat 2
+.Fn openat
 and other system calls taking a file descriptor argument, like
 .Xr fstatat 2
 and others.
@@ -384,7 +384,7 @@ The file pointer used to mark the current position within the
 file is set to the beginning of the file.
 .Pp
 If a sleeping open of a device node from
-.Xr devfs 5
+.Xr devfs 4
 is interrupted by a signal, the call always fails with
 .Er EINTR ,
 even if the

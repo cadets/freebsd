@@ -886,6 +886,9 @@ typedef struct {
 #define	STV_SINGLETON	0x5
 #define	STV_ELIMINATE	0x6
 
+/* Architecture specific data - st_other */
+#define	STO_AARCH64_VARIANT_PCS 0x80
+
 /* Special symbol table indexes. */
 #define	STN_UNDEF	0	/* Undefined symbol index. */
 
@@ -990,8 +993,9 @@ typedef struct {
 #define	AT_KPRELOAD	34	/* Base of vdso, preloaded by rtld */
 #define	AT_USRSTACKBASE	35	/* Top of user stack */
 #define	AT_USRSTACKLIM	36	/* Grow limit of user stack */
+#define	AT_CHERI_STATS	37	/* Reserved */
 
-#define	AT_COUNT	37	/* Count of defined aux entry types. */
+#define	AT_COUNT	38	/* Count of defined aux entry types. */
 
 /*
  * Relocation types.
