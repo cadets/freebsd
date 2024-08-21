@@ -663,14 +663,13 @@ main(int argc, char *argv[])
 	struct vcpu *bsp;
 	struct vmctx *ctx;
 	size_t memsize;
-	const char *optstr, *value, *vmname;
+	const char *value, *vmname;
 	int enable_hypertrace = 0;
 #ifdef BHYVE_SNAPSHOT
 	struct restore_state rstate;
 #endif
 
 	bhyve_init_config();
-	progname = basename(argv[0]);
 	bhyve_optparse(argc, argv);
 	argc -= optind;
 	argv += optind;
@@ -714,7 +713,8 @@ main(int argc, char *argv[])
 
 	ctx = do_open(vmname);
 
-	enable_hypertrace = get_config_bool("enable_hypertrace") == true;
+	enable_hypertrace = get_config_bool_default(
+	    "enable_hypertrace",false) == true;
 	if (enable_hypertrace != 0 && hypertrace_init(ctx))
 		fprintf(stderr, "hypertrace_init() failed: %s\n",
 		    strerror(errno));

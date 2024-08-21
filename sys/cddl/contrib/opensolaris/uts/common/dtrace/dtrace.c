@@ -18652,7 +18652,7 @@ dtrace_immstack_invalidate_cache(void)
 	dtrace_sync(); /* make sure all cores see it */
 }
 
-static const char *
+const char *
 dtrace_immstack_get_cached(pc_t pc, uint64_t *off)
 {
 	uint32_t idx;
@@ -18681,7 +18681,7 @@ dtrace_immstack_get_cached(pc_t pc, uint64_t *off)
 	return (dtrace_immstackhash[idx].sym);
 }
 
-static void
+void
 dtrace_immstack_cache(pc_t pc, const char *symname, uint64_t off)
 {
 	uint32_t idx;
@@ -20650,8 +20650,6 @@ dtrace_fault(void)
 #include <dtrace_unload.c>
 #include <dtrace_vtime.c>
 #include <dtrace_hacks.c>
-#include <dtrace_db.c>
-#include <dtrace_isa.c>
 
 SYSINIT(dtrace_load, SI_SUB_DTRACE, SI_ORDER_FIRST, dtrace_load, NULL);
 SYSUNINIT(dtrace_unload, SI_SUB_DTRACE, SI_ORDER_FIRST, dtrace_unload, NULL);

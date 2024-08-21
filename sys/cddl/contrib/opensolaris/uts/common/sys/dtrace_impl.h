@@ -1328,6 +1328,9 @@ typedef struct dtrace_toxrange {
 	uintptr_t	dtt_limit;		/* limit of toxic range */
 } dtrace_toxrange_t;
 
+extern int dtrace_immstack_caching_enabled;
+extern const char *dtrace_immstack_get_cached(pc_t, uint64_t *);
+extern void dtrace_immstack_cache(pc_t, const char *, uint64_t);
 #ifdef illumos
 extern uint64_t dtrace_getarg(int, int);
 #else

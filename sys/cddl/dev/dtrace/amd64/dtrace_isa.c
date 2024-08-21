@@ -67,6 +67,8 @@
 
 #include "regset.h"
 
+#include <dtrace_db.c>
+
 uint8_t dtrace_fuword8_nocheck(void *);
 uint16_t dtrace_fuword16_nocheck(void *);
 uint32_t dtrace_fuword32_nocheck(void *);
